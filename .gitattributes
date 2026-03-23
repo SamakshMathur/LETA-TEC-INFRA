@@ -1,0 +1,2 @@
+rag-backend/vectordb/index.faiss filter=lfs diff=lfs merge=lfs -text
+rag-backend/vectordb/index.meta.json filter=lfs diff=lfs merge=lfs -text
