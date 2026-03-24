@@ -47,7 +47,7 @@ def _path_segments(source_path: str):
         # Normalise: lowercase, strip extension from filename
         clean = part.lower()
         segments.add(clean)                    # full part  e.g. "act"
-        segments.add(p.stem.lower())           # filename without extension
+        segments.add(Path(part).stem.lower())  # part without extension
     return segments
 
 

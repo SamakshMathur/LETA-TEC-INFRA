@@ -1,11 +1,13 @@
-import openai
 import os
 import hashlib
 import json
 from diskcache import Cache
 from app.config import (
-    OPENAI_API_KEY, 
-    LLM_MODEL, 
+    OPENAI_API_KEY,
+    ANTHROPIC_API_KEY,
+    LLM_PROVIDER,
+    LLM_MODEL,
+    CLAUDE_MAIN_MODEL,
     CACHE_DIR,
     DATA_DIR
 )
@@ -22,8 +24,20 @@ cache = Cache(CACHE_DIR)
 REPORTS_DIR = os.path.join(DATA_DIR, "generated_reports")
 pdf_gen = PDFReportGenerator(output_dir=REPORTS_DIR)
 
-# Client setup
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# Client setup — respect configured LLM provider
+_client = None
+
+def _get_client():
+    global _client
+    if _client is not None:
+        return _client
+    if LLM_PROVIDER == "anthropic":
+        import anthropic
+        _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    else:
+        import openai
+        _client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    return _client
 
 def generate_legal_advisory(user_input: str, context: str, subject: str = "GST Query") -> dict:
     """
@@ -76,14 +90,24 @@ def generate_legal_advisory(user_input: str, context: str, subject: str = "GST Q
         ]
         
         # 3. Call LLM (Intelligence Engine)
-        print(f"Calling OpenAI ({LLM_MODEL}) for {query_type}...")
-        response = client.chat.completions.create(
-            model=LLM_MODEL, 
-            messages=messages,
-            max_completion_tokens=4000  # Expanded to prevent citation truncation
-        )
-        
-        advisory_content = response.choices[0].message.content.strip()
+        client = _get_client()
+        if LLM_PROVIDER == "anthropic":
+            print(f"Calling Claude ({CLAUDE_MAIN_MODEL}) for {query_type}...")
+            response = client.messages.create(
+                model=CLAUDE_MAIN_MODEL,
+                max_tokens=4000,
+                system=system_prompt,
+                messages=[{"role": "user", "content": f"CONTEXT:\n{context}\n\nUSER QUERY:\n{user_input}"}],
+            )
+            advisory_content = response.content[0].text.strip()
+        else:
+            print(f"Calling OpenAI ({LLM_MODEL}) for {query_type}...")
+            response = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=messages,
+                max_completion_tokens=4000,
+            )
+            advisory_content = response.choices[0].message.content.strip()
 
         # 4. Post-Processing Validation & Re-Generation (Self-Correction Layer)
         # Run validation for ALL query types to maximize accuracy
@@ -112,16 +136,28 @@ def generate_legal_advisory(user_input: str, context: str, subject: str = "GST Q
                     correction_prompt += f"- {w}\n"
                 correction_prompt += "\nPlease regenerate the Legal Advisory Opinion correcting these specific issues. Ensure NO contradictions and ALL statutory limits are respected."
                 
-                messages.append({"role": "assistant", "content": advisory_content})
-                messages.append({"role": "user", "content": correction_prompt})
-                
-                # Retry Call
-                response_v2 = client.chat.completions.create(
-                    model=LLM_MODEL,
-                    messages=messages,
-                    max_completion_tokens=4000
-                )
-                advisory_content = response_v2.choices[0].message.content.strip()
+                # Retry Call with self-correction
+                if LLM_PROVIDER == "anthropic":
+                    response_v2 = client.messages.create(
+                        model=CLAUDE_MAIN_MODEL,
+                        max_tokens=4000,
+                        system=system_prompt,
+                        messages=[
+                            {"role": "user", "content": f"CONTEXT:\n{context}\n\nUSER QUERY:\n{user_input}"},
+                            {"role": "assistant", "content": advisory_content},
+                            {"role": "user", "content": correction_prompt},
+                        ],
+                    )
+                    advisory_content = response_v2.content[0].text.strip()
+                else:
+                    messages.append({"role": "assistant", "content": advisory_content})
+                    messages.append({"role": "user", "content": correction_prompt})
+                    response_v2 = client.chat.completions.create(
+                        model=LLM_MODEL,
+                        messages=messages,
+                        max_completion_tokens=4000,
+                    )
+                    advisory_content = response_v2.choices[0].message.content.strip()
                 print(">> Auto-Correction Complete. Using V2 Draft.")
 
         # 5. Generate PDF (Output Engine)

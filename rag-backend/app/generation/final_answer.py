@@ -10,7 +10,7 @@ def build_final_answer(question: str, context: str, chunks: list) -> dict:
     """
 
     raw_answer = synthesize_answer(question, context)
-    confidence = estimate_confidence(context)
+    confidence = estimate_confidence(context, chunks=chunks)
     sources = format_sources(chunks)
 
     # Parse Metadata (Reasoning)
