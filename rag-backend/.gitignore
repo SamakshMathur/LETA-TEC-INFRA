@@ -1,0 +1,30 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+ENV/
+
+# Environment Variables
+.env
+.env.local
+.env.*
+
+# Local Debug Artifacts
+*.log
+test_*.py
+debug_*.py
+trace_*.py
+final_test.py
+verify_api.py
+check_env.py
+backend_debug.log
+.win_venv/
+.win_venv*
+.win_venv/

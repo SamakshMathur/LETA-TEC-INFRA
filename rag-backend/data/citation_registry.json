@@ -1,0 +1,359 @@
+[
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 7",
+        "Title": "Scope of supply",
+        "Text": "(1) For the purposes of this Act, the expression 'supply' includes- (a) all forms of supply of goods or services or both such as sale, transfer, barter, exchange, licence, rental, lease or disposal made or agreed to be made for a consideration by a person in the course or furtherance of his business; (b) import of services for a consideration whether or not in the course or furtherance of business; and (c) the activities specified in Schedule I, made or agreed to be made without a consideration."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 9",
+        "Title": "Levy and collection",
+        "Text": "(1) Subject to the provisions of sub-section (2), there shall be levied a tax called the central goods and services tax on all intra-State supplies of goods or services or both, except on the supply of alcoholic liquor for human consumption, on the value determined under section 15 and at such rates, not exceeding twenty per cent., as may be notified by the Government on the recommendations of the Council."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 9(3)",
+        "Title": "Reverse charge mechanism",
+        "Text": "The Government may, on the recommendations of the Council, by notification, specify categories of supply of goods or services or both, the tax on which shall be paid on reverse charge basis by the recipient of such goods or services or both and all the provisions of this Act shall apply to such recipient as if he is the person liable for paying the tax in relation to the supply of such goods or services or both."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 9(4)",
+        "Title": "RCM on supplies from unregistered persons",
+        "Text": "The central tax in respect of the supply of taxable goods or services or both by a supplier, who is not registered, to a registered person shall be paid by such person on reverse charge basis as the recipient and all the provisions of this Act shall apply to such recipient as if he is the person liable for paying the tax in relation to the supply of such goods or services or both."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 10",
+        "Title": "Composition levy",
+        "Text": "(1) Notwithstanding anything to the contrary contained in this Act but subject to the provisions of sub-sections (3) and (4), a registered person, whose aggregate turnover in the preceding financial year did not exceed one crore and fifty lakh rupees, may opt to pay, in lieu of the tax payable by him under sub-section (1) of section 9, an amount of tax calculated at such rate as may be prescribed, but not exceeding- (a) one per cent. of the turnover in State or turnover in Union territory in case of a manufacturer."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 15",
+        "Title": "Value of taxable supply",
+        "Text": "(1) The value of a supply of goods or services or both shall be the transaction value, which is the price actually paid or payable for the said supply of goods or services or both where the supplier and the recipient of the supply are not related and the price is the sole consideration for the supply."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 16",
+        "Title": "Eligibility and conditions for taking input tax credit",
+        "Text": "(1) Every registered person shall, subject to such conditions and restrictions as may be prescribed and in the manner specified in section 49, be entitled to take credit of input tax charged on any supply of goods or services or both to him which are used or intended to be used in the course or furtherance of his business... (2) Notwithstanding anything contained in this section, no registered person shall be entitled to the credit of any input tax in respect of any supply of goods or services or both to him unless,- (a) he is in possession of a tax invoice or debit note issued by a supplier... (b) he has received the goods or services or both... (c) the tax charged in respect of such supply has been actually paid to the Government... (d) he has furnished the return under section 39."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 16(4)",
+        "Title": "Time limit for availing ITC",
+        "Text": "A registered person shall not be entitled to take input tax credit in respect of any invoice or debit note for supply of goods or services or both after the thirtieth day of November following the end of financial year to which such invoice or debit note pertains or furnishing of the relevant annual return, whichever is earlier."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 17",
+        "Title": "Apportionment of credit and blocked credits",
+        "Text": "(5) Notwithstanding anything contained in sub-section (1) of section 16 and sub-section (1) of section 18, input tax credit shall not be available in respect of the following, namely:- (a) motor vehicles for transportation of persons having approved seating capacity of not more than thirteen persons (including the driver), except when they are used for making the following taxable supplies, namely:- (A) further supply of such motor vehicles; or (B) transportation of passengers; or (C) imparting training on driving such motor vehicles; (b) the following supply of goods or services or both- (i) food and beverages, outdoor catering, beauty treatment, health services, cosmetic and plastic surgery..."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 17(5)",
+        "Title": "Blocked credits",
+        "Text": "Input tax credit shall not be available in respect of the following: (a) motor vehicles for transportation of persons (seating capacity <= 13); (b)(i) food and beverages, outdoor catering, beauty treatment, health services, cosmetic and plastic surgery; (b)(ii) membership of a club, health and fitness centre; (b)(iii) rent-a-cab, life insurance and health insurance; (c) works contract services for construction of immovable property other than plant and machinery; (d) goods or services received for construction of immovable property on own account; (e) goods or services on which tax has been paid under Section 10 (composition); (f) goods or services used for personal consumption; (g) goods lost, stolen, destroyed, written off or disposed of by way of gift or free samples."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 22",
+        "Title": "Persons liable for registration",
+        "Text": "Every supplier shall be liable to be registered under this Act in the State or Union territory, other than special category States, from where he makes a taxable supply of goods or services or both, if his aggregate turnover in a financial year exceeds twenty lakh rupees."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 24",
+        "Title": "Compulsory registration in certain cases",
+        "Text": "Notwithstanding anything contained in sub-section (1) of section 22, the following categories of persons shall be required to be registered: (i) persons making any inter-State taxable supply; (ii) casual taxable persons making taxable supply; (iii) persons who are required to pay tax under reverse charge; (iv) persons who are required to pay tax under sub-section (5) of section 9; (v) non-resident taxable persons; (vi) persons who are required to deduct tax under section 51; (vii) persons who make taxable supply on behalf of other taxable persons; (viii) Input Service Distributor; (ix) persons who supply goods or services through e-commerce operator; (x) every e-commerce operator."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 31",
+        "Title": "Tax invoice",
+        "Text": "(1) A registered person supplying taxable goods shall, before or at the time of- (a) removal of goods for supply to the recipient, where the supply involves movement of goods; or (b) delivery of goods or making available thereof to the recipient, in any other case, issue a tax invoice showing the description, quantity and value of goods, the tax charged thereon and such other particulars as may be prescribed."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 34",
+        "Title": "Credit note and debit note",
+        "Text": "(1) Where one or more tax invoices have been issued for supply of any goods or services or both and the taxable value or tax charged in that tax invoice is found to exceed the taxable value or tax payable in respect of such supply, or where the goods supplied are returned by the recipient, or where goods or services or both supplied are found to be deficient, the registered person, who has supplied such goods or services or both, may issue to the recipient one or more credit notes for supplies made in a financial year."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 39",
+        "Title": "Furnishing of returns",
+        "Text": "(1) Every registered person, other than an Input Service Distributor or a non-resident taxable person or a person paying tax under section 10 or section 51 or section 52 shall, for every calendar month or part thereof, furnish, in such form and manner as may be prescribed, a return, electronically, of inward and outward supplies of goods or services or both, input tax credit availed, tax payable, tax paid and such other particulars as may be prescribed, on or before the twentieth day of the month succeeding such calendar month or part thereof."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 47",
+        "Title": "Levy of late fee",
+        "Text": "(1) Any registered person who fails to furnish the details of outward or inward supplies required under section 37 or section 38 or returns required under section 39 or section 44 or section 45 by the due date shall pay a late fee of one hundred rupees for every day during which such failure continues subject to a maximum amount of five thousand rupees."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 49",
+        "Title": "Payment of tax, interest, penalty and other amounts",
+        "Text": "(1) Every deposit made towards tax, interest, penalty, fee or any other amount by a person by internet banking or by using credit or debit cards or National Electronic Fund Transfer or Real Time Gross Settlement or by such other mode and subject to such conditions and restrictions as may be prescribed, shall be credited to the electronic cash ledger of such person."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 50",
+        "Title": "Interest on delayed payment of tax",
+        "Text": "(1) Every person who is liable to pay tax in accordance with the provisions of this Act or the rules made thereunder, but fails to pay the tax or any part thereof to the Government within the period prescribed, shall for the period for which the tax or any part thereof remains unpaid, pay, on his own, interest at such rate, not exceeding eighteen per cent., as may be notified by the Government on the recommendations of the Council."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 51",
+        "Title": "Tax deduction at source",
+        "Text": "(1) Notwithstanding anything to the contrary contained in this Act, the Government may mandate, (a) a department or establishment of the Central Government or State Government; or (b) local authority; or (c) Governmental agencies; or (d) such persons or category of persons as may be notified by the Government on the recommendations of the Council, to deduct tax at the rate of one per cent. from the payment made or credited to the supplier."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 52",
+        "Title": "Collection of tax at source",
+        "Text": "(1) Notwithstanding anything to the contrary contained in this Act, every electronic commerce operator, not being an agent, shall collect an amount calculated at such rate not exceeding one per cent., as may be notified by the Government on the recommendations of the Council, of the net value of taxable supplies made through it by other suppliers where the consideration with respect to such supplies is to be collected by the operator."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 54",
+        "Title": "Refund of tax",
+        "Text": "(1) Any person claiming refund of any tax and interest, if any, paid on such tax or any other amount paid by him, may make an application before the expiry of two years from the relevant date in such form and manner as may be prescribed. (3) Subject to the provisions of sub-section (10), a registered person may claim refund of any unutilised input tax credit at the end of any tax period: Provided that no refund of unutilised input tax credit shall be allowed in cases other than- (i) zero rated supplies made without payment of tax; (ii) where the credit has accumulated on account of rate of tax on inputs being higher than the rate of tax on output supplies."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 67",
+        "Title": "Power of inspection, search and seizure",
+        "Text": "(1) Where the proper officer, not below the rank of Joint Commissioner, has reasons to believe that- (a) a taxable person has suppressed any transaction relating to supply of goods or services or both or the stock of goods in hand, or has claimed input tax credit in excess of his entitlement or has indulged in contravention of any of the provisions of this Act or the rules made thereunder to evade tax under this Act, he may authorise in writing any other officer of central tax to inspect any places of business of the taxable person."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 73",
+        "Title": "Determination of tax not paid or short paid — non-fraud",
+        "Text": "(1) Where it appears to the proper officer that any tax has not been paid or short paid or erroneously refunded, or where input tax credit has been wrongly availed or utilised for any reason, other than the reason of fraud or any wilful-misstatement or suppression of facts to evade tax, he shall serve notice on the person chargeable with tax which has not been so paid or which has been so short paid or to whom the refund has erroneously been made."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 73(5)",
+        "Title": "Voluntary payment before SCN — non-fraud",
+        "Text": "The person chargeable with tax may, before service of notice under sub-section (1), pay the amount of tax along with interest payable under section 50 on the basis of his own ascertainment of such tax or the tax as ascertained by the said officer and inform the said officer in writing of such payment."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 74",
+        "Title": "Determination of tax not paid or short paid — fraud",
+        "Text": "(1) Where it appears to the proper officer that any tax has not been paid or short paid or erroneously refunded or where input tax credit has been wrongly availed or utilised by reason of fraud, or any wilful-misstatement or suppression of facts to evade tax, he shall serve notice on the person chargeable with tax which has not been so paid or which has been so short paid or to whom the refund has erroneously been made."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 74(5)",
+        "Title": "Voluntary payment before SCN — fraud",
+        "Text": "The person chargeable with tax may, before service of notice under sub-section (1), pay the amount of tax along with interest payable thereon under section 50 and a penalty equivalent to fifteen per cent. of such tax on the basis of his own ascertainment of such tax or the tax as ascertained by the said officer and inform the said officer in writing of such payment."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 83",
+        "Title": "Provisional attachment to protect revenue in certain cases",
+        "Text": "(1) Where during the pendency of any proceedings under section 62 or section 63 or section 64 or section 67 or section 73 or section 74, the Commissioner is of the opinion that for the purpose of protecting the interest of the Government revenue, it is necessary so to do, he may, by order in writing attach provisionally any property, including bank account, belonging to the taxable person."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 107",
+        "Title": "Appeals to Appellate Authority",
+        "Text": "(1) Any person aggrieved by any decision or order passed under this Act or the State Goods and Services Tax Act or the Union Territory Goods and Services Tax Act by an adjudicating authority may appeal to the Appellate Authority within three months from the date on which the said decision or order is communicated to such person. (4) The Appellate Authority may, if he is satisfied that the appellant was prevented by sufficient cause from presenting the appeal within the aforesaid period of three months, allow it to be presented within a further period of one month."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 112",
+        "Title": "Appeals to Appellate Tribunal",
+        "Text": "(1) Any person aggrieved by an order passed against him under section 107 or section 108 of this Act or the State Goods and Services Tax Act or the Union Territory Goods and Services Tax Act may appeal to the Appellate Tribunal against such order within three months from the date on which the order sought to be appealed against is communicated to the person preferring the appeal."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 122",
+        "Title": "Penalty for certain offences",
+        "Text": "(1) Where a taxable person who- (i) supplies any goods or services or both without issue of any invoice or issues an incorrect or false invoice with regard to any such supply; (ii) issues any invoice or bill without supply of goods or services or both in violation of the provisions of this Act; (iii) collects any amount as tax but fails to pay the same to the Government beyond a period of three months from the date on which such payment becomes due... he shall be liable to pay a penalty of ten thousand rupees or an amount equivalent to the tax evaded or the tax not deducted under section 51 or short deducted or deducted but not paid to the Government or tax not collected under section 52 or short collected or collected but not paid to the Government, whichever is higher."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 129",
+        "Title": "Detention, seizure and release of goods and conveyances in transit",
+        "Text": "(1) Notwithstanding anything contained in this Act, where any person transports any goods or stores any goods while they are in transit in contravention of the provisions of this Act or the rules made thereunder, all such goods and conveyance used as a means of transport for carrying the said goods and documents relating to such goods and conveyance shall be liable to detention or seizure."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 130",
+        "Title": "Confiscation of goods or conveyances and levy of penalty",
+        "Text": "(1) Notwithstanding anything contained in this Act, if any person- (i) supplies or receives any goods in contravention of any of the provisions of this Act or the rules made thereunder with intent to evade payment of tax; or (ii) does not account for any goods on which he is liable to pay tax under this Act; or (iii) supplies any goods which are liable to tax under this Act without having applied for registration; then, all such goods or conveyances which are used, or intended to be used, for transport of such goods shall be liable to confiscation."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 143",
+        "Title": "Job work procedure",
+        "Text": "(1) A registered person (hereafter referred to as the 'principal') may under intimation and subject to such conditions as may be prescribed, send any inputs or capital goods, without payment of tax, to a job worker for job work and from there subsequently send to another job worker and likewise, and shall- (a) bring back inputs, after completion of job work or otherwise, or capital goods, other than moulds and dies, jigs and fixtures, or tools, within one year and three years, respectively, of their being sent out, to any of his place of business."
+    },
+    {
+        "Type": "Section",
+        "Law": "CGST Act",
+        "Citation": "Section 171",
+        "Title": "Anti-profiteering measure",
+        "Text": "(1) Any reduction in rate of tax on any supply of goods or services or the benefit of input tax credit shall be passed on to the recipient by way of commensurate reduction in prices."
+    },
+    {
+        "Type": "Section",
+        "Law": "IGST Act",
+        "Citation": "Section 5 IGST",
+        "Title": "Levy and collection of IGST",
+        "Text": "(1) Subject to the provisions of sub-section (2), there shall be levied a tax called the integrated goods and services tax on all inter-State supplies of goods or services or both, except on the supply of alcoholic liquor for human consumption, on the value determined under section 15 of the Central Goods and Services Tax Act and at such rates, not exceeding forty per cent., as may be notified by the Government on the recommendations of the Council."
+    },
+    {
+        "Type": "Section",
+        "Law": "IGST Act",
+        "Citation": "Section 12 IGST",
+        "Title": "Place of supply of services — domestic",
+        "Text": "(2) The place of supply of services, except the services specified in sub-sections (3) to (14),- (a) made to a registered person shall be the location of such person; (b) made to any person other than a registered person shall be- (i) the location of the recipient where the address on record exists; and (ii) the location of the supplier of services in other cases."
+    },
+    {
+        "Type": "Section",
+        "Law": "IGST Act",
+        "Citation": "Section 13 IGST",
+        "Title": "Place of supply of services — cross-border",
+        "Text": "(2) The place of supply of services except the services specified in sub-sections (3) to (13) shall be the location of the recipient of services. (3) The place of supply of services in respect of goods which are required to be made available by the recipient to the supplier, shall be the location where the services are actually performed."
+    },
+    {
+        "Type": "Section",
+        "Law": "IGST Act",
+        "Citation": "Section 16 IGST",
+        "Title": "Zero rated supply",
+        "Text": "(1) 'zero rated supply' means any of the following supplies of goods or services or both, namely:- (a) export of goods or services or both; or (b) supply of goods or services or both to a Special Economic Zone developer or a Special Economic Zone unit. (3) A registered person making zero rated supply shall be eligible to claim refund under either of the following options: (a) he may supply goods or services or both under bond or Letter of Undertaking, without payment of integrated tax and claim refund of unutilised input tax credit; or (b) he may supply goods or services or both, subject to such conditions, safeguards and procedure as may be prescribed, on payment of integrated tax and claim refund of such tax paid."
+    },
+    {
+        "Type": "Rule",
+        "Law": "CGST Rules",
+        "Citation": "Rule 36(4)",
+        "Title": "ITC restriction based on GSTR-2B",
+        "Text": "Input tax credit to be availed by a registered person in respect of invoices or debit notes, the details of which have not been furnished by the suppliers under sub-section (1) of section 37 in FORM GSTR-1 or using the invoice furnishing facility, shall not exceed 5 per cent. of the eligible credit available in respect of invoices or debit notes the details of which have been furnished by the suppliers."
+    },
+    {
+        "Type": "Rule",
+        "Law": "CGST Rules",
+        "Citation": "Rule 42",
+        "Title": "Manner of determination of ITC in respect of inputs or input services and reversal thereof",
+        "Text": "The input tax credit in respect of inputs or input services, which attract the provisions of sub-sections (1) and (2) of section 17, being partly used for the purposes of business and partly for other purposes, or partly used for effecting taxable supplies including zero rated supplies and partly for effecting exempt supplies, shall be attributed to the purposes of business or for effecting taxable supplies in the following manner."
+    },
+    {
+        "Type": "Rule",
+        "Law": "CGST Rules",
+        "Citation": "Rule 43",
+        "Title": "ITC in respect of capital goods and reversal",
+        "Text": "Subject to the provisions of sub-section (3) of section 16, the input tax credit in respect of capital goods, which attract the provisions of sub-sections (1) and (2) of section 17, being partly used for the purposes of business and partly for other purposes, or partly used for effecting taxable supplies including zero rated supplies and partly for effecting exempt supplies, shall be attributed to the purposes of business or for effecting taxable supplies in the following manner."
+    },
+    {
+        "Type": "Rule",
+        "Law": "CGST Rules",
+        "Citation": "Rule 86B",
+        "Title": "Restrictions on use of amount available in electronic credit ledger",
+        "Text": "Notwithstanding anything contained in these rules, the registered person shall not use the amount available in electronic credit ledger to discharge his liability towards output tax in excess of ninety-nine per cent. of such tax liability, in cases where the value of taxable supply, other than exempt supply and zero-rated supply, in a month exceeds fifty lakh rupees."
+    },
+    {
+        "Type": "Rule",
+        "Law": "CGST Rules",
+        "Citation": "Rule 89",
+        "Title": "Application for refund of tax, interest, penalty, fees or any other amount",
+        "Text": "(1) Any person, except the persons covered under notification issued under section 55, claiming refund of any tax, interest, penalty, fees or any other amount paid by him, other than refund of integrated tax paid on goods exported out of India, may file an application electronically in FORM GST RFD-01 through the common portal, either directly or through a Facilitation Centre notified by the Commissioner, before the expiry of two years from the relevant date."
+    },
+    {
+        "Type": "Rule",
+        "Law": "CGST Rules",
+        "Citation": "Rule 96",
+        "Title": "Refund of integrated tax paid on goods exported out of India",
+        "Text": "(1) The shipping bill filed by an exporter shall be deemed to be an application for refund of integrated tax paid on the goods exported out of India and such application shall be deemed to have been filed only when the person in charge of the conveyance carrying the export goods duly files an export general manifest or an export report."
+    },
+    {
+        "Type": "Rule",
+        "Law": "CGST Rules",
+        "Citation": "Rule 138",
+        "Title": "Information to be furnished prior to commencement of movement of goods and generation of e-way bill",
+        "Text": "(1) Every registered person who causes movement of goods of consignment value exceeding fifty thousand rupees- (i) in relation to a supply; or (ii) for reasons other than supply; or (iii) due to inward supply from an unregistered person, shall, before commencement of such movement, furnish information relating to the said goods as specified in Part A of FORM GST EWB-01, electronically, on the common portal."
+    },
+    {
+        "Type": "Notification",
+        "Law": "CGST Act",
+        "Citation": "Notification No. 1/2017-Central Tax (Rate)",
+        "Title": "GST rates on supply of goods",
+        "Text": "The Central Government, on the recommendations of the Council, hereby notifies the rate of the central tax of- (i) 2.5 per cent. in respect of goods specified in Schedule I, (ii) 6 per cent. in respect of goods specified in Schedule II, (iii) 9 per cent. in respect of goods specified in Schedule III, (iv) 14 per cent. in respect of goods specified in Schedule IV, appended to this notification."
+    },
+    {
+        "Type": "Notification",
+        "Law": "CGST Act",
+        "Citation": "Notification No. 11/2017-Central Tax (Rate)",
+        "Title": "GST rates on supply of services",
+        "Text": "The Central Government, on the recommendations of the Council, hereby notifies the rate of the central tax of- (i) 2.5 per cent., (ii) 6 per cent., (iii) 9 per cent., (iv) 14 per cent. in respect of services specified in the corresponding entry in column (3) of the Table annexed to this notification."
+    },
+    {
+        "Type": "Notification",
+        "Law": "CGST Act",
+        "Citation": "Notification No. 12/2017-Central Tax (Rate)",
+        "Title": "Exemption from central tax on supply of services",
+        "Text": "The Central Government, on the recommendations of the Council, hereby exempts the intra-State supply of services of description as specified in column (3) of the Table below from the whole of the central tax leviable thereon under sub-section (1) of section 9 of the said Act."
+    },
+    {
+        "Type": "Notification",
+        "Law": "CGST Act",
+        "Citation": "Notification No. 13/2017-Central Tax (Rate)",
+        "Title": "Reverse Charge Mechanism on certain specified services",
+        "Text": "The Central Government on the recommendations of the Council hereby notifies that on categories of supply of services mentioned in column (2) of the Table below, supplied by a person as specified in column (3) of the said Table, the whole of central tax leviable under section 9 of the said Central Goods and Services Tax Act, shall be paid on reverse charge basis by the recipient of the such services as specified in column (4) of the said Table."
+    },
+    {
+        "Type": "Notification",
+        "Law": "CGST Act",
+        "Citation": "Notification No. 10/2019-Central Tax",
+        "Title": "Increased registration threshold for goods suppliers",
+        "Text": "In exercise of the powers conferred by sub-section (1) of section 22 of the said Act, the Central Government hereby specifies forty lakh rupees as the aggregate turnover threshold for liability to register for a person who is engaged exclusively in the supply of goods."
+    },
+    {
+        "Type": "Notification",
+        "Law": "CGST Act",
+        "Citation": "Notification No. 03/2019-Central Tax (Rate)",
+        "Title": "GST rates on real estate sector",
+        "Text": "Residential apartments (other than affordable): CGST 2.5% (total 5%) without ITC. Affordable residential apartments: CGST 0.5% (total 1%) without ITC. Commercial apartments: CGST 6% (total 12%) without ITC."
+    }
+]

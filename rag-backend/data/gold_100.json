@@ -1,0 +1,142 @@
+[
+  {
+    "id": "GST_001",
+    "category": "Late Fee",
+    "query": "I filed my GSTR-3B for October 2023 with a delay of 20 days. My tax liability was NIL. What is the late fee?",
+    "gold_answer_concepts": ["Section 47", "Rs. 20 per day", "Rs. 10", "Rs. 500"],
+    "expected_logic": "Since tax liability is NIL, late fee is Rs. 20 per day (Rs. 10 CGST + Rs. 10 SGST), subject to a maximum of Rs. 500."
+  },
+  {
+    "id": "GST_002",
+    "category": "Interest",
+    "query": "I claimed excess ITC of Rs. 1 Lakh in Jan but reversed it in Feb without utilizing it. Do I need to pay interest under Section 50?",
+    "gold_answer_concepts": ["Section 50", "availed", "utilized"],
+    "expected_logic": "Interest under Section 50(3) is applicable only when ITC is availed AND utilized. Since it was not utilized, no interest is payable per Rule 88B."
+  },
+  {
+    "id": "GST_003",
+    "category": "E-Way Bill",
+    "query": "My consignment value is Rs. 60,000 including exempt goods of Rs. 20,000. Is E-way bill mandatory for intra-state movement?",
+    "gold_answer_concepts": ["Rule 138", "Rs. 50,000", "exempt"],
+    "expected_logic": "Consignment value for E-Way Bill excludes exempt goods. Taxable value = 60k - 20k = 40k. Since 40k < 50k threshold, E-Way Bill is NOT mandatory."
+  },
+  {
+    "id": "GST_004",
+    "category": "Registration",
+    "query": "I am a service provider in Telangana with turnover of 18 Lakhs. Do I need to register?",
+    "gold_answer_concepts": ["Section 22", "20 Lakhs", "service provider"],
+    "expected_logic": "Threshold for service providers in Telangana (Normal State) is Rs. 20 Lakhs. Since 18L < 20L, registration is not required."
+  },
+  {
+    "id": "GST_005",
+    "category": "Penalty",
+    "query": "I collected tax of Rs. 2 Lakhs but failed to pay it to the government for 4 months. What is the penalty under Section 122?",
+    "gold_answer_concepts": ["Section 122", "Rs. 10,000", "100%", "higher of"],
+    "expected_logic": "Penalty is strictly 100% of tax (Rs. 2 Lakhs) OR Rs. 10,000, whichever is higher. So penalty is Rs. 2 Lakhs."
+  },
+  {
+    "id": "GST_006",
+    "category": "ITC",
+    "query": "Can I claim ITC on food and beverages provided to employees in the office canteen?",
+    "gold_answer_concepts": ["Section 17(5)", "food and beverages", "obligatory"],
+    "expected_logic": "ITC on food and beverages is blocked under Section 17(5) unless it is obligatory under any law."
+  },
+  {
+    "id": "GST_007",
+    "category": "Reverse Charge",
+    "query": "I received legal services from an advocate. Who is liable to pay GST under reverse charge?",
+    "gold_answer_concepts": ["legal services", "advocate", "reverse charge", "recipient"],
+    "expected_logic": "GST on legal services by advocates is payable by the recipient (business entity) under reverse charge as per Section 9(3)."
+  },
+  {
+    "id": "GST_008",
+    "category": "Time of Supply",
+    "query": "I received an advance of Rs. 5 Lakhs for supply of goods in March but supplied goods in April. When is time of supply?",
+    "gold_answer_concepts": ["Section 12", "time of supply", "goods", "invoice"],
+    "expected_logic": "For goods, time of supply is date of invoice or last date of issue of invoice as per Section 12. Advance receipt does not trigger time of supply for goods."
+  },
+  {
+    "id": "GST_009",
+    "category": "Composition Scheme",
+    "query": "I am a manufacturer with turnover of Rs. 1.2 Crore. Can I opt for composition scheme and what will be my tax rate?",
+    "gold_answer_concepts": ["composition", "1%", "manufacturer"],
+    "expected_logic": "Composition scheme is available for manufacturers with turnover up to Rs. 1.5 Crore under Section 10. Rate is 1% (0.5% CGST + 0.5% SGST)."
+  },
+  {
+    "id": "GST_010",
+    "category": "Place of Supply",
+    "query": "I am in Delhi and providing IT services to a client in Mumbai. What is the place of supply?",
+    "gold_answer_concepts": ["place of supply", "services", "Mumbai", "inter-state", "IGST"],
+    "expected_logic": "For B2B services, place of supply is the location of recipient (Mumbai). Since supplier is in Delhi and recipient in Mumbai, it is inter-state supply attracting IGST."
+  },
+  {
+    "id": "GST_011",
+    "category": "Refund",
+    "query": "I exported goods with payment of IGST. How do I claim refund of IGST paid?",
+    "gold_answer_concepts": ["refund", "export", "IGST", "shipping bill"],
+    "expected_logic": "Refund of IGST on exports can be claimed under Section 54 by filing in GSTR-1/3B. Shipping bill is treated as refund application. Time limit is 2 years from relevant date."
+  },
+  {
+    "id": "GST_012",
+    "category": "Assessment",
+    "query": "The tax officer issued a show cause notice under Section 73 for short payment of tax. What is the time limit for adjudication?",
+    "gold_answer_concepts": ["Section 73", "show cause notice"],
+    "expected_logic": "Under Section 73 (non-fraud cases), the time limit for issuing order is 3 years from the due date of annual return."
+  },
+  {
+    "id": "GST_013",
+    "category": "Appeal",
+    "query": "I want to appeal against an order of adjudicating authority. What is the time limit and pre-deposit requirement?",
+    "gold_answer_concepts": ["Section 107", "appeal", "3 months", "10%", "pre-deposit"],
+    "expected_logic": "Appeal to Appellate Authority under Section 107 must be filed within 3 months (extendable by 1 month). Pre-deposit of 10% of disputed tax is required."
+  },
+  {
+    "id": "GST_014",
+    "category": "Exemption",
+    "query": "Are educational services provided by a government-recognized school exempt from GST?",
+    "gold_answer_concepts": ["Notification", "exempt", "educational institution", "school"],
+    "expected_logic": "Services provided by educational institutions to students up to higher secondary level are exempt from GST."
+  },
+  {
+    "id": "GST_015",
+    "category": "TDS",
+    "query": "A government department is making a payment of Rs. 3 Lakhs to a contractor. Is TDS under GST applicable?",
+    "gold_answer_concepts": ["TDS", "2.5 Lakhs", "government", "2%", "deduction"],
+    "expected_logic": "TDS under Section 51 is applicable as payment exceeds Rs. 2.5 Lakhs. Rate is 2% (1% CGST + 1% SGST) for intra-state supply."
+  },
+  {
+    "id": "GST_016",
+    "category": "Annual Return",
+    "query": "What is the due date for filing GSTR-9 annual return and is it mandatory for all taxpayers?",
+    "gold_answer_concepts": ["GSTR-9", "31st December", "annual return"],
+    "expected_logic": "GSTR-9 is due on 31st December of next financial year under Section 44. It is mandatory for all regular taxpayers with turnover above Rs. 2 Crore."
+  },
+  {
+    "id": "GST_017",
+    "category": "Valuation",
+    "query": "I am providing services to a related person without consideration. How should the value be determined for GST?",
+    "gold_answer_concepts": ["Rule 28", "related person", "open market value", "valuation"],
+    "expected_logic": "Supply to related persons is taxable even without consideration (Schedule I). Value to be determined as per Rule 28 - open market value or comparable value."
+  },
+  {
+    "id": "GST_018",
+    "category": "Credit Note",
+    "query": "I issued a credit note in November for a supply made in June of the same financial year. What is the last date to declare this credit note in returns?",
+    "gold_answer_concepts": ["Section 34", "credit note", "November"],
+    "expected_logic": "Credit note must be declared in returns by 30th November of next financial year or date of filing annual return, whichever is earlier, as per Section 34."
+  },
+  {
+    "id": "GST_019",
+    "category": "Job Work",
+    "query": "I sent goods to a job worker 2 years ago. What is the time limit to receive back the goods?",
+    "gold_answer_concepts": ["job work", "capital goods", "inputs"],
+    "expected_logic": "Inputs must be returned within 1 year and capital goods within 3 years from the date of sending, as per Section 143."
+  },
+  {
+    "id": "GST_020",
+    "category": "HSN Code",
+    "query": "What is the minimum number of digits of HSN code required on invoices for a business with turnover of Rs. 6 Crore?",
+    "gold_answer_concepts": ["HSN", "5 Crore", "invoice"],
+    "expected_logic": "For turnover above Rs. 5 Crore, 6-digit HSN code is mandatory on invoices as per the latest notification."
+  }
+]

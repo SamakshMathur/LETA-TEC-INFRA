@@ -1,0 +1,613 @@
+{
+  "section_47_late_fee": {
+    "description": "Late fee for delayed filing of GST returns",
+    "triggers": ["Section 47", "Late fee", "GSTR-3B delayed", "GSTR-1 late", "delayed filing", "late fee GSTR"],
+    "gstr_3b_with_liability": "Rs. 50 per day (Rs. 25 CGST + Rs. 25 SGST), maximum Rs. 5,000",
+    "gstr_3b_nil_return": "Rs. 20 per day (Rs. 10 CGST + Rs. 10 SGST), maximum Rs. 500",
+    "gstr_1_with_liability": "Rs. 50 per day (Rs. 25 CGST + Rs. 25 SGST), maximum Rs. 10,000",
+    "gstr_1_nil_return": "Rs. 20 per day (Rs. 10 CGST + Rs. 10 SGST), maximum Rs. 500",
+    "gstr_9_annual_return": "Rs. 200 per day (Rs. 100 CGST + Rs. 100 SGST), maximum 0.25% of aggregate turnover",
+    "legal_ref": "Section 47 of CGST Act read with Notification No. 19/2021-Central Tax"
+  },
+
+  "section_50_interest": {
+    "description": "Interest on delayed payment of tax",
+    "triggers": ["Section 50", "Sec 50", "Interest on tax", "delayed payment interest"],
+    "rate_normal_per_annum": "18% per annum on delayed payment of self-assessed output tax",
+    "rate_wrong_itc_per_annum": "24% per annum on wrong availment and utilisation of Input Tax Credit",
+    "legal_ref": "Section 50(1) and Section 50(3) of CGST Act 2017"
+  },
+
+  "section_122_penalty": {
+    "description": "Penalty for tax evasion and offences",
+    "triggers": ["Section 122", "Penalty", "tax fraud", "evasion penalty", "tax evasion"],
+    "non_fraud_penalty": "Higher of Rs. 10,000 or 10% of tax due",
+    "fraud_penalty": "Higher of Rs. 10,000 or 100% of tax evaded (equal to full tax amount)",
+    "voluntary_before_scn": "15% of tax due — full penalty waiver available (Section 74(5))",
+    "voluntary_after_scn": "25% of tax due — reduced penalty (Section 74(6))",
+    "voluntary_after_order": "50% of tax due — reduced penalty (Section 74(7))",
+    "legal_ref": "Section 122 of CGST Act 2017"
+  },
+
+  "e_way_bill_threshold": {
+    "description": "E-Way Bill threshold and validity",
+    "triggers": ["Rule 138", "E-Way Bill", "Eway Bill", "e-way bill limit", "EWB"],
+    "inter_state_threshold": "Rs. 50,000 — mandatory for all inter-state movement of goods",
+    "intra_state_threshold": "Rs. 50,000 — mandatory (states may notify a different limit)",
+    "validity_normal_cargo": "1 day for every 200 km or part thereof",
+    "validity_over_dimensional": "1 day for every 20 km or part thereof",
+    "exemptions": "Goods transported by non-motorised vehicles; goods under customs supervision; goods moved within port/airport/customs bonded area; specific exempt goods per Annexure to Rule 138",
+    "legal_ref": "Rule 138 of CGST Rules 2017"
+  },
+
+  "registration_threshold": {
+    "description": "Aggregate turnover threshold for mandatory GST registration",
+    "triggers": ["Section 22", "Registration threshold", "mandatory registration", "turnover limit", "GST registration limit"],
+    "goods_normal_states": "Rs. 40 Lakh (Rs. 40,00,000)",
+    "services_normal_states": "Rs. 20 Lakh (Rs. 20,00,000)",
+    "special_category_states_10_lakh": "Rs. 10 Lakh — Manipur, Mizoram, Nagaland, Tripura",
+    "special_category_states_20_lakh": "Rs. 20 Lakh — Arunachal Pradesh, Meghalaya, Puducherry, Sikkim, Telangana, Uttarakhand (for services)",
+    "mandatory_regardless_of_turnover": "Inter-state taxable supplier; e-commerce operator; casual taxable person; non-resident taxable person; TDS/TCS deductor",
+    "legal_ref": "Section 22 of CGST Act read with Notification No. 10/2019-Central Tax"
+  },
+
+  "blocked_credits_17_5": {
+    "description": "Complete negative list for Input Tax Credit — Blocked Credits under Section 17(5)",
+    "triggers": ["Section 17(5)", "Blocked Credit", "Blocked ITC", "Car ITC", "Food ITC", "ineligible ITC", "ITC not allowed", "ITC blocked"],
+    "motor_vehicles": "Motor vehicles for transportation of persons with approved seating capacity NOT MORE THAN 13 persons — BLOCKED. EXCEPTIONS: used for (a) further supply of such motor vehicles; (b) transportation of passengers; (c) imparting training on driving",
+    "vessels_aircraft": "Vessels and aircraft — BLOCKED. Same three exceptions as motor vehicles apply",
+    "insurance_maintenance": "General insurance, servicing, repair and maintenance on motor vehicles/vessels/aircraft WHEN credit on such vehicle is blocked — ALSO BLOCKED",
+    "food_beverages": "Food and beverages, outdoor catering, beauty treatment, health services, cosmetic/plastic surgery — BLOCKED. EXCEPTION: where obligatory under any law or used to make same category of taxable outward supply",
+    "club_membership": "Membership of a club, health and fitness centre — BLOCKED (no exception available)",
+    "rent_a_cab": "Rent-a-cab services — BLOCKED. EXCEPTION: obligatory under any law for employees",
+    "life_health_insurance": "Life insurance and health insurance — BLOCKED. EXCEPTION: obligatory under any law",
+    "travel_benefits": "Travel benefits extended to employees on vacation such as Leave Travel Allowance (LTA), Home Travel Concession (HTC) — BLOCKED",
+    "works_contract_immovable": "Works contract services for construction of an immovable property (including a road, bridge, railway, etc.) — BLOCKED. EXCEPTION: plant and machinery",
+    "own_construction": "Goods/services received for construction of immovable property on OWN ACCOUNT — BLOCKED even for furtherance of business. EXCEPTION: plant and machinery",
+    "legal_ref": "Section 17(5) of CGST Act 2017 (as amended by CGST Amendment Act 2018)"
+  },
+
+  "section_16_itc_conditions": {
+    "description": "Four mandatory conditions to claim Input Tax Credit",
+    "triggers": ["ITC eligibility", "Section 16", "Input Tax Credit conditions", "ITC claim", "claim ITC", "ITC conditions"],
+    "condition_1": "Possession of a valid tax invoice, debit note, or other prescribed document issued by registered supplier",
+    "condition_2": "Goods or services or both have been received (receipt-based credit — delivery to any person on direction of registered person also counts)",
+    "condition_3": "Tax charged on such supply has actually been paid to the government by the supplier (verified via GSTR-2B)",
+    "condition_4": "The registered person has furnished the return under Section 39 (GSTR-3B filed)",
+    "180_day_reversal_rule": "If payment not made to supplier within 180 days of invoice date — ITC must be reversed along with interest at 18% per annum; can be re-availed once payment is made",
+    "capital_goods_itc": "Full ITC on capital goods allowed in the year of receipt — no spreading over years required",
+    "legal_ref": "Section 16(2) of CGST Act 2017"
+  },
+
+  "section_16_4_itc_time_limit": {
+    "description": "Deadline for availing Input Tax Credit on invoices",
+    "triggers": ["ITC time limit", "Section 16(4)", "last date ITC", "ITC lapse", "expired ITC", "ITC cut-off"],
+    "rule": "ITC in respect of any invoice or debit note must be availed by the EARLIER of: (a) due date of furnishing return under Section 39 for the month of September following the end of the financial year to which such invoice pertains, OR (b) actual date of furnishing of the annual return",
+    "practical_example": "For an invoice dated July 2023 (FY 2023-24): ITC must be claimed in GSTR-3B filed by 20th October 2024 (September 2024 return) OR by the date GSTR-9 for FY 2023-24 is filed — whichever is earlier",
+    "legal_ref": "Section 16(4) of CGST Act 2017"
+  },
+
+  "time_of_supply_goods": {
+    "description": "Point of taxation for supply of goods",
+    "triggers": ["Section 12 CGST", "Time of Supply Goods", "TOS Goods", "when GST liability arises goods"],
+    "forward_charge_rule": "Earlier of: (a) date of issue of invoice by supplier; OR (b) last date on which he is required to issue invoice under Section 31",
+    "reverse_charge_rule": "Earlier of: (a) date of receipt of goods; (b) date of payment; (c) 31st day from date of issue of invoice by supplier",
+    "legal_ref": "Section 12(2) and 12(3) of CGST Act 2017"
+  },
+
+  "time_of_supply_services": {
+    "description": "Point of taxation for supply of services",
+    "triggers": ["Section 13 CGST", "Time of Supply Services", "TOS Services", "when GST liability arises services"],
+    "forward_charge_rule": "Earlier of: (a) date of issue of invoice; OR (b) date of receipt of payment",
+    "if_invoice_not_issued_within_30_days": "Date of provision of service",
+    "reverse_charge_rule": "Earlier of: (a) date of payment; OR (b) 61st day from date of issue of invoice by supplier",
+    "legal_ref": "Section 13(2) and 13(3) of CGST Act 2017"
+  },
+
+  "rcm_services": {
+    "description": "Services mandatorily under Reverse Charge Mechanism (RCM)",
+    "triggers": ["RCM", "reverse charge", "Section 9(3)", "Section 5(3) IGST", "who pays tax RCM"],
+    "gta": "Goods Transport Agency (GTA) services — registered recipient pays GST under RCM at 5% (no ITC) or 12% (with ITC)",
+    "legal_advocate": "Legal services by an advocate/firm to a business entity — RCM on the business entity recipient",
+    "director": "Services by a director of a company/body corporate to the company — RCM on company",
+    "insurance_agent": "Services by an insurance agent — RCM on the insurance company",
+    "recovery_agent": "Services by a recovery agent to a banking company/NBFC — RCM",
+    "author_copyright": "Supply of copyright in original literary/music/art work by author/composer to publisher — RCM",
+    "sponsorship": "Sponsorship services provided to any body corporate or partnership firm — RCM on recipient",
+    "government_services": "Services supplied by government/local authority to a registered business entity — RCM (specific exemptions apply)",
+    "security_services": "Security services (other than provided by individuals) to registered person — RCM",
+    "import_of_services": "Import of services from any person outside India — ALWAYS under RCM (Section 5(3) of IGST Act), even if the foreign supplier is unregistered",
+    "legal_ref": "Notification No. 13/2017-Central Tax (Rate); Section 9(3) CGST Act 2017"
+  },
+
+  "section_54_refund": {
+    "description": "Time limit and mechanism for GST refund",
+    "triggers": ["refund", "Section 54", "refund claim", "refund application", "refund time limit", "GST refund"],
+    "time_limit": "2 years from the relevant date",
+    "relevant_date_exports_with_igst": "Date of dispatch of goods / date of loading on vessel / date on airway bill",
+    "relevant_date_exports_without_tax": "End of the quarter in which the export invoice was issued",
+    "relevant_date_unutilized_itc": "End of the tax period in which the credit has accumulated",
+    "relevant_date_excess_payment": "Date of payment of tax in excess",
+    "zero_rated_exports": "Full refund of unutilised ITC allowed for zero-rated supplies (exports and SEZ) — no inverted duty restriction applies",
+    "igst_refund_exports": "IGST paid on export of goods is automatically refunded via customs (ICEGATE) on filing of shipping bill — no separate refund application if EGM filed",
+    "legal_ref": "Section 54 of CGST Act 2017; Rule 89 of CGST Rules"
+  },
+
+  "composition_scheme": {
+    "description": "GST Composition Scheme rates, limits and restrictions",
+    "triggers": ["composition", "composition scheme", "Section 10", "small taxpayer", "composition dealer", "composition levy"],
+    "turnover_limit_goods_traders": "Rs. 1.5 Crore aggregate turnover in preceding FY for manufacturers and traders (Rs. 75 Lakh for special category states notified under Section 10)",
+    "turnover_limit_services": "Rs. 50 Lakh aggregate turnover for service providers under Section 10(2A)",
+    "rate_manufacturers_traders": "1% of turnover in State (0.5% CGST + 0.5% SGST)",
+    "rate_restaurants_food_services": "5% of turnover (2.5% CGST + 2.5% SGST)",
+    "rate_service_providers": "6% of turnover (3% CGST + 3% SGST) — applicable to persons supplying services other than restaurant",
+    "restrictions": "CANNOT: make inter-state outward supplies; supply exempted goods; collect GST from customers; claim ITC; issue tax invoice; supply through e-commerce operators (except restaurant services)",
+    "quarterly_return": "GSTR-4 annually and CMP-08 quarterly",
+    "legal_ref": "Section 10 of CGST Act 2017 read with Notification No. 14/2019-Central Tax"
+  },
+
+  "gst_rates_key_goods": {
+    "description": "GST rates on commonly queried goods",
+    "triggers": ["rate on goods", "HSN rate", "GST rate on product", "what is GST on", "tax rate goods"],
+    "nil_0_percent": "NIL RATE: Fresh fruits, fresh vegetables, milk (liquid), eggs, fish (fresh/dried), meat (unprocessed, non-frozen), cereals, pulses (whole), bread, salt, stamps, judicial papers, bangles (glass/lac), khadi fabric",
+    "rate_5_percent": "5%: Sugar, edible oils, tea, coffee (not roasted), coal, domestic LPG (for household use), kerosene under PDS, fertilisers, cashew nuts, footwear up to Rs. 1,000, handloom fabrics, fish (frozen), ayurvedic medicines",
+    "rate_12_percent": "12%: Processed/frozen meat, butter, ghee, cheese, dry fruits (except cashew), mobile phones (smartphones), exercise books, umbrellas, sewing machines, electric vehicles",
+    "rate_18_percent": "18%: Most capital goods, industrial machinery, computers, monitors, cameras, refrigerators (below 200L excluded), paints, detergents, plastics, steel fabricated structures, most IT hardware/software products",
+    "rate_28_percent": "28%: Motor vehicles for passengers with approved seating capacity of NOT MORE THAN 13 persons (plus cess), two-wheelers above 350cc (plus cess), large screen TVs (>32 inches), washing machines, dishwashers, ACs, vacuum cleaners, cement, pan masala, aerated drinks, cigarettes, tobacco (plus cess)",
+    "legal_ref": "Schedules I to IV of Notification No. 1/2017-Central Tax (Rate) and amendments"
+  },
+
+  "gst_rates_key_services": {
+    "description": "GST rates on commonly queried services",
+    "triggers": ["rate on services", "SAC rate", "GST on service", "service tax rate GST", "GST for services"],
+    "exempt_nil": "EXEMPT (NIL): Healthcare by clinical establishments/authorised medical practitioners/paramedics; educational services up to higher secondary; residential dwelling renting; auto-rickshaw/e-rickshaw passenger transport; agriculture support services; religious services",
+    "rate_5_percent": "5%: Standalone restaurant services (AC or non-AC); air travel economy class; rail transport of goods; job work on food/agricultural produce; GTA services (without ITC option)",
+    "rate_12_percent": "12%: Restaurant with liquor license (AC); construction of residential complex for sale (with land deduction); business class air travel; GTA services (with ITC option)",
+    "rate_18_percent": "18%: IT/software services; banking, finance, insurance (most); telecom services; hotel accommodation above Rs. 7,500 per night; professional services (CA, lawyer, architect, consultant); commercial property renting; most services not specifically classified elsewhere",
+    "rate_28_percent": "28%: Gambling, betting in casinos; horse racing clubs; online gaming with wagering; luxury hotel accommodation (five-star category)",
+    "legal_ref": "Notification No. 11/2017-Central Tax (Rate) and Notification No. 12/2017-Central Tax (Rate)"
+  },
+
+  "section_73_74_demand": {
+    "description": "Time limits for Show Cause Notice (SCN) and adjudication orders",
+    "triggers": ["demand notice", "Section 73", "Section 74", "show cause notice", "SCN time limit", "assessment order"],
+    "section_73_non_fraud_scn": "SCN must be issued within 2 years 9 months from due date of annual return for the relevant FY (i.e., within 33 months)",
+    "section_73_non_fraud_order": "Order must be issued within 3 years from due date of annual return",
+    "section_74_fraud_scn": "SCN must be issued within 4 years 6 months from due date of annual return for the relevant FY (i.e., within 54 months)",
+    "section_74_fraud_order": "Order must be issued within 5 years from due date of annual return",
+    "section_74_penalty": "Penalty equal to 100% of tax evaded — reducible on voluntary compliance",
+    "legal_ref": "Sections 73 and 74 of CGST Act 2017"
+  },
+
+  "place_of_supply_services": {
+    "description": "Place of supply rules for services (determines CGST/SGST vs IGST)",
+    "triggers": ["place of supply", "POS", "Section 12 IGST", "Section 13 IGST", "inter-state or intra-state service", "which GST applies"],
+    "b2b_general_rule": "Section 12(2)(a): Location of the RECIPIENT of service — applies when recipient is a registered person",
+    "b2c_general_rule": "Section 12(2)(b): Location of the SUPPLIER of service — applies when recipient is unregistered",
+    "immovable_property": "Section 12(3): Location of the immovable property — overrides general rule",
+    "restaurant_event": "Location where service is actually performed / event is held",
+    "transport_of_goods": "B2B: Location of the registered recipient; B2C: Location at which goods are handed over for transport",
+    "cross_border_services": "Section 13: Location of the RECIPIENT of services (India is taxable if recipient is in India)",
+    "legal_ref": "Sections 12 and 13 of IGST Act 2017"
+  },
+
+  "zero_rated_supply": {
+    "description": "Zero-rated supplies — exports and SEZ",
+    "triggers": ["zero rated", "zero-rated supply", "Section 16 IGST", "export supply GST", "SEZ supply", "IGST on export", "LUT"],
+    "definition": "Zero-rated supply means: (a) export of goods or services outside India; OR (b) supply to a Special Economic Zone (SEZ) developer or unit",
+    "option_1_with_tax_refund": "Export WITH payment of IGST under Bond — claim full refund of IGST paid at time of export",
+    "option_2_lut_itc_refund": "Export UNDER LETTER OF UNDERTAKING (LUT) without payment of IGST — claim refund of unutilised ITC at end of tax period",
+    "lut_eligibility": "All GST registered exporters can file LUT EXCEPT those prosecuted for tax evasion exceeding Rs. 2.5 Crore",
+    "lut_validity": "LUT is valid for the entire financial year in which filed",
+    "igst_auto_refund": "IGST paid on export of GOODS is auto-refunded via ICEGATE-GSTN data exchange when shipping bill is filed correctly",
+    "legal_ref": "Section 16 of IGST Act 2017; Rule 89 and Rule 96 of CGST Rules"
+  },
+
+  "annual_return": {
+    "description": "Annual return and audit obligations",
+    "triggers": ["GSTR-9", "annual return", "GSTR-9C", "reconciliation statement", "Section 44"],
+    "who_must_file_gstr9": "All registered taxpayers EXCEPT: composition dealers (file GSTR-9A); casual taxable persons; Input Service Distributors; non-resident taxable persons; TDS/TCS deductors",
+    "gstr_9c_mandatory_threshold": "Taxpayers with aggregate turnover exceeding Rs. 5 Crore in the relevant FY must file GSTR-9C (self-certified reconciliation statement)",
+    "due_date": "31st December following the end of the relevant financial year",
+    "legal_ref": "Section 44 of CGST Act 2017; Rule 80 of CGST Rules"
+  },
+
+  "gst_on_real_estate": {
+    "description": "GST rates on real estate and construction",
+    "triggers": ["GST on flat", "GST on property", "construction GST", "real estate GST", "under construction flat", "housing GST"],
+    "affordable_housing": "1% (WITHOUT ITC) — affordable residential apartments: value up to Rs. 45 Lakh AND carpet area up to 60 sqm in metro cities / 90 sqm in non-metro cities",
+    "other_residential": "5% (WITHOUT ITC) — other under-construction residential apartments (not affordable housing)",
+    "commercial_construction": "12% (WITHOUT ITC) — commercial properties under construction sold before Completion Certificate",
+    "completed_property_no_gst": "NO GST — sale of completed / ready-to-move-in property (where Completion Certificate has been issued) is not a supply; exempt from GST",
+    "pure_works_contract": "12% (WITH ITC) — construction services not involving transfer of property rights (e.g., contractor building for a business)",
+    "legal_ref": "Notification No. 03/2019-Central Tax (Rate); Entry 3(i), 3(ia), 3(ib) of Notification No. 11/2017-Central Tax (Rate)"
+  },
+
+  "gst_on_healthcare_education": {
+    "description": "GST applicability on healthcare and education",
+    "triggers": ["GST on hospital", "GST on doctor", "GST on education", "school GST", "medical GST", "healthcare exempt"],
+    "healthcare_exempt": "EXEMPT: Services by a clinical establishment, authorised medical practitioner, or paramedic — including inpatient/outpatient treatment, diagnostic tests, ambulance services",
+    "healthcare_taxable_18": "TAXABLE at 18%: Cosmetic or plastic surgery not medically necessary; health club/gym memberships; weight loss programmes",
+    "education_exempt": "EXEMPT: Services by an educational institution to its students/faculty/staff — covers pre-school through higher secondary school (Class 12) and equivalent; also includes affiliated/recognised colleges up to degree level",
+    "education_taxable_18": "TAXABLE at 18%: Private coaching classes not affiliated with a recognised university/board; online professional courses by non-educational institutions; skill development (other than government-notified schemes)",
+    "legal_ref": "Entries 74-77 of Notification No. 12/2017-Central Tax (Rate)"
+  },
+
+  "section_129_130_detention": {
+    "description": "Detention, seizure and release of goods in transit",
+    "triggers": ["Section 129", "Section 130", "detention of goods", "seizure of goods", "goods in transit penalty", "EWB violation"],
+    "owner_comes_forward_taxable": "200% of the tax payable on the goods — penalty for taxable goods where owner comes forward",
+    "owner_not_coming_forward_taxable": "Higher of 50% of the value of goods OR 200% of tax payable — where owner does not come forward",
+    "exempt_goods_penalty": "Lower of 2% of value of goods OR Rs. 25,000",
+    "confiscation_section_130": "Fine in lieu of confiscation not less than tax amount — applicable where goods liable to confiscation",
+    "legal_ref": "Sections 129 and 130 of CGST Act 2017"
+  },
+
+  "input_service_distributor": {
+    "description": "Input Service Distributor (ISD) — credit distribution mechanism",
+    "triggers": ["ISD", "Input Service Distributor", "credit distribution branch", "head office ITC", "distribute credit"],
+    "definition": "ISD is an office of the supplier (usually head office) that receives invoices for input services and distributes the ITC to its branches/units having the same PAN",
+    "distribution_basis": "ITC distributed pro-rata based on turnover of each branch in the period during which credit is being distributed",
+    "restriction": "ISD can ONLY distribute credit of INPUT SERVICES — credit of goods and capital goods CANNOT be distributed via ISD",
+    "legal_ref": "Section 20 of CGST Act 2017; Rule 39 of CGST Rules 2017"
+  },
+
+  "tds_gst": {
+    "description": "Tax Deducted at Source under GST",
+    "triggers": ["TDS GST", "Section 51", "tax deducted at source GST", "government TDS"],
+    "rate": "2% (1% CGST + 1% SGST/UTGST) of the payment made to the supplier",
+    "threshold": "Applicable when total value of supply under a contract exceeds Rs. 2,50,000 (excluding tax)",
+    "who_deducts": "Central/State Government departments; local authorities; government agencies; persons notified under Section 51",
+    "return": "GSTR-7 — monthly return by deductor, due by 10th of the following month",
+    "legal_ref": "Section 51 of CGST Act 2017"
+  },
+
+  "tcs_gst": {
+    "description": "Tax Collected at Source by E-Commerce Operators",
+    "triggers": ["TCS GST", "Section 52", "e-commerce TCS", "marketplace TCS"],
+    "rate": "1% (0.5% CGST + 0.5% SGST/UTGST) of the net value of taxable supplies made through the e-commerce platform",
+    "net_value": "Aggregate value of taxable supplies MINUS returns — TCS is calculated on net taxable value",
+    "return": "GSTR-8 — monthly return by e-commerce operator, due by 10th of the following month",
+    "legal_ref": "Section 52 of CGST Act 2017"
+  },
+
+  "section_15_valuation": {
+    "description": "Value of taxable supply (transaction value rules)",
+    "triggers": ["Section 15", "valuation", "transaction value", "value of supply", "GST base value", "assessable value"],
+    "transaction_value": "The price actually paid or payable for the supply of goods or services or both, WHERE the supplier and recipient are NOT related and price is the sole consideration",
+    "inclusions": "Transaction value INCLUDES: (a) taxes/duties other than GST; (b) interest, late fee, penalty for delayed payment; (c) incidental expenses charged (packing, commission, etc.); (d) subsidies directly linked to price (except government subsidies); (e) amounts recharged by supplier",
+    "exclusions": "EXCLUDES: (a) discount BEFORE or at the time of supply if recorded on invoice face; (b) discount AFTER supply if established by agreement at time of supply, linked to specific invoices, and ITC reversed by recipient proportionately",
+    "legal_ref": "Section 15 of CGST Act 2017; Rules 27-35 of CGST Rules"
+  },
+
+  "section_31_invoice_rules": {
+    "description": "Tax invoice, timing and requirements",
+    "triggers": ["Section 31", "tax invoice", "invoice rules", "invoice time limit", "self invoice", "when to issue invoice"],
+    "goods_before_removal": "Invoice for goods must be issued BEFORE or at the time of removal of goods (for supply involving movement) or delivery of goods (for supply not involving movement)",
+    "services_within_30_days": "Invoice for services must be issued within 30 days from the date of supply of service (45 days for banking/financial/insurance company)",
+    "continuous_supply_goods": "Invoice at the time of each successive statement of accounts or before each payment receipt",
+    "continuous_supply_services": "Invoice before the due date of payment or before the receipt of payment, whichever is earlier",
+    "legal_ref": "Section 31 of CGST Act 2017; Rule 46 of CGST Rules"
+  },
+
+  "section_34_credit_debit_notes": {
+    "description": "Credit notes and debit notes under GST",
+    "triggers": ["Section 34", "credit note", "debit note", "CN GST", "DN GST", "price reduction after supply"],
+    "credit_note_when": "When tax invoice has been issued and: (a) taxable value or tax charged exceeds the actual amount; (b) goods are returned by recipient; (c) goods/services found deficient",
+    "debit_note_when": "When tax invoice has been issued and taxable value or tax charged is LESS than the actual amount payable",
+    "credit_note_time_limit": "Must be declared in return filed for the month of September following end of FY in which supply was made, OR date of filing annual return — whichever is earlier",
+    "itc_reversal": "Recipient must reverse ITC to the extent of the credit note amount in the tax period in which credit note is received",
+    "legal_ref": "Section 34 of CGST Act 2017"
+  },
+
+  "section_17_1_2_apportionment": {
+    "description": "ITC apportionment between business and non-business, taxable and exempt",
+    "triggers": ["ITC apportionment", "Section 17(1)", "Section 17(2)", "proportional ITC", "common credit", "exempt supply ITC"],
+    "section_17_1": "Where goods or services are used PARTLY for business and PARTLY for non-business purposes — ITC allowed ONLY to the extent attributable to business purposes",
+    "section_17_2": "Where goods or services are used PARTLY for taxable supplies (including zero-rated) and PARTLY for exempt supplies — ITC allowed ONLY to the extent attributable to taxable supplies",
+    "rule_42_services": "Common credit for input services reversed using Rule 42 formula: D2 = (E/F) x C2, where E=exempt turnover, F=total turnover, C2=common credit after direct attribution",
+    "rule_43_capital_goods": "Common credit for capital goods reversed using Rule 43: monthly reversal = Tr/Tm, where Tr=exempt turnover in that tax period, Tm=total turnover in that tax period",
+    "legal_ref": "Sections 17(1) and 17(2) of CGST Act 2017; Rules 42 and 43 of CGST Rules"
+  },
+
+  "rule_86b_itc_restriction": {
+    "description": "Restriction on use of ITC for payment of output tax",
+    "triggers": ["Rule 86B", "1% cash payment", "ITC restriction", "99% ITC restriction", "mandatory cash ledger"],
+    "rule": "Registered person having taxable supply value (other than exempt and zero-rated) exceeding Rs. 50 Lakh in a month MUST pay at least 1% of output tax liability in cash (through electronic cash ledger)",
+    "exceptions": "Does NOT apply if: (a) head of GST paid > Rs. 1 Lakh in preceding FY; (b) registered person received refund > Rs. 1 Lakh under zero-rated; (c) cumulative tax paid using ECL exceeds 1% of total output; (d) person is government department/PSU/local authority",
+    "legal_ref": "Rule 86B of CGST Rules 2017"
+  },
+
+  "section_9_4_rcm_unregistered": {
+    "description": "RCM on supply from unregistered person",
+    "triggers": ["Section 9(4)", "unregistered supplier RCM", "purchase from unregistered", "URD RCM"],
+    "current_position": "Section 9(4) RCM on ALL supplies from unregistered persons is currently SUSPENDED for all categories EXCEPT specified notified categories",
+    "notified_categories": "RCM applies on procurement from unregistered persons ONLY for: (a) specified goods like cashew nuts, bidi wrapper leaves, tobacco leaves, silk yarn; (b) cement from unregistered manufacturers",
+    "legal_ref": "Section 9(4) of CGST Act 2017; Notification No. 07/2019-Central Tax (Rate)"
+  },
+
+  "anti_profiteering": {
+    "description": "Anti-profiteering provisions under GST",
+    "triggers": ["Section 171", "anti-profiteering", "pass on benefit", "profiteering GST", "NAA", "DGAP"],
+    "rule": "Any reduction in rate of tax or benefit of ITC MUST be passed on to the recipient by way of commensurate reduction in prices",
+    "authority": "Complaints investigated by DGAP (Director General of Anti-Profiteering) and adjudicated by the Competition Commission of India (CCI) — took over from NAA w.e.f. 01.12.2022",
+    "penalty": "Penalty of 10% of the profiteered amount; if not passed on, amount deposited in Consumer Welfare Fund",
+    "legal_ref": "Section 171 of CGST Act 2017; Rule 127-137 of CGST Rules"
+  },
+
+  "section_83_provisional_attachment": {
+    "description": "Provisional attachment of property to protect revenue",
+    "triggers": ["Section 83", "provisional attachment", "property attachment", "bank account freeze GST"],
+    "when": "Commissioner may provisionally attach (including bank account) property of a taxable person DURING pendency of any proceeding under Section 62, 63, 64, 67, 73, or 74",
+    "duration": "Attachment ceases to have effect after 1 year from the date of the order",
+    "safeguard": "Must form opinion that it is necessary to protect revenue — cannot be used as a coercive measure for tax collection",
+    "legal_ref": "Section 83 of CGST Act 2017"
+  },
+
+  "section_107_appeal_first": {
+    "description": "First appeal to Appellate Authority",
+    "triggers": ["Section 107", "first appeal", "appeal GST", "appeal time limit", "appellate authority"],
+    "time_limit": "Appeal within 3 months from date of communication of the order (or decision)",
+    "condonation": "Appellate Authority may condone delay up to 1 month beyond the 3-month period (total 4 months — NOT beyond)",
+    "pre_deposit": "Mandatory pre-deposit: (a) full amount of tax, interest, fine, fee, and penalty ADMITTED by appellant; PLUS (b) 10% of the DISPUTED tax amount",
+    "cap_on_pre_deposit": "Pre-deposit of disputed tax capped at Rs. 25 Crore (CGST) + Rs. 25 Crore (SGST) = Rs. 50 Crore combined",
+    "legal_ref": "Section 107 of CGST Act 2017"
+  },
+
+  "section_112_appeal_tribunal": {
+    "description": "Appeal to Appellate Tribunal (GSTAT)",
+    "triggers": ["Section 112", "GSTAT", "tribunal appeal", "second appeal", "appellate tribunal GST"],
+    "time_limit": "Appeal within 3 months from date of communication of the order of Appellate Authority",
+    "condonation": "Tribunal may condone delay up to 3 months beyond the 3-month period (total 6 months — NOT beyond)",
+    "pre_deposit": "Mandatory pre-deposit: (a) full amount of admitted tax; PLUS (b) 20% of the REMAINING disputed tax (over and above 10% paid at first appeal stage)",
+    "cap_on_pre_deposit": "Pre-deposit of disputed tax capped at Rs. 50 Crore (CGST) + Rs. 50 Crore (SGST) = Rs. 100 Crore combined",
+    "legal_ref": "Section 112 of CGST Act 2017"
+  },
+
+  "section_73_voluntary_compliance": {
+    "description": "Voluntary payment before/after SCN to reduce penalty (non-fraud cases)",
+    "triggers": ["Section 73(5)", "Section 73(6)", "voluntary payment", "pay before SCN", "reduced penalty non fraud"],
+    "before_scn_73_5": "Pay tax + interest BEFORE issuance of SCN — NO penalty, NO SCN issued",
+    "within_30_days_of_scn_73_8": "Pay tax + interest + 10% penalty within 30 days of SCN — proceedings concluded",
+    "legal_ref": "Section 73(5), 73(6), 73(8) of CGST Act 2017"
+  },
+
+  "section_74_voluntary_compliance": {
+    "description": "Voluntary payment before/after SCN to reduce penalty (fraud/suppression cases)",
+    "triggers": ["Section 74(5)", "Section 74(6)", "Section 74(7)", "voluntary payment fraud", "pay before SCN fraud", "reduced penalty fraud"],
+    "before_scn_74_5": "Pay tax + interest + 15% penalty BEFORE issuance of SCN — NO further proceedings",
+    "within_30_days_of_scn_74_6": "Pay tax + interest + 25% penalty within 30 days of SCN — proceedings concluded",
+    "within_30_days_of_order_74_7": "Pay tax + interest + 50% penalty within 30 days of order — reduced penalty",
+    "legal_ref": "Section 74(5), 74(6), 74(7) of CGST Act 2017"
+  },
+
+  "gst_on_gold_jewellery": {
+    "description": "GST on gold, precious metals and jewellery",
+    "triggers": ["GST on gold", "gold GST rate", "jewellery GST", "gold bar GST", "making charges GST"],
+    "gold_bars_coins": "3% GST on gold bars, gold coins, gold ornaments (HSN 7108, 7113)",
+    "making_charges": "5% GST on job work services (making charges) for gold jewellery",
+    "silver": "3% GST on silver bars, silver articles",
+    "diamonds": "0.25% GST on rough diamonds; 3% on cut and polished diamonds",
+    "legal_ref": "Entry 2 of Schedule I and Entry 13 of Schedule II of Notification No. 1/2017-Central Tax (Rate)"
+  },
+
+  "gst_on_ecommerce": {
+    "description": "GST provisions for e-commerce operators and sellers",
+    "triggers": ["e-commerce GST", "online selling GST", "marketplace GST", "Section 9(5)", "e-commerce operator"],
+    "section_52_tcs": "E-commerce operator must collect TCS at 1% (0.5% CGST + 0.5% SGST) of net value of intra-state supplies",
+    "section_9_5": "E-commerce operator liable to pay tax on notified services: (a) hotel accommodation; (b) housekeeping; (c) restaurant services through e-commerce platform",
+    "mandatory_registration": "E-commerce operators must obtain GST registration irrespective of turnover — Section 24(x)",
+    "sellers_on_platform": "Suppliers selling through e-commerce platforms must also obtain registration irrespective of turnover — Section 24(ix), EXCEPT suppliers of goods with turnover up to Rs. 40 Lakh notified under Section 10(2A)",
+    "legal_ref": "Sections 9(5), 24, and 52 of CGST Act 2017"
+  },
+
+  "gst_on_rent": {
+    "description": "GST on rental services",
+    "triggers": ["GST on rent", "rental GST", "commercial rent", "residential rent", "renting of immovable property"],
+    "commercial_property": "18% GST on renting of commercial immovable property (shops, offices, warehouses, godowns)",
+    "residential_property_unregistered": "EXEMPT when rented for RESIDENTIAL purpose to an UNREGISTERED person",
+    "residential_property_registered_rcm": "18% GST under RCM when residential property is rented to a REGISTERED person (w.e.f. 18.07.2022 per Notification No. 05/2022)",
+    "hotel_below_1000": "EXEMPT: Hotel/guest house/inn with declared tariff below Rs. 1,000 per day",
+    "legal_ref": "Entry 13 of Notification No. 12/2017-Central Tax (Rate); Notification No. 05/2022-Central Tax (Rate)"
+  },
+
+  "gst_on_freight": {
+    "description": "GST on freight and transportation of goods",
+    "triggers": ["freight GST", "GTA", "transport of goods", "goods transport agency", "freight charges GST"],
+    "gta_5_no_itc": "5% GST (forward charge) — GTA option where transporter pays GST but cannot claim ITC",
+    "gta_12_with_itc": "12% GST (forward charge) — GTA option where transporter pays GST and CAN claim ITC",
+    "gta_rcm_5": "5% GST under RCM — specified recipients pay tax: factory, society, cooperative, registered person, body corporate, partnership firm, casual taxable person",
+    "rail_transport": "5% GST on transport of goods by rail (Indian Railways)",
+    "vessel_transport": "5% GST on transport of goods by vessel (inland waterway / coastal)",
+    "exempt_goods_transport": "EXEMPT: Transport of agricultural produce, milk, salt, food grains, newspaper, organic manure, defence equipment, relief goods",
+    "legal_ref": "Notification No. 11/2017-Central Tax (Rate) as amended; Notification No. 13/2017-Central Tax (Rate)"
+  },
+
+  "inverted_duty_structure": {
+    "description": "Refund for inverted duty structure (input tax rate > output tax rate)",
+    "triggers": ["inverted duty", "inverted tax structure", "refund of accumulated ITC", "ITC accumulation", "Section 54(3)"],
+    "rule": "Refund of accumulated ITC allowed when rate of tax on inputs is HIGHER than rate of tax on output supplies — creates accumulation of ITC",
+    "formula": "Maximum refund = (Turnover of inverted rated supply x Net ITC / Adjusted total turnover) - Tax payable on inverted rated supply",
+    "not_allowed": "Refund NOT allowed for: (a) goods notified under Section 54(3) proviso (tobacco, pan masala); (b) ITC accumulated on input services (only on inputs — goods)",
+    "legal_ref": "Section 54(3) of CGST Act 2017; Rule 89(5) of CGST Rules"
+  },
+
+  "section_9_1_levy_and_collection": {
+    "description": "GST levy and collection basics",
+    "triggers": ["Section 9", "levy of GST", "who pays GST", "GST collection", "CGST levy"],
+    "cgst": "CGST levied on all intra-state supplies of goods/services at the rate notified, not exceeding 20%, collected by Central Government",
+    "sgst": "SGST levied on all intra-state supplies at the rate notified, not exceeding 20%, collected by respective State Government",
+    "igst": "IGST levied on all inter-state supplies at the rate notified, not exceeding 40%, collected by Central Government",
+    "cess": "Compensation Cess levied under GST Compensation Cess Act 2017 on notified luxury and sin goods (motor vehicles, tobacco, aerated drinks, coal)",
+    "legal_ref": "Section 9(1) CGST Act; Section 5(1) IGST Act; Section 8 GST Compensation Cess Act"
+  },
+
+  "section_2_supply_definition": {
+    "description": "Definition and scope of supply",
+    "triggers": ["Section 7", "what is supply", "scope of supply", "definition of supply", "when GST applicable"],
+    "definition": "Supply includes: (a) sale; (b) transfer; (c) barter; (d) exchange; (e) licence; (f) rental; (g) lease; (h) disposal — made or agreed to be made for a consideration by a person in the course or furtherance of business",
+    "schedule_i_without_consideration": "Taxable even WITHOUT consideration: (a) permanent transfer of business assets where ITC was claimed; (b) supply between related/distinct persons in course of business; (c) supply by principal to agent or vice versa; (d) importation of services from related person even without consideration",
+    "schedule_ii_deemed_supply": "Specific activities deemed supply of goods or services: transfer of title = goods; transfer of right to use without title = service; works contract = service; restaurant/catering = service; software temporary transfer = service",
+    "composite_supply": "Section 2(30): Supply of 2+ goods/services which are naturally bundled in the ordinary course of business — taxed at rate of PRINCIPAL supply",
+    "mixed_supply": "Section 2(74): Supply of 2+ goods/services NOT naturally bundled — taxed at the HIGHEST rate applicable to any of the constituent supplies",
+    "legal_ref": "Section 7 and Schedule I, II, III of CGST Act 2017; Sections 2(30) and 2(74)"
+  },
+
+  "section_49_payment_of_tax": {
+    "description": "Payment of tax and utilisation order of ITC",
+    "triggers": ["Section 49", "payment order", "ITC utilisation", "ITC set off", "electronic credit ledger", "ECL"],
+    "utilisation_order": "IGST credit must be used FIRST against IGST liability; remaining IGST credit can be set off against CGST then SGST in any order. CGST credit: used against CGST first, then IGST (NOT against SGST). SGST credit: used against SGST first, then IGST (NOT against CGST)",
+    "electronic_cash_ledger": "All deposits of cash (through challans) credited here. Used for payment of tax, interest, penalty, fees, etc.",
+    "electronic_credit_ledger": "All ITC credited here. Can only be used for payment of output tax — NOT for interest, penalty, or fees",
+    "legal_ref": "Section 49 of CGST Act 2017; Rule 88A of CGST Rules"
+  },
+
+  "section_39_returns": {
+    "description": "GST returns filing requirements and due dates",
+    "triggers": ["Section 39", "GSTR-3B", "GSTR-1", "return filing", "due date GSTR", "monthly return"],
+    "gstr_1_due_date": "11th of the following month — details of outward supplies",
+    "gstr_1_quarterly": "13th of the month following the quarter — for taxpayers under QRMP scheme (turnover up to Rs. 5 Crore)",
+    "gstr_3b_due_date": "20th of the following month — summary return with tax payment",
+    "gstr_3b_quarterly": "22nd/24th of the month following the quarter — for QRMP scheme taxpayers",
+    "qrmp_threshold": "Taxpayers with aggregate turnover up to Rs. 5 Crore in preceding FY can opt for Quarterly Return Monthly Payment (QRMP) scheme",
+    "legal_ref": "Section 39 of CGST Act 2017; Notification No. 29/2020-Central Tax"
+  },
+
+  "section_70_summons": {
+    "description": "Power to summon persons and compel production of documents",
+    "triggers": ["Section 70", "summons GST", "compel documents", "investigation GST", "inquiry GST"],
+    "power": "Proper officer may summon any person whose attendance is necessary for giving evidence or producing a document or any other thing during inquiry or proceedings",
+    "penalty_for_non_compliance": "Person summoned who fails to attend or produce documents without reasonable cause may be prosecuted",
+    "legal_ref": "Section 70 of CGST Act 2017"
+  },
+
+  "section_67_inspection_search_seizure": {
+    "description": "Power of inspection, search and seizure under GST",
+    "triggers": ["Section 67", "search and seizure", "inspection GST", "raid GST", "DGGI raid"],
+    "inspection_67_1": "Joint Commissioner or above can authorise inspection of any place of business of a taxable person or transporter/warehouse owner where there is reason to believe tax evasion",
+    "search_and_seizure_67_2": "Joint Commissioner or above can authorize SEARCH if he has reason to BELIEVE that goods liable to confiscation, documents/books useful for proceedings are secreted",
+    "seizure_duration": "Seized goods must be returned within 6 months (extendable by 6 months by Commissioner) if no notice issued under Section 73/74",
+    "legal_ref": "Section 67 of CGST Act 2017"
+  },
+
+  "section_35_36_accounts_records": {
+    "description": "Accounts and records to be maintained by registered person",
+    "triggers": ["Section 35", "accounts and records", "books of account GST", "record keeping GST", "Section 36"],
+    "records_required": "Every registered person must maintain: production/manufacture records; inward/outward supply records; stock records; ITC availed; output tax payable/paid; other prescribed records",
+    "retention_period": "All accounts/records must be retained until the expiry of 72 months (6 years) from the due date of filing of annual return for the year to which records pertain",
+    "legal_ref": "Sections 35 and 36 of CGST Act 2017; Rule 56 of CGST Rules"
+  },
+
+  "section_61_scrutiny": {
+    "description": "Scrutiny of returns by proper officer",
+    "triggers": ["Section 61", "scrutiny of returns", "discrepancy notice", "ASMT-10"],
+    "process": "Proper officer may scrutinise return to verify its correctness and inform the registered person of any discrepancy via Form GST ASMT-10",
+    "response_time": "Registered person must respond within 30 days of receipt of notice (or further period as extended)",
+    "if_unsatisfactory": "If explanation is unsatisfactory, proper officer may initiate appropriate action under Section 65 (audit), Section 66 (special audit), Section 73 (demand without fraud), or Section 74 (demand with fraud)",
+    "legal_ref": "Section 61 of CGST Act 2017"
+  },
+
+  "section_62_assessment_non_filer": {
+    "description": "Assessment of non-filers of returns",
+    "triggers": ["Section 62", "best judgement assessment", "non-filer assessment", "default assessment"],
+    "rule": "If a registered person FAILS to file return even after notice under Section 46 — proper officer may assess the tax liability to the BEST OF HIS JUDGEMENT",
+    "withdrawal": "Assessment under Section 62 is deemed WITHDRAWN if the registered person files a valid return within 60 days of the assessment order (increased from 30 days by Finance Act 2023)",
+    "legal_ref": "Section 62 of CGST Act 2017"
+  },
+
+  "section_65_audit_by_department": {
+    "description": "Audit by tax authorities",
+    "triggers": ["Section 65", "GST audit", "department audit", "CGST audit", "audit by department"],
+    "who_can_audit": "Commissioner or any officer authorised by him may conduct audit of any registered person",
+    "notice_period": "15 working days advance notice before conduct of audit",
+    "completion_time": "Audit must be completed within 3 months from date of commencement (extendable by 6 months by Commissioner for reasons recorded in writing)",
+    "follow_up": "If audit reveals discrepancy — proper officer may initiate action under Section 73 or 74",
+    "legal_ref": "Section 65 of CGST Act 2017"
+  },
+
+  "gst_on_insurance": {
+    "description": "GST on insurance services",
+    "triggers": ["insurance GST", "life insurance GST", "health insurance GST", "motor insurance GST", "insurance premium GST"],
+    "life_insurance_single_premium": "18% on 25% of the premium in 1st year and 12.5% from 2nd year onwards (for unit-linked/investment-linked)",
+    "pure_life_risk": "18% on the entire premium for pure term/risk cover life insurance",
+    "general_insurance": "18% on the entire premium (motor, fire, marine, travel, health)",
+    "health_insurance": "18% on the entire premium amount",
+    "reinsurance": "18% on the entire premium for reinsurance services",
+    "legal_ref": "Entry 36 of Notification No. 11/2017-Central Tax (Rate)"
+  },
+
+  "gst_on_works_contract": {
+    "description": "GST on works contract services",
+    "triggers": ["works contract", "construction contract GST", "building contract GST", "Section 2(119)"],
+    "definition": "Works contract means a contract for building, construction, fabrication, completion, erection, installation, fitting out, improvement, modification, repair, maintenance, renovation, alteration or commissioning of any IMMOVABLE PROPERTY wherein transfer of property in goods is involved in the execution",
+    "government_works": "12% GST on works contract for Central/State Government, local authority, government entity",
+    "private_works": "18% GST on works contract services (other than government works, affordable housing, and specified construction)",
+    "affordable_housing_works": "12% GST on works contract for construction of affordable residential apartments",
+    "itc_blocked_immovable": "ITC on works contract is BLOCKED when used for construction of immovable property on own account (Section 17(5)(c)) — EXCEPT plant and machinery",
+    "legal_ref": "Section 2(119) of CGST Act 2017; Notification No. 11/2017-Central Tax (Rate)"
+  },
+
+  "gst_on_job_work": {
+    "description": "GST on job work services",
+    "triggers": ["job work", "Section 143", "job worker GST", "job work rate", "principal to job worker"],
+    "general_rate": "18% GST on job work services (default rate)",
+    "manufacturing_rate_12": "12% GST on job work on goods falling under Chapter 71 (jewellery) and any other manufacturing job work",
+    "food_agri_rate_5": "5% GST on job work on food products, printing, textiles",
+    "time_limit_goods": "Inputs sent must be received back within 1 YEAR; capital goods within 3 YEARS — failing which, deemed supply by principal on the date of expiry",
+    "principal_registration_rule": "Principal can send goods to job worker without payment of tax if goods returned within stipulated time; job worker NOT required to take registration if turnover below threshold",
+    "legal_ref": "Section 143 of CGST Act 2017; Notification No. 11/2017-Central Tax (Rate)"
+  },
+
+  "gst_compensation_cess": {
+    "description": "GST Compensation Cess on luxury and sin goods",
+    "triggers": ["compensation cess", "cess on GST", "luxury cess", "sin goods cess", "GST cess rates"],
+    "motor_vehicles": "Cess ranges from 1% to 22% depending on engine capacity, length, and fuel type — e.g., SUVs (length > 4000mm, engine > 1500cc) attract 22% cess",
+    "coal": "Rs. 400 per tonne compensation cess on coal, briquettes and similar solid fuels",
+    "aerated_beverages": "12% cess on aerated/carbonated waters with added sugar",
+    "tobacco_pan_masala": "Cess varies: Pan masala with tobacco (Gutkha) — 204% of RSP; filter cigarettes — specific + ad-valorem rates; bidis — nil cess",
+    "validity": "Compensation Cess was originally levied for 5 years (July 2017 to June 2022) but extended to March 2026 to repay borrowings made during COVID-19",
+    "legal_ref": "GST (Compensation to States) Cess Act 2017; Notification No. 1/2017-Compensation Cess (Rate)"
+  },
+
+  "section_25_registration_types": {
+    "description": "Types of GST registration",
+    "triggers": ["Section 25", "types of registration", "GSTIN", "voluntary registration", "casual taxable person", "non-resident taxable person"],
+    "normal": "Regular registration — valid until cancelled; no expiry",
+    "composition": "Composition Scheme registration under Section 10 — simplified compliance, quarterly returns",
+    "casual_taxable_person": "Temporary registration for persons who occasionally undertake transactions in a state where they have no fixed place of business — valid for 90 days (extendable by 90 days)",
+    "non_resident_taxable_person": "Registration for persons with no fixed establishment in India — valid for 90 days (extendable by 90 days); must pay full estimated tax as advance deposit",
+    "voluntary": "Person below threshold can voluntarily register — once registered, must comply for at least 1 year before applying for cancellation",
+    "suo_motu_cancellation": "Proper officer may cancel registration if: (a) person not conducted business from registered place; (b) invoices without supply of goods/services; (c) violates anti-profiteering provisions",
+    "legal_ref": "Sections 25, 27, and 29 of CGST Act 2017"
+  },
+
+  "section_140_transitional_credit": {
+    "description": "Transitional provisions for ITC carried forward from pre-GST regime",
+    "triggers": ["Section 140", "transitional credit", "TRAN-1", "TRAN-2", "pre-GST credit", "carry forward credit"],
+    "tran_1": "Registered person entitled to take credit of ITC carried forward in the last return filed under pre-GST law (VAT/Central Excise/Service Tax) — filed in Form TRAN-1",
+    "deadline": "Supreme Court (in Filco Trade Case) allowed filing/revision of TRAN-1 up to 30.11.2022. No further extensions granted",
+    "legal_ref": "Section 140 of CGST Act 2017; SCC judgment in Union of India vs Filco Trade Centre Pvt. Ltd."
+  },
+
+  "gst_on_government_services": {
+    "description": "GST on services by or to Government",
+    "triggers": ["government services GST", "PSU GST", "local authority GST", "government contract GST"],
+    "exempt_sovereign": "EXEMPT: Services by Government/local authority in the nature of sovereign/public functions — e.g., issuance of passports, visas, driving licences, birth/death certificates",
+    "taxable_commercial": "TAXABLE: Services by Government/local authority of commercial nature — e.g., renting immovable property, postal services (Speed Post, etc.), transport of goods/passengers",
+    "rcm_on_recipient": "When Government/local authority supplies taxable services to a registered business entity — RCM applies, recipient pays GST",
+    "legal_ref": "Entry 4, 6 of Notification No. 12/2017-Central Tax (Rate); Notification No. 13/2017-Central Tax (Rate)"
+  },
+
+  "gst_on_restaurants_hotels": {
+    "description": "GST rates on restaurants and hotel accommodation",
+    "triggers": ["restaurant GST", "hotel GST", "food service GST", "hotel room GST", "accommodation GST"],
+    "standalone_restaurant": "5% GST (2.5% CGST + 2.5% SGST) — WITHOUT ITC. Applies to all standalone restaurants (AC or non-AC)",
+    "restaurant_in_hotel_below_7500": "5% GST — restaurant services in hotels with room tariff below Rs. 7,500 per unit per day",
+    "restaurant_in_hotel_above_7500": "5% GST — restaurant services in hotels with room tariff Rs. 7,500 and above (changed from 18% w.e.f. 01.10.2019)",
+    "outdoor_catering": "5% GST (WITHOUT ITC) on outdoor catering services other than in premises with daily tariff >= Rs. 7,500",
+    "hotel_room_below_1000": "EXEMPT — room tariff up to Rs. 1,000 per day",
+    "hotel_room_1001_to_7500": "12% GST on room tariff from Rs. 1,001 to Rs. 7,500 per day",
+    "hotel_room_above_7500": "18% GST on room tariff above Rs. 7,500 per day",
+    "legal_ref": "Notification No. 11/2017-Central Tax (Rate) as amended by Notification No. 20/2019-Central Tax (Rate)"
+  }
+}
