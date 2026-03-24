@@ -18,7 +18,8 @@ aiofiles
 hf_xet
 av
 openai
-pydantic
+anthropic
+pydantic[email]
 python-dotenv
 pandas
 openpyxl
@@ -32,3 +33,10 @@ diskcache
 reportlab
 markdown2
 rank_bm25
+pymongo
+slowapi
+PyJWT
+fuzzywuzzy
+python-Levenshtein
+Pillow
+ftfy
