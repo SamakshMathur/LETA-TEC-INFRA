@@ -1,32 +1,46 @@
 import faiss
 import json
+import logging
+import threading
 import numpy as np
 from pathlib import Path
-import os
-from app.retrieval.source_priority import source_priority
+import re
+
 from rank_bm25 import BM25Okapi
 from flashrank import Ranker
-from app.config import RERANKING_MODEL, EMBEDDING_MODEL, VECTOR_DIM
+from app.config import (
+    RERANKING_MODEL, EMBEDDING_MODEL, VECTOR_DIM,
+    VECTOR_SEARCH_TOP_K, VECTOR_EXPANDED_TOP_K, BM25_TOP_K, MMR_LAMBDA,
+)
 from app.retrieval.reranker import LegalReranker
 from app.retrieval.statute_retriever import StatuteRetriever
 from app.retrieval.provision_graph import ProvisionGraphRetriever
-import re
 
+logger = logging.getLogger(__name__)
+
+# ─── Thread-safe embedding model singleton ─────────────────────────────────
 _model = None
+_model_lock = threading.Lock()
 
 
 def get_model():
-    """Returns the embedding model, loading it if necessary."""
+    """Returns the embedding model, loading it once with thread safety."""
     global _model
     if _model is None:
-        from sentence_transformers import SentenceTransformer
-        print(f"Loading Embedding Model ({EMBEDDING_MODEL})...")
-        _model = SentenceTransformer(EMBEDDING_MODEL)
+        with _model_lock:
+            if _model is None:  # double-check after acquiring lock
+                from sentence_transformers import SentenceTransformer
+                logger.info(f"Loading embedding model: {EMBEDDING_MODEL}")
+                _model = SentenceTransformer(EMBEDDING_MODEL)
+                logger.info("Embedding model loaded successfully")
     return _model
 
 
 def embed_query(text: str):
     """Embeds a single query string (normalized for cosine similarity with IndexFlatIP)."""
+    if not text or not text.strip():
+        logger.warning("embed_query called with empty text")
+        return None
     model = get_model()
     return model.encode(text, normalize_embeddings=True)
 
@@ -36,7 +50,7 @@ def tokenize_text(text: str):
     return [word.lower() for word in re.findall(r'\b\w+\b', text)]
 
 
-def _mmr_deduplicate(results, top_k: int, lambda_param: float = 0.7):
+def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
     """
     Maximal Marginal Relevance (MMR) deduplication.
 
@@ -44,8 +58,7 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = 0.7):
     same document/paragraph.  Uses token-overlap (Jaccard) as a cheap
     proxy for similarity — avoids a second round of vector encoding.
 
-    lambda_param: 1.0 = pure relevance (no dedup), 0.0 = pure diversity.
-    0.7 is a good balance for legal RAG.
+    lambda_param: 1.0 = pure relevance, 0.0 = pure diversity.
     """
     if not results:
         return results
@@ -69,7 +82,6 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = 0.7):
         for candidate in remaining:
             relevance = candidate.get("_final_legal_score", 0) / max_score
 
-            # Max similarity to any already-selected chunk
             if selected:
                 max_sim = max(
                     jaccard(candidate.get("text", ""), s.get("text", ""))
@@ -97,34 +109,57 @@ class Retriever:
         self.chunks_path = chunks_path
         self.chunks = []
         self.metadata = []
+        self.index = None
+        self.bm25 = None
 
         if not index_path.exists():
-            print(f"Index not found at {index_path}. Search will fail.")
-            self.index = None
-            self.bm25 = None
+            logger.error(f"FAISS index not found at {index_path} — search will return empty results")
             return
 
         # Load FAISS index
-        print("Loading FAISS Index...")
+        logger.info("Loading FAISS index...")
         self.index = faiss.read_index(str(index_path))
+        logger.info(f"FAISS index loaded: {self.index.ntotal} vectors, dim={self.index.d}")
+
+        # Validate dimension
+        if self.index.d != VECTOR_DIM:
+            logger.error(f"FAISS dimension mismatch: index has {self.index.d}, config expects {VECTOR_DIM}")
 
         # Load Chunks and Metadata
-        print("Loading Chunks & Building BM25 index...")
+        logger.info("Loading chunks & building BM25 index...")
         tokenized_corpus = []
-        with open(chunks_path, "r", encoding="utf-8") as f:
-            for line in f:
-                chunk = json.loads(line)
-                self.chunks.append(chunk)
-                self.metadata.append(chunk.get("metadata", {}))
-                tokenized_corpus.append(tokenize_text(chunk.get("text", "")))
+        try:
+            with open(chunks_path, "r", encoding="utf-8") as f:
+                for line_num, line in enumerate(f, 1):
+                    try:
+                        chunk = json.loads(line)
+                        self.chunks.append(chunk)
+                        self.metadata.append(chunk.get("metadata", {}))
+                        tokenized_corpus.append(tokenize_text(chunk.get("text", "")))
+                    except json.JSONDecodeError:
+                        logger.warning(f"Malformed JSON at line {line_num} in chunks.jsonl — skipped")
+        except FileNotFoundError:
+            logger.error(f"Chunks file not found: {chunks_path}")
+            return
+
+        # Validate FAISS-chunk alignment
+        if self.index.ntotal != len(self.chunks):
+            logger.warning(
+                f"FAISS/chunk count mismatch: {self.index.ntotal} vectors vs {len(self.chunks)} chunks — "
+                "rebuild the index to fix"
+            )
 
         # Initialize BM25
         self.bm25 = BM25Okapi(tokenized_corpus)
-        print("BM25 Index Built Successfully.")
+        logger.info(f"BM25 index built: {len(tokenized_corpus)} documents")
 
-        # Initialize FlashRank (Accuracy Engine)
-        print(f"Loading Reranker ({RERANKING_MODEL})...")
-        self.ranker = Ranker(model_name=RERANKING_MODEL, cache_dir=".flashrank_cache")
+        # Initialize FlashRank
+        logger.info(f"Loading reranker: {RERANKING_MODEL}")
+        try:
+            self.ranker = Ranker(model_name=RERANKING_MODEL, cache_dir=".flashrank_cache")
+        except Exception as e:
+            logger.error(f"Failed to load FlashRank reranker: {e}", exc_info=True)
+            self.ranker = None
 
         # Initialize Layer 1 (Statute-First)
         self.statute_retriever = StatuteRetriever()
@@ -133,10 +168,15 @@ class Retriever:
         graph_path = Path(chunks_path).parent.parent / "graph" / "edges.jsonl"
         self.graph_retriever = ProvisionGraphRetriever(graph_path)
 
-        print("Retriever: 3-Layer Architecture + Provision Graph + MMR Initialized.")
+        logger.info("Retriever initialized: 3-Layer Architecture + Provision Graph + MMR")
 
     def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None):
+        if not query or not query.strip():
+            logger.warning("search() called with empty query")
+            return []
+
         if not self.index or not self.bm25:
+            logger.warning("search() called but retriever is not initialized (missing index/bm25)")
             return []
 
         # --- 1. Query Topic & Subtopic extraction ---
@@ -166,23 +206,23 @@ class Retriever:
         seen_chunk_ids = set()
 
         def _add_to_pool(idx):
-            """Add chunk by index if not already in pool."""
+            """Add chunk by index if not already in pool and index is valid."""
             if 0 <= idx < len(self.chunks):
                 cid = self.chunks[idx].get("chunk_id")
-                if cid not in seen_chunk_ids:
+                if cid and cid not in seen_chunk_ids:
                     seen_chunk_ids.add(cid)
                     candidate_pool.append(self.chunks[idx].copy())
 
-        # 1. Vector Search — primary query (wider pool to feed MMR dedup later)
+        # 1. Vector Search — primary query
         query_vec = embed_query(query)
         if self.index and query_vec is not None:
-            D, I = self.index.search(np.array([query_vec]).astype('float32'), 150)
+            D, I = self.index.search(np.array([query_vec]).astype('float32'), VECTOR_SEARCH_TOP_K)
             for idx in I[0]:
                 _add_to_pool(idx)
 
         # 1b. Vector Search — expanded queries + HyDE document
         if advanced_queries and self.index:
-            extra_queries = advanced_queries.get("queries", [])[1:]  # skip first (already used as primary)
+            extra_queries = advanced_queries.get("queries", [])[1:]
             hyde_doc = advanced_queries.get("hyde_document", "")
             if hyde_doc:
                 extra_queries.append(hyde_doc)
@@ -192,7 +232,7 @@ class Retriever:
                     continue
                 eq_vec = embed_query(eq)
                 if eq_vec is not None:
-                    D2, I2 = self.index.search(np.array([eq_vec]).astype('float32'), 50)
+                    D2, I2 = self.index.search(np.array([eq_vec]).astype('float32'), VECTOR_EXPANDED_TOP_K)
                     for idx in I2[0]:
                         _add_to_pool(idx)
 
@@ -200,7 +240,7 @@ class Retriever:
         if self.bm25:
             tokenized_query = tokenize_text(query)
             bm25_scores = self.bm25.get_scores(tokenized_query)
-            top_bm25_idxs = np.argsort(bm25_scores)[::-1][:100]
+            top_bm25_idxs = np.argsort(bm25_scores)[::-1][:BM25_TOP_K]
             for idx in top_bm25_idxs:
                 _add_to_pool(idx)
 
@@ -208,7 +248,8 @@ class Retriever:
         if allowed_sources:
             candidate_pool = [
                 c for c in candidate_pool
-                if any(src.lower() in c.get("rel_path", "").lower() for src in allowed_sources)
+                if any(src.lower() in c.get("rel_path", c.get("metadata", {}).get("rel_path", "")).lower()
+                       for src in allowed_sources)
             ]
 
         # Merge layers: Statute-First > Graph Expanded > Semantic
@@ -219,40 +260,44 @@ class Retriever:
                 combined_results.append(r)
 
         # --- Semantic Reranking (FlashRank) ---
-        from flashrank import RerankRequest
-
-        passages = [
-            {"id": idx, "text": res["text"], "meta": res}
-            for idx, res in enumerate(combined_results)
-        ]
-
-        reranked_results = []
-        if passages:
+        reranked_results = combined_results
+        if combined_results and self.ranker:
             try:
+                from flashrank import RerankRequest
+                passages = [
+                    {"id": idx, "text": res.get("text", ""), "meta": res}
+                    for idx, res in enumerate(combined_results)
+                ]
                 rank_request = RerankRequest(query=query, passages=passages)
                 flash_results = self.ranker.rerank(rank_request)
+                reranked_results = []
                 for r in flash_results:
                     item = r["meta"]
                     item["_rerank_score"] = r["score"]
                     reranked_results.append(item)
             except Exception as e:
-                print(f"FlashRank Failed: {e}")
+                logger.warning(f"FlashRank reranking failed (falling back to unranked): {e}")
                 reranked_results = combined_results
 
         # --- Layer 3: Legal Reranking (Composite Scoring) ---
         reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic)
 
         # --- Layer 4: MMR Deduplication ---
-        # Removes near-duplicate chunks from the same document so the LLM
-        # sees diverse evidence rather than 5 paraphrases of the same paragraph.
-        reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k * 2)
+        reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k)
 
-        # Flatten metadata for final output
+        # Flatten metadata for final output (safe merge avoiding key collisions)
         final_results = []
         for res in reranked_results:
             if "metadata" in res:
                 meta = res.pop("metadata")
-                res.update(meta)
+                for key, val in meta.items():
+                    if key not in res:  # don't overwrite existing keys
+                        res[key] = val
             final_results.append(res)
 
+        logger.debug(
+            f"search() complete: query='{query[:60]}' | "
+            f"statute={len(statute_results)} graph={len(graph_results)} "
+            f"semantic={len(candidate_pool)} final={len(final_results)}"
+        )
         return final_results[:top_k]

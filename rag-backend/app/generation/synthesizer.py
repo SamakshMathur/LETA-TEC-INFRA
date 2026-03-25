@@ -5,6 +5,7 @@ from app.config import (
     OPENAI_API_KEY, OLLAMA_API_KEY, LLM_MODEL,
     # Claude
     ANTHROPIC_API_KEY, CLAUDE_MAIN_MODEL, CLAUDE_THINKING_BUDGET,
+    MAX_RESPONSE_POINTS,
 )
 from app.generation.prompt import SYSTEM_PROMPT
 from app.generation.rules_engine import rules_engine
@@ -15,10 +16,13 @@ logger = logging.getLogger(__name__)
 # Client initialisation
 # ─────────────────────────────────────────────────────────────────────────────
 
+_claude_client = None
+_oai_client = None
+
 if LLM_PROVIDER == "anthropic":
     import anthropic as _anthropic
     if not ANTHROPIC_API_KEY:
-        logger.warning("ANTHROPIC_API_KEY not found. Answer generation will fail.")
+        logger.warning("ANTHROPIC_API_KEY not found — answer generation will fail")
     _claude_client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     logger.info(f"LLM Provider: Anthropic Claude ({CLAUDE_MAIN_MODEL}) with extended thinking")
 
@@ -26,14 +30,14 @@ elif LLM_PROVIDER == "ollama":
     import openai as _openai
     _oai_client = _openai.OpenAI(
         api_key=OLLAMA_API_KEY if OLLAMA_API_KEY else "ollama",
-        base_url="http://localhost:11434/v1",
+        base_url=f"http://localhost:11434/v1",
     )
     logger.info(f"LLM Provider: Local Ollama ({LLM_MODEL})")
 
 else:  # openai
     import openai as _openai
     if not OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY not found. Answer generation will fail.")
+        logger.warning("OPENAI_API_KEY not found — answer generation will fail")
     _oai_client = _openai.OpenAI(api_key=OPENAI_API_KEY)
     logger.info(f"LLM Provider: OpenAI ({LLM_MODEL})")
 
@@ -84,10 +88,7 @@ def _stream_claude(question: str, system_prompt: str):
     Streams the answer using Claude with Extended Thinking enabled.
 
     Extended Thinking means Claude performs genuine multi-step legal reasoning
-    in hidden token space BEFORE writing the visible answer.  The <thinking>
-    block in the system prompt becomes real hardware-level reasoning rather than
-    simulated text — it will correctly catch adversarial cases (blocked ITC,
-    provisos, time limits) before committing to the final answer.
+    in hidden token space BEFORE writing the visible answer.
 
     Only the visible text deltas are yielded; thinking tokens stay internal.
     """
@@ -101,30 +102,31 @@ def _stream_claude(question: str, system_prompt: str):
     try:
         with _claude_client.messages.stream(
             model=CLAUDE_MAIN_MODEL,
-            max_tokens=8000,          # must cover thinking_budget + visible output
+            max_tokens=8000,
             thinking={
                 "type": "enabled",
-                "budget_tokens": CLAUDE_THINKING_BUDGET,   # default 3000
+                "budget_tokens": CLAUDE_THINKING_BUDGET,
             },
             system=system_prompt,
             messages=messages,
             stop_sequences=["[TERMINATE]"],
-            temperature=1,            # required when extended thinking is enabled
+            temperature=1,  # required when extended thinking is enabled
         ) as stream:
             for event in stream:
-                # Only yield visible text deltas — skip thinking block deltas
-                if (
-                    hasattr(event, "type")
-                    and event.type == "content_block_delta"
-                    and hasattr(event, "delta")
-                    and getattr(event.delta, "type", "") == "text_delta"
-                ):
-                    text = event.delta.text
-                    if text:
-                        if full_content.count("[POINT") > 12:
-                            break
-                        full_content += text
-                        yield text
+                try:
+                    if (
+                        getattr(event, "type", None) == "content_block_delta"
+                        and getattr(getattr(event, "delta", None), "type", "") == "text_delta"
+                    ):
+                        text = event.delta.text
+                        if text:
+                            if full_content.count("[POINT") > MAX_RESPONSE_POINTS:
+                                break
+                            full_content += text
+                            yield text
+                except (AttributeError, TypeError):
+                    # Skip malformed events gracefully
+                    continue
 
         logger.debug(f"Claude stream complete | chars={len(full_content)}")
 
@@ -166,7 +168,7 @@ def _stream_openai(question: str, system_prompt: str):
         for chunk in response_stream:
             content = chunk.choices[0].delta.content
             if content:
-                if full_content.count("[POINT") > 12:
+                if full_content.count("[POINT") > MAX_RESPONSE_POINTS:
                     break
                 full_content += content
                 yield content
@@ -185,14 +187,12 @@ def _stream_openai(question: str, system_prompt: str):
 def synthesize_answer_stream(question: str, context: str):
     """
     Generates a streaming legal answer using the configured LLM provider.
-
-    When LLM_PROVIDER=anthropic (default):
-      - Uses Claude with Extended Thinking for genuine legal reasoning
-      - Thinking tokens are internal; only the structured LETA output is yielded
-
-    When LLM_PROVIDER=openai or ollama:
-      - Falls back to GPT-4o / local model via OpenAI-compatible API
     """
+    if not question or not question.strip():
+        logger.warning("synthesize_answer_stream called with empty question")
+        yield "Error: No question provided."
+        return
+
     if LLM_PROVIDER == "anthropic" and not ANTHROPIC_API_KEY:
         yield "## Error: ANTHROPIC_API_KEY not configured."
         return
@@ -200,21 +200,22 @@ def synthesize_answer_stream(question: str, context: str):
         yield "## Error: No LLM API Key configured."
         return
 
-    truth_rules_text = rules_engine.get_all_rules_as_text()
-    formatted_system_prompt = SYSTEM_PROMPT.format(
-        context=context,
-        truth_rules=truth_rules_text,
-    )
+    try:
+        truth_rules_text = rules_engine.get_all_rules_as_text()
+        formatted_system_prompt = SYSTEM_PROMPT.format(
+            context=context,
+            truth_rules=truth_rules_text,
+        )
+    except KeyError as e:
+        logger.error(f"System prompt template error — missing placeholder: {e}")
+        yield f"Error: System prompt misconfigured (missing {e})"
+        return
 
     logger.debug(f"synthesize_answer_stream | provider={LLM_PROVIDER} | question={question[:80]}")
 
     if LLM_PROVIDER == "anthropic":
-        # Claude uses native Extended Thinking (API-level) for reasoning —
-        # do NOT inject text-based <thinking> instructions which conflict
-        # with the hardware-level thinking and waste tokens.
         yield from _stream_claude(question, formatted_system_prompt)
     else:
-        # OpenAI/Ollama lack native thinking — use prompt-based CoT
         yield from _stream_openai(question, formatted_system_prompt)
 
 

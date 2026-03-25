@@ -1,6 +1,5 @@
 import re
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import hashlib
 
 class LegalParser:
@@ -53,9 +52,10 @@ class LegalParser:
     }
 
     # High-Precision Citation Patterns
+    # Supports: Section 17, Section 9(3), Section 17(5)(a), Sec. 16(2), u/s 73
     CITATION_PATTERNS = {
-        "section": r"(?:Section|Sec\.|u/s)\s+(\d+[A-Z]*)",
-        "rule": r"Rule\s+(\d+[A-Z]*)",
+        "section": r"(?:Section|Sec\.|u/s)\s+(\d+[A-Z]*(?:\(\d+\))*(?:\([a-z]\))*)",
+        "rule": r"Rule\s+(\d+[A-Z]*(?:\(\d+\))*(?:\([a-z]\))*)",
         "notification": r"Notification\s+No\.\s+(\d+/\d+)",
         "circular": r"Circular\s+No\.\s+(\d+/\d+/\d+)",
         "schedule": r"Schedule\s+(I|II|III)(?:\s+Para\s+(\d+[a-z]?))?",

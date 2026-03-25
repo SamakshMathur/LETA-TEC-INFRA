@@ -8,7 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.ingestion.pdf_text import extract_text_from_pdf
 from app.ingestion.pdf_scanned import extract_text_from_scanned_pdf
-from app.ingestion.docx_reader import extract_text_from_docx
+from app.ingestion.docx_reader import extract_text_from_docx, extract_text_from_doc
 from app.ingestion.excel_reader import extract_text_from_excel
 from app.utils.legal_cleaner import LegalCleaner
 from app.config import DATA_DIR, CHUNKS_PATH
@@ -129,6 +129,17 @@ def run():
                     success = True
                 except Exception as e:
                     print(f"Error reading DOCX {file_path}: {e}")
+            elif ext == ".doc":
+                try:
+                    pages = extract_text_from_doc(file_path)
+                    cls_info = LegalParser.classify_folder(rel_path)
+                    for p in pages:
+                        p["metadata"].update(cls_info)
+                        p["metadata"]["rel_path"] = rel_path
+                        write_record(p)
+                    success = True
+                except Exception as e:
+                    print(f"Error reading DOC {file_path}: {e}")
             elif ext in [".xlsx", ".xls"]:
                 # Optimization: Excel files in root (like Sections List) are processed later or ignored as text
                 if file_path.parent == INPUT_DIR:

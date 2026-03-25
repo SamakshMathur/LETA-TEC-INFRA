@@ -1,22 +1,30 @@
+import logging
+
 from fastapi import FastAPI, File, UploadFile, Form
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Any, Optional
 from pathlib import Path
 
-from app.retrieval.retriever import Retriever
 from app.routing.router import route_query
 from app.generation.context_builder import build_context
-from app.generation.final_answer import build_final_answer
 from app.routing.intent_classifier import classify_intent
+
+logger = logging.getLogger(__name__)
 
 # ---------- App ----------
 app = FastAPI(
     title="GST Legal RAG API",
     version="1.0",
     description="In-house GST knowledge assistant",
-    # docs_url=None, # Temporarily un-hidden for the user
-    # redoc_url=None # Temporarily un-hidden for the user
 )
+
+@app.get("/")
+async def root():
+    return {
+        "message": "GST Legal RAG API is running.",
+        "docs": "/docs",
+        "health": "/api/health"
+    }
 
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -97,7 +105,6 @@ class AnswerResponse(BaseModel):
 # ---------- Lazy Load Retriever ----------
 from app.dependencies import get_retriever
 from app.database import get_session_collection
-import json
 from datetime import datetime
 
 # ---------- Endpoint ----------
@@ -248,8 +255,7 @@ async def ask_question(request: Request, req: QuestionRequest, current_user: dic
     advanced_queries = generate_advanced_queries(question)
     refined_q = advanced_queries.get("queries", [question])[0] # Use the first query for simple routing functions below
     
-    intent_info = classify_intent(refined_q)
-    intent = intent_info["intent"]
+    classify_intent(refined_q)
     route = route_query(refined_q)
     retriever = get_retriever()
     chunks = retriever.search(
@@ -348,8 +354,7 @@ async def ask_question_with_file(
     advanced_queries = generate_advanced_queries(question_text)
     refined_q = advanced_queries.get("queries", [question_text])[0]
     
-    intent_info = classify_intent(refined_q)
-    intent = intent_info["intent"]
+    classify_intent(refined_q)
     route = route_query(refined_q)
     retriever = get_retriever()
     chunks = retriever.search(
@@ -437,7 +442,9 @@ class PDFRequest(BaseModel):
 def create_pdf(req: PDFRequest):
     # Use the class to generate PDF
     # We construct a filename
-    filename = f"Report_{hash(req.title)}.pdf"
+    import hashlib
+    title_hash = hashlib.md5(req.title.encode()).hexdigest()[:8]
+    filename = f"Report_{title_hash}.pdf"
     pdf_path = pdf_gen.generate_report(req.content, filename)
     
     if not os.path.exists(pdf_path):
@@ -453,7 +460,6 @@ def create_pdf(req: PDFRequest):
     )
 
 # ---------- Frontend Serving ----------
-import os
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 

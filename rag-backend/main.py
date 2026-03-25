@@ -1,51 +1,50 @@
-import uvicorn
+import logging
 import sys
-import os
 
-print(f"Ref CWD: {os.getcwd()}")
-try:
-    print(f"Ref LS: {os.listdir('.')}")
-    if 'rag-backend' in os.listdir('.'):
-         print(f"Ref LS (rag-backend): {os.listdir('rag-backend')}")
-    if 'app' in os.listdir('.'):
-         print(f"Ref LS (app): {os.listdir('app')}")
-except Exception as e:
-    print(f"Ref LS Error: {e}")
-print(f"Ref Path: {sys.path}")
+# ─── Logging Configuration (must be first) ─────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+# Reduce noise from third-party libraries
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+logging.getLogger("flashrank").setLevel(logging.WARNING)
 
-try:
-    import app
-    print(f"Ref app found: {app}")
-except ImportError as e:
-    print(f"Ref app import error: {e}")
+logger = logging.getLogger(__name__)
 
+import uvicorn
 from app.api.app import app
-print("Ref: Imported app.api.app")
+from app.config import validate_config
+
 try:
-    from app.utils.s3_sync import sync_from_s3
-    print("Ref: Imported sync_from_s3")
-except ImportError as e:
-    print(f"Ref: Error importing sync_from_s3: {e}")
-    # Define dummy function if missing
+    from app.utils.s3_sync import sync_from_s3  # noqa: F401
+except ImportError:
     def sync_from_s3(): pass
+
 
 @app.on_event("startup")
 async def startup_event():
-    print("App starting... Syncing data from S3 (Skipping for Local Dev)")
-    # try:
-    #     sync_from_s3()
-    # except Exception as e:
-    #     print(f"S3 Sync Skipped: {e}")
+    logger.info("LETA/Sentinel.AI starting up...")
+    config_ok = validate_config()
+    if not config_ok:
+        logger.error("Configuration validation failed — check warnings above")
+    else:
+        logger.info("Configuration validated successfully")
+
 
 if __name__ == "__main__":
-    print("Ref: Starting uvicorn.run...")
+    logger.info("Starting uvicorn server on 0.0.0.0:8000")
     try:
         uvicorn.run(
             app,
             host="0.0.0.0",
-            port=8000
+            port=8000,
         )
     except Exception as e:
-        print(f"Ref: Uvicorn crashed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.critical(f"Uvicorn crashed: {e}", exc_info=True)
+        sys.exit(1)

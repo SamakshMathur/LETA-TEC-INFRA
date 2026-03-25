@@ -1,0 +1,173 @@
+﻿--- LETA TWO-STAGE RETRIEVAL AUDIT ---
+Initializing Retriever (Lazy Load)...
+Loading FAISS Index...
+Loading Chunks & Building BM25 index...
+BM25 Index Built Successfully.
+Loading Reranker (ms-marco-MiniLM-L-12-v2)...
+Retriever: 3-Layer Architecture Initialized.
+
+Query: Is ITC allowed on motor vehicles used for passenger transport?
+Detected Topic: ITC
+Detected Subtopic: Blocked ITC
+StatuteRetriever: Looking for provisions ['Section 17(5)', 'Section 16', 'Section 17'] for topic 'ITC' / 'Blocked ITC'
+StatuteRetriever: MATCH FOUND! Section 17(5) in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17(5) in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17(5) in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17(5) in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\cgst act.docx
+StatuteRetriever: MATCH FOUND! Section 17(5) in act\igst.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\igst.docx
+StatuteRetriever: MATCH FOUND! Section 16 in act\igst.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\igst.docx
+StatuteRetriever: MATCH FOUND! Section 17(5) in act\igst.docx
+StatuteRetriever: MATCH FOUND! Section 17 in act\igst.docx
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in icai\gst act(s) and rule(s)-bare law (november, 2025) with cover page complete.pdf
+StatuteRetriever: MATCH FOUND! Section 17(5) in responses\s. no. 1 -100 2\s. no. 1 -100\s. no. 09 supplier not traced rule 86a.docx
+StatuteRetriever: MATCH FOUND! Section 16 in responses\s. no. 1 -100 2\s. no. 1 -100\s. no. 40 tax not deposit by supplier - draft notice section 16(2)(c) cgst act 2017.docx
+StatuteRetriever: MATCH FOUND! Section 16 in responses\s. no. 1 -100 2\s. no. 1 -100\s. no. 71 - reply of notice rule 36(4).docx
+StatuteRetriever: MATCH FOUND! Section 16 in responses\s. no. 1 -100 2\s. no. 1 -100\s. no. 86 - letter to the receipnt whereas itc not reflacting of gstr 2a of thier return.docx
+StatuteRetriever: MATCH FOUND! Section 16 in responses\s. no. 101-200\s. no. 101-200\s. no. 115 itc blocked in rule 86a after the mismatch notice or 16(4) notice etc.docx
+StatuteRetriever: MATCH FOUND! Section 17(5) in responses\s. no. 101-200\s. no. 101-200\s. no. 192 - reply of letter received for revesal of cess for manufacture or refund claim for teh cess availed.docx
+StatuteRetriever: MATCH FOUND! Section 17(5) in responses\s. no. 201 - 300\s. no. 201 - 300\s. no 202 scn for itc reversal to the work contractor for construction of immovable property.docx
+StatuteRetriever: MATCH FOUND! Section 16 in responses\s. no. 201 - 300\s. no. 201 - 300\s. no 282- scn for gst suspend or cancelled due to voilation of rule 86b.docx
+StatuteRetriever: MATCH FOUND! Section 16 in responses\s. no. 201 - 300\s. no. 201 - 300\s. no. 271 reqeust letter for ractification us 161 after passing of drc 07.docx
+StatuteRetriever: MATCH FOUND! Section 16 in responses\s. no. 301 to till date\s. no. 301 to till date\s. no. 319 scn for gst reg cancelled or suspend as per rule 21(e) of cgst rules 2017.docx
+StatuteRetriever: MATCH FOUND! Section 16 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rule\rule\amended-01012022-cgst-rules-2017-part-a.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 17 in rules\cgst rules.pdf
+StatuteRetriever: MATCH FOUND! Section 16 in rules\cgst rules.pdf
+StatuteRetriever: Scanned 3223 total statute chunks, found 135 matches.
+Loading Embedding Model (all-MiniLM-L6-v2)...
+
+Top 5 Results:
+1. [LAYER 2] [unknown] (Score: 0.7600 if score != 'N/A' else 'N/A')
+   Structural Part: N/A
+   Topic: N/A
+   Breakdown: Semantic=1.00, Legal=0.20, Topic=1.00
+2. [LAYER 2] [unknown] (Score: 0.7435 if score != 'N/A' else 'N/A')
+   Structural Part: N/A
+   Topic: N/A
+   Breakdown: Semantic=0.97, Legal=0.20, Topic=1.00
+3. [LAYER 2] [unknown] (Score: 0.7417 if score != 'N/A' else 'N/A')
+   Structural Part: N/A
+   Topic: N/A
+   Breakdown: Semantic=0.97, Legal=0.20, Topic=1.00
+4. [LAYER 2] [unknown] (Score: 0.7341 if score != 'N/A' else 'N/A')
+   Structural Part: N/A
+   Topic: N/A
+   Breakdown: Semantic=0.96, Legal=0.20, Topic=1.00
+5. [LAYER 2] [unknown] (Score: 0.7332 if score != 'N/A' else 'N/A')
+   Structural Part: N/A
+   Topic: N/A
+   Breakdown: Semantic=0.96, Legal=0.20, Topic=1.00
+
+[WARNING] VERIFICATION ALERT: Act not at #1.

@@ -1,0 +1,42 @@
+**1. LETA INTERPRETATION OF USER QUERY**  
+The user seeks confirmation of the correctness of a GST legal answer concerning reward points, verifying it strictly against the provided context and TRUTH RULES.
+
+---
+
+**2. MAIN CONCLUSIVE ANSWER (EXECUTIVE SUMMARY)**  
+Within the retrieved source documents, there is no mention of reward points or any relevant legislative extract addressing their GST treatment. Consequently, no definitive statutory conclusion on reward points can be drawn solely on the basis of these references.
+
+---
+
+**3. FACTUAL UNDERSTANDING / ASSUMPTIONS**  
+• The question pertains to the applicability of GST on reward points or loyalty-based incentives.  
+• The provided references focus on matters such as pre-packaged commodities, leasing of property, capital goods disposal, and notifications on labeled goods. No text addresses reward points.  
+
+---
+
+**4. RELEVANT LEGAL PROVISIONS**  
+No references among the verified citations or the extracted text segments address reward points. None of the following items specifically mention or govern the GST treatment of reward points:  
+• Rule 2 or Rule 3 from fairmacs-aarorder.pdf  
+• Schedules I, II, or III from the retrieved orders  
+• Sections 7, 9(1), 15, 18(6), 98, or 7(1A)  
+• Various notifications (No.02/2017-CT or 6/2022)  
+
+---
+
+**5. LEGAL ANALYSIS**  
+Since the retrieved documents and TRUTH RULES do not cover reward points whatsoever, there is no directly applicable guidance. An analysis of existing references yields no relevant statutory or administrative directive on the taxability, valuation, or classification of reward points under GST.
+
+---
+
+**6. APPLICATION TO PRESENT CASE**  
+Given the lack of explicit directions in the retrieved sources, the user’s query regarding reward points remains unanswered by the materials provided. Additional context or official clarifications beyond the scope of these references would be required to determine the GST treatment of such points.
+
+---
+
+**7. TAX TREATMENT / COMPLIANCE POSITION**  
+No compliance position emerges from the provided extracts. In practice, the applicability of GST on reward points might involve broader principles of valuation and consideration under Section 15 of the CGST Act, but the documents do not elaborate on this topic.
+
+---
+
+**8. RISK IF CURRENT PRACTICE CONTINUES**  
+If a taxpayer treats reward points in a certain manner without specific legal backing, there is a risk that future departmental instructions or rulings may
