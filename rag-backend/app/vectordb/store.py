@@ -32,8 +32,8 @@ def build_vector_store(chunks_path: Path, index_path: Path):
     
     print(f"Embeddings shape: {embeddings.shape}")
 
-    # IndexFlatL2 requires exact dimension match
-    index = faiss.IndexFlatL2(VECTOR_DIM)
+    # IndexFlatIP with normalized vectors = cosine similarity (optimal for BGE models)
+    index = faiss.IndexFlatIP(VECTOR_DIM)
     index.add(embeddings)
 
     print(f"Saving index to {index_path}...")

@@ -72,7 +72,7 @@ def embed_texts(texts: List[str]) -> np.ndarray:
                 batch_size=128,
                 show_progress_bar=True,
                 convert_to_numpy=True,
-                normalize_embeddings=False,
+                normalize_embeddings=True,
             )
             return np.array(embeddings, dtype='float32')
 

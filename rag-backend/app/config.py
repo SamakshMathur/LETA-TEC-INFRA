@@ -6,7 +6,7 @@ load_dotenv()
 # LLM Config (Smart Budget Enterprise)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
+OLLAMA_API_KEY = ""  # Not used — Anthropic only
 
 # Core Logic LLM
 # Set LLM_PROVIDER=anthropic in .env to use Claude for answer generation
@@ -28,7 +28,7 @@ EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local")  # "openai" or "lo
 # BAAI/bge-large-en-v1.5: 768-dim, significantly better than all-MiniLM-L6-v2 for
 # domain-specific dense retrieval. Requires rebuilding the FAISS index after change.
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
-VECTOR_DIM = 768 if EMBEDDING_PROVIDER == "local" else 3072
+VECTOR_DIM = 1024 if EMBEDDING_PROVIDER == "local" else 3072
 
 # Reranking & Optimization
 RERANKING_MODEL = "ms-marco-MiniLM-L-12-v2"  # SOTA Accuracy (Slower but accurate)

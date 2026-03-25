@@ -26,9 +26,9 @@ def get_model():
 
 
 def embed_query(text: str):
-    """Embeds a single query string."""
+    """Embeds a single query string (normalized for cosine similarity with IndexFlatIP)."""
     model = get_model()
-    return model.encode(text)
+    return model.encode(text, normalize_embeddings=True)
 
 
 def tokenize_text(text: str):

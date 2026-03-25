@@ -18,12 +18,13 @@ FROM python:3.10-slim AS runner
 # Set non-interactive for Debian
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install runtime-only dependencies (Tesseract, Poppler, etc.)
+# Install runtime-only dependencies (Tesseract, Poppler, curl for health checks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     tesseract-ocr \
     libgl1 \
     libglib2.0-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -39,12 +40,12 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Expose port
+# Expose port (Render assigns $PORT dynamically, default 8000 for local)
 EXPOSE 8000
 
 # Health Check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
-# Production command
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Production command — use shell form so $PORT is expanded at runtime
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}

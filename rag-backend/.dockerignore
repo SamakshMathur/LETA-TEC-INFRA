@@ -1,8 +1,6 @@
 # .dockerignore optimized for LETA TITAN
-# Avoid copying large data sets into the image (use volumes/external storage in prod)
+# Exclude raw documents (not needed at runtime, only for ingestion)
 RAG_INFORMATION_DATABASE/
-vectordb/
-data/
 
 # Avoid copying virtual environments and local caches
 .venv/

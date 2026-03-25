@@ -1,12 +1,28 @@
 services:
   - type: web
     name: leta-rag-backend
-    env: python
+    runtime: docker
     rootDir: rag-backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.api.app:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: OPENROUTER_API_KEY
-        sync: false # You will need to enter this in the Render Dashboard
+      # --- LLM ---
+      - key: LLM_PROVIDER
+        value: anthropic
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # --- Database ---
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB_NAME
+        value: leta_history
+      # --- Security ---
+      - key: SECRET_KEY
+        sync: false
+      # --- CORS: set to your Vercel frontend URL ---
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # --- Misc ---
+      - key: EMBEDDING_PROVIDER
+        value: local
+      - key: ENV
+        value: production
