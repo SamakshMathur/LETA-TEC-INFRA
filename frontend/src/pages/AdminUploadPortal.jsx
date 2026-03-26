@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
 
-const BASE_URL = import.meta.env.PROD ? '/api_proxy' : 'http://localhost:8000';
+import { BASE_URL } from '../config/api';
 
 const CATEGORIES = [
   { key: 'acts',         label: 'Acts' },
@@ -55,8 +54,6 @@ const fileIcon = (name) => {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const AdminUploadPortal = () => {
-  const { token } = useAuth();
-
   const [selectedCategory, setSelectedCategory] = useState('circulars');
   const [dragging, setDragging]   = useState(false);
   const [fileQueue, setFileQueue] = useState([]);   // { id, file }
@@ -68,7 +65,7 @@ const AdminUploadPortal = () => {
   const fileInputRef = useRef(null);
   const pollingRef   = useRef({});
 
-  const authHdr = () => ({ Authorization: `Bearer ${token}` });
+  const authHdr = () => ({});
 
   // ── System status ──────────────────────────────────────────────────────────
   const fetchStatus = async () => {

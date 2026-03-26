@@ -1,4 +1,4 @@
-const BASE_URL = (import.meta.env.PROD ? '/api_proxy' : 'http://localhost:8000');
+import { BASE_URL } from '../config/api';
 
 export const advisoryService = {
   /**
@@ -9,12 +9,10 @@ export const advisoryService = {
    */
   generateAdvisory: async (query, contextText = null, isManual = false) => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`${BASE_URL}/api/advisory/generate`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           query: query,

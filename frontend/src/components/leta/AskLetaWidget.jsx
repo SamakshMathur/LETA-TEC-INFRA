@@ -3,12 +3,12 @@ import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, X, Send, Sparkles, FileText, ChevronRight, Terminal, Menu, Paperclip } from 'lucide-react';
 import LetaResponse from './LetaResponse';
+import { BASE_URL } from '../../config/api';
 import ChatSidebar from './ChatSidebar';
 import { NeuralLoader } from '../effects';
 import { PDFViewer } from '../documents';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 
 const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -29,7 +29,6 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
   };
   
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   // Session State
   const [currentSessionId, setCurrentSessionId] = useState(null);
@@ -73,11 +72,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
   // ... (rest remains same until handleOpen)
 
   const handleOpenWidget = () => {
-    if (!user) {
-      navigate('/login');
-    } else {
-      setIsOpen(true);
-    }
+    setIsOpen(true);
   };
 
   // Load Session
@@ -85,7 +80,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
     try {
       setIsLoading(true);
       setCurrentSessionId(sessionId);
-      const res = await axios.get(`${import.meta.env.PROD ? '' : 'http://localhost:8000'}/api/sessions/${sessionId}`);
+      const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`);
       
       // Map history to UI format
       // Note: Backend stores plain text. We wrap it for LetaResponse.
@@ -128,7 +123,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
     setIsLoading(true);
 
     try {
-      const baseUrl = (import.meta.env.PROD ? '' : 'http://localhost:8000');
+      const baseUrl = BASE_URL;
       
       // 2. Create Session if needed
       let activeSessionId = currentSessionId;
@@ -140,11 +135,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
       }
 
       // 3. Call Ask API
-      const token = localStorage.getItem('token');
       const headers = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
 
       let res;
       if (selectedFile) {

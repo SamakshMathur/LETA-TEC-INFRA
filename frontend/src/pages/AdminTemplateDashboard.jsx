@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { UploadCloud, FileText, CheckCircle, AlertCircle, Trash2, Edit3, Loader } from 'lucide-react';
+import { BASE_URL } from '../config/api';
 
 const AdminTemplateDashboard = () => {
   const [files, setFiles] = useState([]);
@@ -39,14 +40,9 @@ const AdminTemplateDashboard = () => {
     });
 
     try {
-      const token = localStorage.getItem("access_token");
-      const headers = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const baseUrl = BASE_URL;
       const response = await fetch(`${baseUrl}/api/templates/upload`, {
         method: 'POST',
-        headers,
         body: formData,
       });
 

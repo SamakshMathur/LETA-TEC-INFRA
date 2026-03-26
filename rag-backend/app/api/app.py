@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.routing.router import route_query
 from app.generation.context_builder import build_context
-from app.routing.intent_classifier import classify_intent
+# intent_classifier imported via router (keyword-only, no LLM)
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,7 @@ from fastapi import Depends, Request
 
 @app.post("/ask")
 @limiter.limit("30/minute")
-async def ask_question(request: Request, req: QuestionRequest, current_user: dict = Depends(get_current_user)):
+async def ask_question(request: Request, req: QuestionRequest):
     question = req.question.strip()
     session_id = req.session_id
     
@@ -250,19 +250,20 @@ async def ask_question(request: Request, req: QuestionRequest, current_user: dic
                 for msg in recent:
                     history_context += f"{msg['role'].upper()}: {msg['content']}\n"
     
-    # Smart Query Refinement & Expansion (HyDE + Multi-Query)
+    # ── Fast local routing (keyword-only, no LLM call) ──
+    route = route_query(question)
+
+    # ── Single LLM call: query expansion + topic extraction ──
     from app.retrieval.query_refiner import generate_advanced_queries
     advanced_queries = generate_advanced_queries(question)
-    refined_q = advanced_queries.get("queries", [question])[0] # Use the first query for simple routing functions below
-    
-    classify_intent(refined_q)
-    route = route_query(refined_q)
+    refined_q = advanced_queries.get("queries", [question])[0]
+
     retriever = get_retriever()
     chunks = retriever.search(
         query=refined_q,
         top_k=50,
         allowed_sources=route["use_sources"],
-        advanced_queries=advanced_queries
+        advanced_queries=advanced_queries,
     )
     context = build_context(chunks)
     
@@ -295,10 +296,9 @@ async def ask_question_with_file(
     file: UploadFile = File(...),
     question: str = Form(...),
     session_id: Optional[str] = Form(None),
-    current_user: dict = Depends(get_current_user)
 ):
     question_text = question.strip()
-    
+
     # 1. Read the file
     file_bytes = await file.read()
     filename = (file.filename or "").lower()
@@ -403,7 +403,7 @@ class FeedbackRequest(BaseModel):
 
 @app.post("/feedback")
 @limiter.limit("60/minute")
-async def submit_feedback(request: Request, req: FeedbackRequest, current_user: dict = Depends(get_current_user)):
+async def submit_feedback(request: Request, req: FeedbackRequest):
     """Stores user ratings (thumbs up/down) for quality monitoring and future fine-tuning."""
     import logging
     _fb_logger = logging.getLogger("feedback")

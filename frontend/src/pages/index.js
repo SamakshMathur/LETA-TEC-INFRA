@@ -1,7 +1,6 @@
 export { default as Home } from './Home';
 export { default as About } from './About';
 export { default as Documentation } from './Documentation';
-export { default as Login } from './Login';
 export { default as GST } from './GST';
 export { default as GstTemplates } from './GstTemplates';
 export { default as TemplateCustomization } from './TemplateCustomization';

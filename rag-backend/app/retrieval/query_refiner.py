@@ -115,19 +115,25 @@ RULES:
 
 def generate_advanced_queries(raw_query: str) -> dict:
     """
-    Generates 3 diverse query angles (Multi-Query Expansion) and
-    1 Hypothetical Document Embedding (HyDE) string for dense vector matching.
+    Single LLM call that produces:
+      - 3 diverse search queries (Multi-Query Expansion)
+      - 1 HyDE document for dense vector matching
+      - topic + subtopic classification
 
-    Returns: {"queries": [...], "hyde_document": "..."}
+    Returns: {"queries": [...], "hyde_document": "...", "topic": "...", "subtopic": "..."}
     """
     system = """You are an advanced expert in Indian GST Law.
 Optimise a user query for a vector database search.
-Output a valid JSON object with EXACTLY two keys:
+Output a valid JSON object with EXACTLY four keys:
 1. "queries": A list of exactly 3 distinct, highly technical search queries derived
    from the user's raw query. Cover different angles (Section numbers, specific rules,
    terminology).
 2. "hyde_document": A 3 to 4 sentence hypothetical, perfect legal answer to the user's
    query using the dense, formal vocabulary of official GST Acts, Rules, or Notifications.
+3. "topic": Classify into exactly ONE topic from: [ITC, RCM, Export, Refund, Registration,
+   Place_of_Supply, Time_of_Supply, Valuation, Exemption, Returns, Penalty, Audit,
+   Classification, Supply, Payment, Appeals, General]
+4. "subtopic": A specific subtopic or null if none applies.
 
 Respond with ONLY the raw JSON object."""
 
@@ -145,10 +151,14 @@ Respond with ONLY the raw JSON object."""
             result["queries"] = [raw_query]
         if "hyde_document" not in result:
             result["hyde_document"] = ""
+        if "topic" not in result:
+            result["topic"] = "General"
+        if "subtopic" not in result:
+            result["subtopic"] = None
         return result
     except Exception as e:
         logger.error(f"generate_advanced_queries parse error: {e} | raw={raw[:200]}")
-        return {"queries": [raw_query], "hyde_document": ""}
+        return {"queries": [raw_query], "hyde_document": "", "topic": "General", "subtopic": None}
 
 
 def extract_query_topic(query: str) -> dict:

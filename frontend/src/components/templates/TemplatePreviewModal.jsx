@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
+import { BASE_URL } from '../../config/api';
 
 const TemplatePreviewModal = ({ templateId, onClose }) => {
   const [template, setTemplate] = useState(null);
@@ -8,7 +9,7 @@ const TemplatePreviewModal = ({ templateId, onClose }) => {
   useEffect(() => {
     const fetchTemplate = async () => {
       try {
-        const response = await fetch(`${import.meta.env.PROD ? '' : 'http://localhost:8000'}/api/templates/${templateId}`);
+        const response = await fetch(`${BASE_URL}/api/templates/${templateId}`);
         const data = await response.json();
         setTemplate(data);
       } catch (error) {
@@ -63,7 +64,7 @@ const TemplatePreviewModal = ({ templateId, onClose }) => {
             Close
           </button>
           <a 
-            href={`${import.meta.env.PROD ? '' : 'http://localhost:8000'}/api/templates/${template?.id}/download`}
+            href={`${BASE_URL}/api/templates/${template?.id}/download`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-6 py-2 border border-gray-600 text-gray-200 rounded hover:bg-gray-800 transition-colors flex items-center gap-2"

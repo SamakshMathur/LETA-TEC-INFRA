@@ -32,7 +32,7 @@ const categoryGroups = [
   }
 ];
 
-const VITE_API_BASE = (import.meta.env.PROD ? '/api_proxy' : 'http://localhost:8000');
+import { BASE_URL as VITE_API_BASE } from '../../config/api';
 const API_BASE = `${VITE_API_BASE}/api/documents`;
 
 // --- SUB-COMPONENT: PRIME CARD ---

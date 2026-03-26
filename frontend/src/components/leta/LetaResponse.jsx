@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import ConfidenceBadge from './ConfidenceBadge';
 import CitationList from './CitationList';
 import LetaExplainability from './LetaExplainability';
+import { BASE_URL } from '../../config/api';
 import { Button } from '../common';
 import { FileText, AlignLeft, ShieldCheck, Copy, Check, RefreshCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -118,7 +119,7 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
                                 
                                 // Fix relative links so they hit the backend, not the Vite dev server
                                 if (baseUrl.startsWith('/api/')) {
-                                    const backendUrl = import.meta.env.PROD ? '' : 'http://localhost:8000';
+                                    const backendUrl = BASE_URL;
                                     baseUrl = backendUrl + baseUrl;
                                 }
                                 

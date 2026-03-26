@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Loader2, Zap } from 'lucide-react';
 import { TemplateResults } from '../components/templates';
+import { BASE_URL } from '../config/api';
 
 const GstTemplates = () => {
   const [query, setQuery] = useState('');
@@ -10,7 +11,7 @@ const GstTemplates = () => {
   const fetchTemplates = async (searchQuery = '') => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.PROD ? '' : 'http://localhost:8000'}/api/templates/search?query=${encodeURIComponent(searchQuery)}`);
+      const response = await fetch(`${BASE_URL}/api/templates/search?query=${encodeURIComponent(searchQuery)}`);
       const data = await response.json();
       setResults(data.groups || []);
     } catch (error) {

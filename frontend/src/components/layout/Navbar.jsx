@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { LogOut, Shield, ChevronDown, FileText, Landmark, Globe, Briefcase } from 'lucide-react';
+import { FileText, Landmark, Globe, Briefcase, ChevronDown, Shield } from 'lucide-react';
 
 const DOMAINS = [
   { label: 'GST Intelligence',  path: '/gst',          icon: FileText,  status: 'ACTIVE' },
@@ -18,13 +17,10 @@ const NAV_LINKS = [
 const Navbar = () => {
   const location  = useLocation();
   const navigate  = useNavigate();
-  const { user, isAdmin, logout } = useAuth();
 
   const [scrolled,         setScrolled]         = useState(false);
-  const [dropdownOpen,     setDropdownOpen]     = useState(false);
   const [domainsOpen,      setDomainsOpen]      = useState(false);
 
-  const userMenuRef    = useRef(null);
   const domainsMenuRef = useRef(null);
 
   const isActive = (path) =>
@@ -40,20 +36,11 @@ const Navbar = () => {
   /* ── close dropdowns on outside click ── */
   useEffect(() => {
     const handler = (e) => {
-      if (userMenuRef.current    && !userMenuRef.current.contains(e.target))    setDropdownOpen(false);
       if (domainsMenuRef.current && !domainsMenuRef.current.contains(e.target)) setDomainsOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
-  const handleLogout = () => { logout(); setDropdownOpen(false); navigate('/'); };
-
-  const getUserInitial = () => {
-    if (user?.name)  return user.name.charAt(0).toUpperCase();
-    if (user?.email) return user.email.charAt(0).toUpperCase();
-    return 'U';
-  };
 
   const anyDomainActive = DOMAINS.some(d => isActive(d.path));
 
@@ -157,45 +144,41 @@ const Navbar = () => {
                 {/* Divider gap — no line */}
                 <div className="h-2.5" />
 
-                {/* Admin links inside dropdown if admin */}
-                {user && isAdmin && (
-                  <>
-                    <div className="px-4 pb-1">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: '#333' }}>
-                        Admin
-                      </span>
-                    </div>
-                    {[
-                      { label: 'Template Manager', path: '/admin/templates' },
-                      { label: 'Upload Portal',    path: '/admin/upload'    },
-                    ].map(({ label, path }) => (
-                      <Link
-                        key={path}
-                        to={path}
-                        onClick={() => setDomainsOpen(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm transition-all duration-150"
-                        style={{
-                          color: isActive(path) ? '#4edea3' : '#9a9a9a',
-                          backgroundColor: isActive(path) ? 'rgba(78,222,163,0.06)' : 'transparent',
-                        }}
-                        onMouseEnter={e => {
-                          if (!isActive(path)) {
-                            e.currentTarget.style.color = '#e5e2e1';
-                            e.currentTarget.style.backgroundColor = 'rgba(229,226,225,0.04)';
-                          }
-                        }}
-                        onMouseLeave={e => {
-                          if (!isActive(path)) {
-                            e.currentTarget.style.color = '#9a9a9a';
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                          }
-                        }}
-                      >
-                        {label}
-                      </Link>
-                    ))}
-                  </>
-                )}
+                {/* Admin links always visible in dropdown */}
+                <div className="px-4 pb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: '#333' }}>
+                    Admin
+                  </span>
+                </div>
+                {[
+                  { label: 'Template Manager', path: '/admin/templates' },
+                  { label: 'Upload Portal',    path: '/admin/upload'    },
+                ].map(({ label, path }) => (
+                  <Link
+                    key={path}
+                    to={path}
+                    onClick={() => setDomainsOpen(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm transition-all duration-150"
+                    style={{
+                      color: isActive(path) ? '#4edea3' : '#9a9a9a',
+                      backgroundColor: isActive(path) ? 'rgba(78,222,163,0.06)' : 'transparent',
+                    }}
+                    onMouseEnter={e => {
+                      if (!isActive(path)) {
+                        e.currentTarget.style.color = '#e5e2e1';
+                        e.currentTarget.style.backgroundColor = 'rgba(229,226,225,0.04)';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (!isActive(path)) {
+                        e.currentTarget.style.color = '#9a9a9a';
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    {label}
+                  </Link>
+                ))}
               </div>
             )}
           </div>
@@ -221,61 +204,9 @@ const Navbar = () => {
           ))}
         </div>
 
-        {/* ── Auth section ─────────────────────────────────────────── */}
+        {/* ── Auth section REMOVED ─────────────────────────────────────────── */}
         <div className="flex items-center gap-3">
-          {user ? (
-            <div className="relative" ref={userMenuRef}>
-              <button
-                onClick={() => setDropdownOpen(v => !v)}
-                className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-200"
-                style={{
-                  backgroundColor: 'rgba(229,226,225,0.06)',
-                  color: '#e5e2e1',
-                  boxShadow: dropdownOpen
-                    ? '0 0 0 2px rgba(78,222,163,0.45)'
-                    : 'inset 0 0 0 1px rgba(229,226,225,0.12)',
-                }}
-              >
-                {getUserInitial()}
-              </button>
-
-              {dropdownOpen && (
-                <div
-                  className="absolute right-0 mt-3 w-52 rounded py-1.5 z-50"
-                  style={{
-                    backgroundColor: 'rgba(26,26,26,0.97)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    boxShadow: '0 20px 60px rgba(0,0,0,0.60), inset 0 0 0 1px rgba(229,226,225,0.08)',
-                  }}
-                >
-                  <div className="px-4 py-3" style={{ backgroundColor: 'rgba(229,226,225,0.03)' }}>
-                    <p className="text-sm font-semibold truncate" style={{ color: '#e5e2e1' }}>
-                      {user.name || 'User'}
-                    </p>
-                    <p className="text-xs font-mono mt-0.5 truncate" style={{ color: '#9a9a9a' }}>
-                      {user.email}
-                    </p>
-                  </div>
-                  <div className="h-2.5" />
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 transition-all duration-150"
-                    style={{ color: '#f87171' }}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(248,113,113,0.08)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                  >
-                    <LogOut size={14} />
-                    Sign Out
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <Link to="/login" className="btn-titan px-6 py-2.5 text-xs">
-              Sign In
-            </Link>
-          )}
+          {/* No sign-in or profile controls */}
         </div>
       </div>
     </nav>

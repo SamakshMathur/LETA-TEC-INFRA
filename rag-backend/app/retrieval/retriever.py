@@ -179,11 +179,12 @@ class Retriever:
             logger.warning("search() called but retriever is not initialized (missing index/bm25)")
             return []
 
-        # --- 1. Query Topic & Subtopic extraction ---
-        from app.retrieval.query_refiner import extract_query_topic
-        topic_info = extract_query_topic(query)
-        topic = topic_info if isinstance(topic_info, str) else topic_info.get("topic", "General")
-        subtopic = None if isinstance(topic_info, str) else topic_info.get("subtopic")
+        # --- 1. Query Topic & Subtopic (from pre-computed advanced_queries, no extra LLM call) ---
+        topic = "General"
+        subtopic = None
+        if advanced_queries:
+            topic = advanced_queries.get("topic", "General")
+            subtopic = advanced_queries.get("subtopic")
 
         # --- Layer 1: Statute-First Retrieval (Deterministic) ---
         statute_results = self.statute_retriever.search_statutes(self.chunks, topic, subtopic)
@@ -253,20 +254,25 @@ class Retriever:
             ]
 
         # Merge layers: Statute-First > Graph Expanded > Semantic
-        combined_results = statute_results + graph_results
+        # Cap statute results to top 50 to avoid memory explosion in reranker
+        combined_results = statute_results[:50] + graph_results[:30]
         existing_ids = {r.get("chunk_id") for r in combined_results}
         for r in candidate_pool:
             if r.get("chunk_id") not in existing_ids:
                 combined_results.append(r)
 
+        # Cap total candidates for reranker (FlashRank OOM above ~300)
+        RERANK_MAX = 200
+        reranker_input = combined_results[:RERANK_MAX]
+
         # --- Semantic Reranking (FlashRank) ---
-        reranked_results = combined_results
-        if combined_results and self.ranker:
+        reranked_results = reranker_input
+        if reranker_input and self.ranker:
             try:
                 from flashrank import RerankRequest
                 passages = [
                     {"id": idx, "text": res.get("text", ""), "meta": res}
-                    for idx, res in enumerate(combined_results)
+                    for idx, res in enumerate(reranker_input)
                 ]
                 rank_request = RerankRequest(query=query, passages=passages)
                 flash_results = self.ranker.rerank(rank_request)
@@ -275,9 +281,10 @@ class Retriever:
                     item = r["meta"]
                     item["_rerank_score"] = r["score"]
                     reranked_results.append(item)
+                logger.info(f"FlashRank reranked {len(reranker_input)} -> top {len(reranked_results)} results")
             except Exception as e:
                 logger.warning(f"FlashRank reranking failed (falling back to unranked): {e}")
-                reranked_results = combined_results
+                reranked_results = reranker_input
 
         # --- Layer 3: Legal Reranking (Composite Scoring) ---
         reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic)

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, Download, Copy, Loader2, FileText, User, Sparkles, AlertCircle, Trash2, CheckCircle2, Zap, Share2 } from 'lucide-react';
+import { BASE_URL } from '../config/api';
 
 const TemplateCustomization = () => {
   const { id } = useParams();
@@ -17,7 +18,7 @@ const TemplateCustomization = () => {
   useEffect(() => {
     const fetchTemplate = async () => {
       try {
-        const response = await fetch(`${import.meta.env.PROD ? '' : 'http://localhost:8000'}/api/templates/${id}`);
+        const response = await fetch(`${BASE_URL}/api/templates/${id}`);
         const data = await response.json();
         setTemplate(data);
         
@@ -48,7 +49,7 @@ const TemplateCustomization = () => {
     
     setIsGenerating(true);
     try {
-      const response = await fetch(`${import.meta.env.PROD ? '' : 'http://localhost:8000'}/api/templates/${id}/customize`, {
+      const response = await fetch(`${BASE_URL}/api/templates/${id}/customize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -76,7 +77,7 @@ const TemplateCustomization = () => {
   const handleDownload = () => {
     const content = generatedDraft || (template?.content || "");
     const encodedContent = encodeURIComponent(content);
-    window.open(`${import.meta.env.PROD ? '' : 'http://localhost:8000'}/api/templates/${id}/download?content=${encodedContent}`, '_blank');
+    window.open(`${BASE_URL}/api/templates/${id}/download?content=${encodedContent}`, '_blank');
   };
 
   const copyToClipboard = () => {

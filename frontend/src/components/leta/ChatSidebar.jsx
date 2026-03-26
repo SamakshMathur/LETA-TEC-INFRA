@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, MessageSquare, Trash2, Clock, Terminal } from 'lucide-react';
 import axios from 'axios';
+import { BASE_URL } from '../../config/api';
 
 const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, toggleSidebar }) => {
   const [sessions, setSessions] = useState([]);
@@ -16,7 +17,7 @@ const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, 
 
   const fetchSessions = async () => {
     try {
-      const baseUrl = import.meta.env.PROD ? '' : 'http://localhost:8000';
+      const baseUrl = BASE_URL;
       const res = await axios.get(`${baseUrl}/api/sessions/list`);
       setSessions(res.data);
     } catch (err) {
@@ -27,7 +28,7 @@ const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, 
   const handleDelete = async (e, id) => {
     e.stopPropagation();
     try {
-      const baseUrl = import.meta.env.PROD ? '' : 'http://localhost:8000';
+      const baseUrl = BASE_URL;
       await axios.delete(`${baseUrl}/api/sessions/${id}`);
       fetchSessions();
       if (currentSessionId === id) {

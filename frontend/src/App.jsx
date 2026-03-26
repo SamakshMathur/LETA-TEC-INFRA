@@ -9,37 +9,10 @@ import { LawDashboard } from './components/dashboard';
 
 // Pages
 import {
-  Home, About, Documentation, Login,
+  Home, About, Documentation,
   GstTemplates, TemplateCustomization,
   AdminTemplateDashboard, AdminUploadPortal,
 } from './pages';
-
-// Context
-import { AuthProvider, useAuth } from './context/AuthContext';
-
-const ProtectedRoute = ({ children, adminOnly = false }) => {
-  const { user, isAdmin, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div
-        className="flex items-center justify-center min-h-screen"
-        style={{ backgroundColor: 'var(--surface)' }}
-      >
-        <span
-          className="text-sm font-mono animate-pulse"
-          style={{ color: '#4edea3' }}
-        >
-          Verifying credentials...
-        </span>
-      </div>
-    );
-  }
-
-  if (!user) return <Navigate to="/login" replace />;
-  if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
-  return children;
-};
 
 const NotFound = () => (
   <div
@@ -59,9 +32,24 @@ const NotFound = () => (
   </div>
 );
 
-const Layout = ({ children }) => {
-  const { isAdmin } = useAuth();
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ backgroundColor: '#141313', color: '#ff6b6b', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', fontFamily: 'monospace' }}>
+          <h2>Something went wrong</h2>
+          <pre style={{ color: '#999', fontSize: '0.8rem', maxWidth: '80vw', overflow: 'auto' }}>{this.state.error.message}</pre>
+          <button onClick={() => window.location.href = '/'} style={{ color: '#4edea3', border: '1px solid #4edea3', padding: '8px 24px', borderRadius: '8px', background: 'none', cursor: 'pointer' }}>Go Home</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
+const Layout = ({ children }) => {
   return (
     <div
       className="min-h-screen flex flex-col relative"
@@ -77,27 +65,13 @@ const Layout = ({ children }) => {
       </main>
 
       <SystemFooter />
-
-      {isAdmin && (
-        <div
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-6 py-2 rounded-full text-xs font-bold tracking-[0.2em] uppercase"
-          style={{
-            backgroundColor: 'rgba(78,222,163,0.08)',
-            color: '#4edea3',
-            boxShadow: 'inset 0 0 0 1px rgba(78,222,163,0.25), 0 0 20px rgba(78,222,163,0.15)',
-            backdropFilter: 'blur(16px)',
-          }}
-        >
-          TITAN PORTAL ACTIVE
-        </div>
-      )}
     </div>
   );
 };
 
 function App() {
   return (
-    <AuthProvider>
+    <ErrorBoundary>
       <Router>
         <ScrollToTop />
         <Layout>
@@ -106,11 +80,9 @@ function App() {
             <Route path="/"      element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/docs"  element={<Documentation />} />
-            <Route path="/login" element={<Login />} />
 
             {/* ── GST ────────────────────────────────────────────────── */}
             <Route path="/gst" element={
-              <ProtectedRoute>
                 <LawDashboard
                   title="GST Intelligence Hub"
                   domainId="gst"
@@ -118,18 +90,12 @@ function App() {
                   definition="A comprehensive indirect tax charged on the supply of goods and services. It replaced multiple cascading taxes levied by the central and state governments."
                   implDate="July 1, 2017"
                 />
-              </ProtectedRoute>
             } />
-            <Route path="/gst/templates" element={
-              <ProtectedRoute><GstTemplates /></ProtectedRoute>
-            } />
-            <Route path="/gst/templates/:id/customize" element={
-              <ProtectedRoute><TemplateCustomization /></ProtectedRoute>
-            } />
+            <Route path="/gst/templates" element={<GstTemplates />} />
+            <Route path="/gst/templates/:id/customize" element={<TemplateCustomization />} />
 
             {/* ── Income Tax ─────────────────────────────────────────── */}
             <Route path="/income-tax" element={
-              <ProtectedRoute>
                 <LawDashboard
                   title="Income Tax Advisory"
                   domainId="income-tax"
@@ -137,12 +103,10 @@ function App() {
                   definition="A direct tax levied on the income or profits of individuals and entities. Governed by the Income Tax Act, 1961."
                   implDate="April 1, 1962"
                 />
-              </ProtectedRoute>
             } />
 
             {/* ── FEMA ───────────────────────────────────────────────── */}
             <Route path="/fema" element={
-              <ProtectedRoute>
                 <LawDashboard
                   title="FEMA Expert System"
                   domainId="fema"
@@ -150,12 +114,10 @@ function App() {
                   definition="An Act to consolidate and amend the law relating to foreign exchange with the objective of facilitating external trade and payments."
                   implDate="June 1, 2000"
                 />
-              </ProtectedRoute>
             } />
 
             {/* ── Company Law ────────────────────────────────────────── */}
             <Route path="/company-law" element={
-              <ProtectedRoute>
                 <LawDashboard
                   title="Company Law Compliance"
                   domainId="company-law"
@@ -163,23 +125,18 @@ function App() {
                   definition="The legislation that governs the incorporation, responsibilities, and dissolution of companies in India."
                   implDate="April 1, 2014"
                 />
-              </ProtectedRoute>
             } />
 
             {/* ── Admin ──────────────────────────────────────────────── */}
-            <Route path="/admin/templates" element={
-              <ProtectedRoute adminOnly={true}><AdminTemplateDashboard /></ProtectedRoute>
-            } />
-            <Route path="/admin/upload" element={
-              <ProtectedRoute adminOnly={true}><AdminUploadPortal /></ProtectedRoute>
-            } />
+            <Route path="/admin/templates" element={<AdminTemplateDashboard />} />
+            <Route path="/admin/upload" element={<AdminUploadPortal />} />
 
             {/* ── 404 catch-all ──────────────────────────────────────── */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Layout>
       </Router>
-    </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

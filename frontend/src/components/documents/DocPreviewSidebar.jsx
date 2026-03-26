@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Download, FileText, ChevronRight } from 'lucide-react';
+import { BASE_URL } from '../../config/api';
 
 const DocPreviewSidebar = ({ isOpen, document, onClose, onDownload }) => {
   return (
@@ -44,7 +45,7 @@ const DocPreviewSidebar = ({ isOpen, document, onClose, onDownload }) => {
                 <button
                   onClick={() => {
                     const category = document.category || document.id.split('_')[0];
-                    window.open(`${(import.meta.env.PROD ? '/api_proxy' : 'http://localhost:8000')}/api/documents/view?category=${category}&filename=${encodeURIComponent(document.filename)}&download=true`, '_blank');
+                    window.open(`${BASE_URL}/api/documents/view?category=${category}&filename=${encodeURIComponent(document.filename)}&download=true`, '_blank');
                   }}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-sm transition-all font-mono text-xs uppercase tracking-wider"
                 >
@@ -62,7 +63,7 @@ const DocPreviewSidebar = ({ isOpen, document, onClose, onDownload }) => {
 
              <div className="flex-1 overflow-hidden bg-[#0A1420] p-0 relative">
                <iframe 
-                 src={`${(import.meta.env.PROD ? '/api_proxy' : 'http://localhost:8000')}/api/documents/view?category=${document.category || document.id.split('_')[0]}&filename=${encodeURIComponent(document.filename)}#toolbar=0`}
+                 src={`${BASE_URL}/api/documents/view?category=${document.category || document.id.split('_')[0]}&filename=${encodeURIComponent(document.filename)}#toolbar=0`}
                  className="w-full h-full border-none bg-white"
                  title="PDF Preview"
                />
