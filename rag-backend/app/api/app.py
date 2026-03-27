@@ -221,9 +221,6 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                      "$set": {"updated_at": datetime.now()}}
                 )
 
-from app.security import get_current_user
-from fastapi import Depends, Request
-
 @app.post("/ask")
 @limiter.limit("30/minute")
 async def ask_question(request: Request, req: QuestionRequest):
@@ -354,7 +351,6 @@ async def ask_question_with_file(
     advanced_queries = generate_advanced_queries(question_text)
     refined_q = advanced_queries.get("queries", [question_text])[0]
     
-    classify_intent(refined_q)
     route = route_query(refined_q)
     retriever = get_retriever()
     chunks = retriever.search(
@@ -417,7 +413,7 @@ async def submit_feedback(request: Request, req: FeedbackRequest):
                 "answer_preview": req.answer_preview[:200],
                 "rating": req.rating,
                 "comment": req.comment,
-                "user": current_user.get("username", "anonymous"),
+                "user": "anonymous",
                 "timestamp": datetime.now(),
             })
         _fb_logger.info(f"Feedback recorded | rating={req.rating} | q={req.question[:60]}")
