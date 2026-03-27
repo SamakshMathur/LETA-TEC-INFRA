@@ -44,4 +44,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
 # Note: Adjusting the CWD to rag-backend so relative paths resolve correctly
 WORKDIR /app/rag-backend
 
-CMD ["uvicorn", "app.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.api.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
