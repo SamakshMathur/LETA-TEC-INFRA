@@ -5,12 +5,12 @@ on:
     branches: [ "main" ]
 
 env:
-  AWS_REGION: ap-south-1
-  ECR_REPOSITORY: gst-rag-backend
-  ECS_SERVICE: gst-rag-service
-  ECS_CLUSTER: gst-rag-cluster
-  ECS_TASK_DEFINITION: rag-backend/.aws/task-definition.json
-  CONTAINER_NAME: gst-rag-backend
+  AWS_REGION:           ap-south-1
+  ECR_REPOSITORY:       gst-rag-backend
+  ECS_SERVICE:          gst-rag-service
+  ECS_CLUSTER:          gst-rag-cluster
+  ECS_TASK_DEFINITION:  rag-backend/.aws/task-definition.json
+  CONTAINER_NAME:       gst-rag-backend
 
 permissions:
   contents: read
@@ -35,6 +35,15 @@ jobs:
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Inject secrets into task definition
+      run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        sed -i "s/ACCOUNT_ID/$ACCOUNT_ID/g" ${{ env.ECS_TASK_DEFINITION }}
+        sed -i "s|\"PLACEHOLDER\"|\"${{ secrets.ANTHROPIC_API_KEY }}\"|1" ${{ env.ECS_TASK_DEFINITION }}
+        sed -i "s|\"PLACEHOLDER\"|\"${{ secrets.MONGO_URI }}\"|1" ${{ env.ECS_TASK_DEFINITION }}
+        sed -i "s|\"PLACEHOLDER\"|\"${{ secrets.SECRET_KEY }}\"|1" ${{ env.ECS_TASK_DEFINITION }}
+        sed -i "s|\"PLACEHOLDER\"|\"${{ secrets.ADMIN_MASTER_SECRET }}\"|1" ${{ env.ECS_TASK_DEFINITION }}
 
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
