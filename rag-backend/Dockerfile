@@ -40,12 +40,12 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Expose port (Render assigns $PORT dynamically, default 8000 for local)
-EXPOSE 8000
+# Expose port
+EXPOSE 8080
 
 # Health Check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
-    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/api/health || exit 1
 
 # Production command — sync data files then start uvicorn
 RUN chmod +x start.sh

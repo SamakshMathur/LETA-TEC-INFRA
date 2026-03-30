@@ -34,4 +34,4 @@ for path_str, file_id in GDRIVE_FILES.items():
 PYEOF
 
 echo "[START] DATA SYNC COMPLETE — starting uvicorn"
-exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
+exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8080}"
