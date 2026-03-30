@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api_proxy/:match*",
-      "destination": "http://13.201.85.173:8080/:match*"
+      "destination": "http://13.200.137.82:8080/:match*"
     }
   ],
   "headers": [
