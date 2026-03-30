@@ -1,4 +1,4 @@
-app = "gst-rag-backend"
+app = "gst-rag-leta-backend"
 primary_region = "sin"
 
 [build]
