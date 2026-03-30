@@ -21,11 +21,6 @@ import uvicorn
 from app.api.app import app
 from app.config import validate_config
 
-try:
-    from app.utils.s3_sync import sync_from_s3  # noqa: F401
-except ImportError:
-    def sync_from_s3(): pass
-
 
 @app.on_event("startup")
 async def startup_event():
