@@ -23,45 +23,46 @@ import requests
 from app.api.app import app
 from app.config import validate_config
 
+import os, sys
+
 GDRIVE_FILES = {
     Path("vectordb/index.faiss"):      "1fehfdhPCh3jxc3TBWitAfb0dv8I1opUM",
     Path("data/chunks/chunks.jsonl"):  "1u4EjWwNRz-tJaI8ifKPvpXxscNGiZ68V",
 }
 
+MIN_SIZES = {
+    Path("vectordb/index.faiss"):     100 * 1024 * 1024,
+    Path("data/chunks/chunks.jsonl"):  50 * 1024 * 1024,
+}
+
 def download_gdrive(file_id: str, dest: Path):
     dest.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Downloading {dest} from Google Drive...")
+    print(f"[DOWNLOAD] Starting download of {dest} ...", flush=True)
     session = requests.Session()
-    url = "https://drive.google.com/uc"
-    params = {"export": "download", "id": file_id}
+    url = "https://drive.usercontent.google.com/download"
+    params = {"id": file_id, "export": "download", "confirm": "t"}
     response = session.get(url, params=params, stream=True)
-    # Handle large-file confirmation token
-    token = next((v for k, v in response.cookies.items() if k.startswith("download_warning")), None)
-    if token:
-        params["confirm"] = token
-        response = session.get(url, params=params, stream=True)
+    print(f"[DOWNLOAD] HTTP {response.status_code} for {dest}", flush=True)
     with open(dest, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024 * 1024):
             if chunk:
                 f.write(chunk)
-    logger.info(f"Downloaded {dest} ({dest.stat().st_size / 1e6:.1f} MB)")
-
-MIN_SIZES = {
-    Path("vectordb/index.faiss"):     100 * 1024 * 1024,  # expect > 100 MB
-    Path("data/chunks/chunks.jsonl"):  50 * 1024 * 1024,  # expect > 50 MB
-}
+    size_mb = dest.stat().st_size / 1e6
+    print(f"[DOWNLOAD] Done: {dest} ({size_mb:.1f} MB)", flush=True)
 
 def ensure_data_files():
+    force = os.getenv("FORCE_DATA_DOWNLOAD", "0") == "1"
+    print(f"[DATA] Checking data files (force={force}, cwd={os.getcwd()})", flush=True)
     for dest, file_id in GDRIVE_FILES.items():
         min_size = MIN_SIZES.get(dest, 1024)
-        if not dest.exists() or dest.stat().st_size < min_size:
-            logger.info(f"File missing or too small ({dest}), downloading...")
+        exists = dest.exists()
+        size = dest.stat().st_size if exists else 0
+        print(f"[DATA] {dest}: exists={exists}, size={size/1e6:.1f}MB, min={min_size/1e6:.0f}MB", flush=True)
+        if force or not exists or size < min_size:
             try:
                 download_gdrive(file_id, dest)
             except Exception as e:
-                logger.error(f"Failed to download {dest}: {e}")
-        else:
-            logger.info(f"Data file already present: {dest} ({dest.stat().st_size / 1e6:.1f} MB)")
+                print(f"[DATA] ERROR downloading {dest}: {e}", flush=True, file=sys.stderr)
 
 @app.on_event("startup")
 async def startup_event():
