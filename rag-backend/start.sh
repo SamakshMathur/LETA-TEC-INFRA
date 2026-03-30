@@ -8,8 +8,8 @@ import os, sys
 from pathlib import Path
 
 GDRIVE_FILES = {
-    "vectordb/index.faiss":     "1fehfdhPCh3jxc3TBWitAfb0dv8I1opUM",
-    "data/chunks/chunks.jsonl": "1u4EjWwNRz-tJaI8ifKPvpXxscNGiZ68V",
+    "vectordb/index.faiss":     "1u4EjWwNRz-tJaI8ifKPvpXxscNGiZ68V",
+    "data/chunks/chunks.jsonl": "1fehfdhPCh3jxc3TBWitAfb0dv8I1opUM",
 }
 MIN_SIZES = {
     "vectordb/index.faiss":     100 * 1024 * 1024,
