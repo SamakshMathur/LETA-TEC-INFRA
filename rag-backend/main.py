@@ -46,15 +46,22 @@ def download_gdrive(file_id: str, dest: Path):
                 f.write(chunk)
     logger.info(f"Downloaded {dest} ({dest.stat().st_size / 1e6:.1f} MB)")
 
+MIN_SIZES = {
+    Path("vectordb/index.faiss"):     100 * 1024 * 1024,  # expect > 100 MB
+    Path("data/chunks/chunks.jsonl"):  50 * 1024 * 1024,  # expect > 50 MB
+}
+
 def ensure_data_files():
     for dest, file_id in GDRIVE_FILES.items():
-        if not dest.exists() or dest.stat().st_size < 1024:
+        min_size = MIN_SIZES.get(dest, 1024)
+        if not dest.exists() or dest.stat().st_size < min_size:
+            logger.info(f"File missing or too small ({dest}), downloading...")
             try:
                 download_gdrive(file_id, dest)
             except Exception as e:
                 logger.error(f"Failed to download {dest}: {e}")
         else:
-            logger.info(f"Data file already present: {dest}")
+            logger.info(f"Data file already present: {dest} ({dest.stat().st_size / 1e6:.1f} MB)")
 
 @app.on_event("startup")
 async def startup_event():
