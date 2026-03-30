@@ -47,5 +47,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
-# Production command — use shell form so $PORT is expanded at runtime
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Production command — sync data files then start uvicorn
+RUN chmod +x start.sh
+CMD ["bash", "start.sh"]
