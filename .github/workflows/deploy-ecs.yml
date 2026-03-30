@@ -8,7 +8,7 @@ env:
   AWS_REGION:           ap-south-1
   ECR_REPOSITORY:       gst-rag-backend
   ECS_SERVICE:          gst-rag-service
-  ECS_CLUSTER:          gst-rag-cluster
+  ECS_CLUSTER:          gst-rag-cluster1
   ECS_TASK_DEFINITION:  rag-backend/.aws/task-definition.json
   CONTAINER_NAME:       gst-rag-backend
 
