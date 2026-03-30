@@ -40,3 +40,4 @@ fuzzywuzzy
 python-Levenshtein
 Pillow
 ftfy
+gdown

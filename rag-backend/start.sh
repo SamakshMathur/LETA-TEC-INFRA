@@ -4,7 +4,7 @@ set -e
 echo "[START] DATA SYNC STARTING — cwd=$(pwd) force=${FORCE_DATA_DOWNLOAD:-0}"
 
 python3 - <<'PYEOF'
-import os, sys, requests
+import os, sys
 from pathlib import Path
 
 GDRIVE_FILES = {
@@ -18,27 +18,19 @@ MIN_SIZES = {
 
 force = os.getenv("FORCE_DATA_DOWNLOAD", "0") == "1"
 
+import gdown
+
 for path_str, file_id in GDRIVE_FILES.items():
     dest = Path(path_str)
     size = dest.stat().st_size if dest.exists() else 0
     print(f"[DATA] {dest}: exists={dest.exists()}, size={size/1e6:.1f}MB", flush=True)
     if force or not dest.exists() or size < MIN_SIZES[path_str]:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        print(f"[DATA] Downloading {dest} ...", flush=True)
-        session = requests.Session()
-        resp = session.get(
-            "https://drive.usercontent.google.com/download",
-            params={"id": file_id, "export": "download", "confirm": "t"},
-            stream=True,
-        )
-        print(f"[DATA] HTTP {resp.status_code}", flush=True)
-        with open(dest, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    f.write(chunk)
+        print(f"[DATA] Downloading {dest} via gdown...", flush=True)
+        gdown.download(id=file_id, output=str(dest), quiet=False, fuzzy=True)
         print(f"[DATA] Done: {dest} ({dest.stat().st_size/1e6:.1f}MB)", flush=True)
     else:
-        print(f"[DATA] File OK, skipping download: {dest}", flush=True)
+        print(f"[DATA] File OK: {dest}", flush=True)
 PYEOF
 
 echo "[START] DATA SYNC COMPLETE — starting uvicorn"
