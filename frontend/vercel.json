@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api_proxy/:match*",
-      "destination": "https://leta-rag-backend-production.up.railway.app/:match*"
+      "destination": "http://13.201.85.173:8080/:match*"
     }
   ],
   "headers": [
