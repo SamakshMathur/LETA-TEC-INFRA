@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api_proxy/:match*",
-      "destination": "https://leta-rag-backend-production-4bbd.up.railway.app/:match*"
+      "destination": "https://leta-rag-backend-production.up.railway.app/:match*"
     }
   ],
   "headers": [
