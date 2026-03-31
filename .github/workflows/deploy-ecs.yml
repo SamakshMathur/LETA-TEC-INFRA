@@ -3,6 +3,8 @@ name: Deploy to Amazon ECS
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "rag-backend/**"
 
 env:
   AWS_REGION:           ap-south-1
