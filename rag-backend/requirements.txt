@@ -1,7 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
-torchvision
-torchaudio
 fastapi
 uvicorn
 python-multipart
@@ -15,8 +13,6 @@ boto3
 markdown
 requests
 aiofiles
-hf_xet
-av
 openai
 anthropic
 pydantic[email]
@@ -27,7 +23,6 @@ python-docx
 pdf2image
 pytesseract
 numpy
-spaces
 flashrank
 diskcache
 reportlab
