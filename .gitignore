@@ -38,3 +38,5 @@ rag-backend/__pycache__/
 rag-backend/.diskcache_v5/
 rag-backend/.flashrank_cache/
 *.pem
+*accessKeys*
+*_accessKeys*

@@ -41,6 +41,25 @@ MAX_RESPONSE_POINTS = int(os.getenv("MAX_RESPONSE_POINTS", "12"))
 RERANKING_MODEL = "ms-marco-MiniLM-L-12-v2"
 CACHE_DIR = ".diskcache_v5"
 
+# ─── Token Budget & Cost Controls ─────────────────────────────────────────
+# Hard cap on input tokens sent to the LLM. Queries exceeding this are rejected
+# before hitting the API — prevents runaway costs from adversarial inputs.
+MAX_INPUT_TOKENS = int(os.getenv("MAX_INPUT_TOKENS", "8000"))
+
+# Haiku routing: queries whose complexity score is below this threshold are
+# answered by the cheaper Haiku model instead of Sonnet.
+# Scale: 0.0 (trivial) → 1.0 (highly complex multi-section analysis)
+HAIKU_COMPLEXITY_THRESHOLD = float(os.getenv("HAIKU_COMPLEXITY_THRESHOLD", "0.4"))
+
+# Redis Cache Config
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+# Similarity threshold for semantic cache hits (0.92 = very close match required)
+CACHE_SIMILARITY_THRESHOLD = float(os.getenv("CACHE_SIMILARITY_THRESHOLD", "0.92"))
+# Minimum answer confidence to store in cache (low-confidence answers are never cached)
+CACHE_MIN_CONFIDENCE = float(os.getenv("CACHE_MIN_CONFIDENCE", "0.85"))
+# TTL in seconds: 48h for legal content (GST rules/circulars change frequently)
+CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", str(48 * 3600)))
+
 # ─── Vector DB Config (absolute paths) ────────────────────────────────────
 VECTOR_DB_PATH = str(_APP_ROOT / "vectordb" / "index.faiss")
 CHUNKS_PATH = str(_APP_ROOT / "data" / "chunks" / "chunks.jsonl")

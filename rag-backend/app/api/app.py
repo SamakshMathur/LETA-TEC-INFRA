@@ -1,4 +1,7 @@
+import json
 import logging
+import time
+import uuid
 
 from fastapi import FastAPI, File, UploadFile, Form
 from pydantic import BaseModel
@@ -7,8 +10,47 @@ from pathlib import Path
 
 from app.routing.router import route_query
 from app.generation.context_builder import build_context
-# intent_classifier imported via router (keyword-only, no LLM)
 
+# ── Structured JSON logging setup ────────────────────────────────────────────
+# Each log line is a JSON object — queryable in CloudWatch Logs Insights.
+# Fields: timestamp, level, logger, message, plus any extra kwargs passed
+# to logger.info(..., extra={...}).
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        # Attach any extra fields (query_id, latency_ms, cache_hit, etc.)
+        for key, val in record.__dict__.items():
+            if key not in (
+                "name", "msg", "args", "levelname", "levelno", "pathname",
+                "filename", "module", "exc_info", "exc_text", "stack_info",
+                "lineno", "funcName", "created", "msecs", "relativeCreated",
+                "thread", "threadName", "processName", "process", "message",
+                "taskName",
+            ):
+                payload[key] = val
+        return json.dumps(payload, default=str)
+
+
+def _configure_json_logging():
+    formatter = _JsonFormatter()
+    root = logging.getLogger()
+    if not root.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        root.addHandler(handler)
+    else:
+        for h in root.handlers:
+            h.setFormatter(formatter)
+    root.setLevel(logging.INFO)
+
+
+_configure_json_logging()
 logger = logging.getLogger(__name__)
 
 # ---------- App ----------
@@ -48,7 +90,37 @@ app.add_middleware(
 
 from fastapi import Request
 
-# Maximum Security: Strict Security Headers
+# ── Request logging middleware ────────────────────────────────────────────────
+# Emits one JSON log line per request with fields queryable in CloudWatch:
+#   query_id, method, path, status_code, latency_ms
+# The /ask endpoint adds extra fields (cache_hit, domain, etc.) via its own logs.
+
+_request_logger = logging.getLogger("leta.request")
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    query_id = str(uuid.uuid4())[:8]
+    request.state.query_id = query_id
+    t0 = time.monotonic()
+
+    response = await call_next(request)
+
+    latency_ms = round((time.monotonic() - t0) * 1000, 1)
+    _request_logger.info(
+        f"{request.method} {request.url.path} {response.status_code}",
+        extra={
+            "query_id": query_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "latency_ms": latency_ms,
+            "client_ip": request.client.host if request.client else "unknown",
+        },
+    )
+    return response
+
+
+# ── Security headers middleware ───────────────────────────────────────────────
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -143,7 +215,7 @@ async def health_check():
 
     return health_status
 
-async def stream_and_save(generator, session_id, user_query, chunks=None, context="", truth_rules_text=""):
+async def stream_and_save(generator, session_id, user_query, chunks=None, context="", truth_rules_text="", query_vec=None):
     """
     Wrapper that streams the LLM response AND runs post-generation
     accuracy layers before saving to DB.
@@ -221,12 +293,31 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                      "$set": {"updated_at": datetime.now()}}
                 )
 
+        # ── Confidence-gated cache store ──────────────────────────────────
+        # Only cache if the answer is non-empty and has a high confidence score.
+        # Confidence is estimated from the validation layers: an answer that
+        # passed citation validation, hallucination guard, and answer verifier
+        # without warnings is scored higher.
+        if full_answer.strip() and query_vec is not None:
+            try:
+                from app.cache import cache_store
+                from app.generation.confidence import estimate_confidence
+                confidence = estimate_confidence(full_answer, chunks or [])
+                cache_store(user_query, query_vec, full_answer, confidence)
+                _logger.debug(f"Cache store attempt | confidence={confidence:.2f}")
+            except Exception as ce:
+                _logger.warning(f"Cache store error (non-fatal): {ce}")
+
+_ask_logger = logging.getLogger("leta.ask")
+
 @app.post("/ask")
 @limiter.limit("30/minute")
 async def ask_question(request: Request, req: QuestionRequest):
     question = req.question.strip()
     session_id = req.session_id
-    
+    query_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
+    t0 = time.monotonic()
+
     # IMMEDIATE SAVE: Save User Question First to prevent data loss on switch
     if session_id:
         collection = get_session_collection()
@@ -235,7 +326,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                 {"session_id": session_id},
                 {"$push": {"messages": {"role": "user", "content": question, "timestamp": datetime.now()}}}
             )
-    
+
     # 1. Fetch History if Session ID exists (exclude the just-added current question)
     history_context = ""
     if session_id:
@@ -246,9 +337,28 @@ async def ask_question(request: Request, req: QuestionRequest):
                 recent = session["messages"][:-1][-6:]
                 for msg in recent:
                     history_context += f"{msg['role'].upper()}: {msg['content']}\n"
-    
+
     # ── Fast local routing (keyword-only, no LLM call) ──
     route = route_query(question)
+    domain = route.get("domain", "general")
+
+    # ── Cache lookup (L1 exact + L2 semantic) ────────────────────────────────
+    from app.cache import cache_lookup, embed_query as _cache_embed
+    from app.retrieval.retriever import embed_query
+    query_vec = embed_query(question)
+    cached_answer = cache_lookup(question, query_vec)
+    if cached_answer:
+        _ask_logger.info(
+            "Cache HIT — serving cached answer",
+            extra={
+                "query_id": query_id, "cache_hit": True,
+                "domain": domain, "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+            },
+        )
+        from fastapi.responses import StreamingResponse as _SR
+        async def _cached_stream():
+            yield cached_answer
+        return _SR(_cached_stream(), media_type="text/event-stream")
 
     # ── Single LLM call: query expansion + topic extraction ──
     from app.retrieval.query_refiner import generate_advanced_queries
@@ -263,7 +373,7 @@ async def ask_question(request: Request, req: QuestionRequest):
         advanced_queries=advanced_queries,
     )
     context = build_context(chunks)
-    
+
     # Append History to Context
     full_rag_context = context
     if history_context:
@@ -277,11 +387,21 @@ async def ask_question(request: Request, req: QuestionRequest):
     from app.generation.synthesizer import synthesize_answer_stream
     response_stream = synthesize_answer_stream(question, full_rag_context)
 
+    _ask_logger.info(
+        "Cache MISS — running full RAG pipeline",
+        extra={
+            "query_id": query_id, "cache_hit": False,
+            "domain": domain, "chunks_retrieved": len(chunks),
+            "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+        },
+    )
+
     from fastapi.responses import StreamingResponse
-    # Wrap with full post-generation accuracy pipeline
+    # Wrap with full post-generation accuracy pipeline + cache store
     wrapped_stream = stream_and_save(
         response_stream, session_id, question,
         chunks=chunks, context=context, truth_rules_text=truth_rules_text,
+        query_vec=query_vec,
     )
 
     return StreamingResponse(wrapped_stream, media_type="text/event-stream")
