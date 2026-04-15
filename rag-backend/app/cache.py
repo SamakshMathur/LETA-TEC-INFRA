@@ -35,6 +35,24 @@ logger = logging.getLogger(__name__)
 
 _redis_client = None
 
+# ── DiskCache fallback (used when Redis is unavailable) ──────────────────────
+# Works with the local filesystem — ephemeral per container session but still
+# saves repeated calls within the same deployment (team asking the same query).
+_disk_cache = None
+
+def _get_disk_cache():
+    global _disk_cache
+    if _disk_cache is not None:
+        return _disk_cache
+    try:
+        import diskcache
+        _disk_cache = diskcache.Cache(".diskcache_v5")
+        logger.info("DiskCache fallback active (Redis unavailable)")
+    except Exception as e:
+        logger.warning(f"DiskCache also unavailable: {e}")
+        _disk_cache = None
+    return _disk_cache
+
 
 def _get_redis():
     """Returns a connected Redis client, or None if Redis is unavailable."""
@@ -48,7 +66,7 @@ def _get_redis():
         _redis_client = client
         logger.info(f"Redis connected: {REDIS_URL}")
     except Exception as e:
-        logger.warning(f"Redis unavailable — caching disabled: {e}")
+        logger.warning(f"Redis unavailable — falling back to DiskCache: {e}")
         _redis_client = None
     return _redis_client
 
@@ -92,17 +110,28 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 # ── Layer 1: Exact Hash Cache ────────────────────────────────────────────────
 
 def get_exact(query: str) -> Optional[str]:
+    key = _exact_key(query)
+    # Try Redis first
     r = _get_redis()
-    if r is None:
-        return None
-    try:
-        data = r.get(_exact_key(query))
-        if data:
-            payload = json.loads(data)
-            logger.info(f"Cache L1 HIT | q={query[:60]}")
-            return payload["answer"]
-    except Exception as e:
-        logger.warning(f"Cache L1 get error: {e}")
+    if r is not None:
+        try:
+            data = r.get(key)
+            if data:
+                payload = json.loads(data)
+                logger.info(f"Cache L1 HIT (Redis) | q={query[:60]}")
+                return payload["answer"]
+        except Exception as e:
+            logger.warning(f"Cache L1 Redis get error: {e}")
+    # Fallback to DiskCache
+    dc = _get_disk_cache()
+    if dc is not None:
+        try:
+            payload = dc.get(key)
+            if payload:
+                logger.info(f"Cache L1 HIT (DiskCache) | q={query[:60]}")
+                return payload["answer"]
+        except Exception as e:
+            logger.warning(f"Cache L1 DiskCache get error: {e}")
     return None
 
 
@@ -110,15 +139,25 @@ def set_exact(query: str, answer: str, confidence: float) -> None:
     if confidence < CACHE_MIN_CONFIDENCE:
         logger.debug(f"Cache L1 SKIP (low confidence {confidence:.2f}) | q={query[:60]}")
         return
+    key = _exact_key(query)
+    payload = {"answer": answer, "confidence": confidence, "ts": time.time()}
+    # Try Redis first
     r = _get_redis()
-    if r is None:
-        return
-    try:
-        payload = json.dumps({"answer": answer, "confidence": confidence, "ts": time.time()})
-        r.setex(_exact_key(query), CACHE_TTL_SECONDS, payload.encode())
-        logger.debug(f"Cache L1 SET | q={query[:60]}")
-    except Exception as e:
-        logger.warning(f"Cache L1 set error: {e}")
+    if r is not None:
+        try:
+            r.setex(key, CACHE_TTL_SECONDS, json.dumps(payload).encode())
+            logger.debug(f"Cache L1 SET (Redis) | q={query[:60]}")
+            return
+        except Exception as e:
+            logger.warning(f"Cache L1 Redis set error: {e}")
+    # Fallback to DiskCache
+    dc = _get_disk_cache()
+    if dc is not None:
+        try:
+            dc.set(key, payload, expire=CACHE_TTL_SECONDS)
+            logger.debug(f"Cache L1 SET (DiskCache) | q={query[:60]}")
+        except Exception as e:
+            logger.warning(f"Cache L1 DiskCache set error: {e}")
 
 
 # ── Embedding Cache (query text → embedding vector) ─────────────────────────
