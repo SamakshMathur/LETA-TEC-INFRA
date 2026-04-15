@@ -21,7 +21,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")           # used only when provider
 # Claude Models (used when LLM_PROVIDER=anthropic)
 CLAUDE_MAIN_MODEL = os.getenv("CLAUDE_MAIN_MODEL", "claude-sonnet-4-6")
 CLAUDE_UTILITY_MODEL = os.getenv("CLAUDE_UTILITY_MODEL", "claude-haiku-4-5-20251001")
-CLAUDE_THINKING_BUDGET = int(os.getenv("CLAUDE_THINKING_BUDGET", "3000"))
+CLAUDE_THINKING_BUDGET = int(os.getenv("CLAUDE_THINKING_BUDGET", "8000"))
 VISUAL_LLM_MODEL = "claude-sonnet-4-6"
 
 # ─── Embedding Config ─────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "150"))
 VECTOR_EXPANDED_TOP_K = int(os.getenv("VECTOR_EXPANDED_TOP_K", "50"))
 BM25_TOP_K = int(os.getenv("BM25_TOP_K", "100"))
 MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.7"))
-MAX_RESPONSE_POINTS = int(os.getenv("MAX_RESPONSE_POINTS", "12"))
+MAX_RESPONSE_POINTS = int(os.getenv("MAX_RESPONSE_POINTS", "15"))
 
 # ─── Reranking & Optimization ─────────────────────────────────────────────
 RERANKING_MODEL = "ms-marco-MiniLM-L-12-v2"
@@ -44,7 +44,7 @@ CACHE_DIR = ".diskcache_v5"
 # ─── Token Budget & Cost Controls ─────────────────────────────────────────
 # Hard cap on input tokens sent to the LLM. Queries exceeding this are rejected
 # before hitting the API — prevents runaway costs from adversarial inputs.
-MAX_INPUT_TOKENS = int(os.getenv("MAX_INPUT_TOKENS", "8000"))
+MAX_INPUT_TOKENS = int(os.getenv("MAX_INPUT_TOKENS", "150000"))
 
 # Haiku routing: queries whose complexity score is below this threshold are
 # answered by the cheaper Haiku model instead of Sonnet.
