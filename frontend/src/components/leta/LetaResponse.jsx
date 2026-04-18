@@ -114,12 +114,12 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
                                 e.preventDefault();
                                 
                                 // Parse out the base URL and the hash fragments for precise PDF jumping
-                                let baseUrl = href;
+                                let baseUrl = props.href;
                                 let page = null;
                                 let search = null;
                                 
-                                if (href.includes('#')) {
-                                   const parts = href.split('#');
+                                if (props.href.includes('#')) {
+                                   const parts = props.href.split('#');
                                    baseUrl = parts[0];
                                    const hashParams = new URLSearchParams(parts[1]);
                                    if (hashParams.has('page')) page = hashParams.get('page');
