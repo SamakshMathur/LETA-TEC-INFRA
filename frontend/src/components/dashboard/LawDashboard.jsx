@@ -84,7 +84,7 @@ const LawDashboard = ({ title, domainId, contextDesc, definition, implDate }) =>
                       Litigation Support
                     </h2>
                     <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#9a9a9a' }}>
-                      Access 500+ litigation templates, notices, refunds, and appeals.
+                      Access 1,100+ litigation templates, notices, refunds, and appeals.
                       Match your scenario instantly.
                     </p>
                     <Link to="/responses" className="btn-titan inline-block text-center w-full py-3 text-xs tracking-widest">
