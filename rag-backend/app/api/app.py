@@ -73,7 +73,7 @@ import os
 
 # CORS: Use ALLOWED_ORIGINS env var in production (comma-separated),
 # falls back to localhost dev origins when not set.
-_default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+_default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://gst-rag-95li.vercel.app"
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")

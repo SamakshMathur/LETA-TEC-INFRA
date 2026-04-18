@@ -2,7 +2,10 @@
   "rewrites": [
     {
       "source": "/api_proxy/:match*",
-      "destination": "http://15.207.248.26:8080/:match*"
+      "destination": "http://13.200.236.52:8000/:match*",
+      "cors": {
+        "allowedOrigins": ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "https://gst-rag-95li.vercel.app"]
+      }
     },
     {
       "source": "/((?!api_proxy).*)",
