@@ -6,3 +6,5 @@ export { default as LetaExplainability } from './LetaExplainability';
 export { default as AdvisoryModal } from './AdvisoryModal';
 export { default as ConfidenceBadge } from './ConfidenceBadge';
 export { default as CitationList } from './CitationList';
+export { default as SourceCard } from './SourceCard';
+export { default as ThinkingSources } from './ThinkingSources';

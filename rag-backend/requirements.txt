@@ -36,3 +36,4 @@ python-Levenshtein
 Pillow
 ftfy
 gdown
+redis

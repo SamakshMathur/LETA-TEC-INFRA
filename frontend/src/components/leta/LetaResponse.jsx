@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import AdvisoryModal from './AdvisoryModal';
+import ThinkingSources from './ThinkingSources';
 
 const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate }) => {
   const [citationMode, setCitationMode] = useState(false);
@@ -70,6 +71,13 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
   
         {/* Content Area */}
         <div className="p-6 md:p-8 bg-[#050A10]">
+          {data.consulted_sources && data.consulted_sources.length > 0 && (
+            <ThinkingSources 
+              sources={data.consulted_sources} 
+              onDocumentClick={onDocumentClick}
+            />
+          )}
+
           {!citationMode ? (
             <>
               <div className={`prose prose-sm md:prose-base max-w-none font-sans leading-relaxed ${

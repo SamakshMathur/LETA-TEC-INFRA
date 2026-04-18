@@ -228,56 +228,108 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
     """
     import logging
     _logger = logging.getLogger("stream_and_save")
+    import asyncio
+    import json
     full_answer = ""
+
+    # 1. Immediately emit metadata about retrieved sources (Perplexity-style transparency)
+    if chunks:
+        try:
+            unique_sources = []
+            seen_src = set()
+            for c in chunks:
+                src_key = (c.get("source"), c.get("page", 0))
+                if src_key not in seen_src:
+                    seen_src.add(src_key)
+                    unique_sources.append({
+                        "title": c.get("source", "Document"),
+                        "page": c.get("page", 1),
+                        # Construct a URL for the PDF viewer
+                        "url": f"/api/documents/view?filename={c.get('source')}&page={c.get('page', 1)}",
+                        "score": c.get("_rerank_score", 0)
+                    })
+                if len(unique_sources) >= 8: # Limit to top 8 unique sources
+                    break
+            
+            metadata_payload = {
+                "type": "metadata",
+                "sources": unique_sources
+            }
+            yield f"__METADATA__:{json.dumps(metadata_payload)}__END_METADATA__"
+        except Exception as me:
+            _logger.warning(f"Metadata emission failed: {me}")
+
     try:
         for chunk in generator:
             full_answer += chunk
             yield chunk
 
         if chunks and full_answer.strip():
-            # --- Layer 1: Citation Validator ---
-            try:
-                from app.generation.citation_validator import CitationValidator
-                annotated = CitationValidator.validate_citations(full_answer, chunks)
-                report = annotated[len(full_answer):]
-                if report:
-                    full_answer = annotated
-                    yield report
-            except Exception as e:
-                _logger.warning(f"Citation validator error: {e}")
+            # --- Parallel Accuracy Pipeline ---
+            # We run all validation layers concurrently to minimize post-generation delay.
+            # Layer 2 (LLM Verifier) is the longest (I/O bound), while others are fast.
+            
+            async def run_citation_validator():
+                try:
+                    from app.generation.citation_validator import CitationValidator
+                    return CitationValidator.validate_citations(full_answer, chunks)
+                except Exception as e:
+                    _logger.warning(f"Citation validator error: {e}")
+                    return full_answer
 
-            # --- Layer 2: Answer Verifier (LLM second-pass) ---
-            try:
-                from app.generation.answer_verifier import verify_answer
-                verification_warning = verify_answer(user_query, full_answer, chunks)
-                if verification_warning:
-                    full_answer += verification_warning
-                    yield verification_warning
-            except Exception as e:
-                _logger.warning(f"Answer verifier error: {e}")
+            async def run_answer_verifier():
+                try:
+                    # verify_answer is currently sync, but we can run it in a thread pool
+                    from app.generation.answer_verifier import verify_answer
+                    return await asyncio.to_thread(verify_answer, user_query, full_answer, chunks)
+                except Exception as e:
+                    _logger.warning(f"Answer verifier error: {e}")
+                    return None
 
-            # --- Layer 3: Hallucination Guard (ungrounded numbers) ---
-            try:
-                from app.generation.hallucination_guard import check_hallucinated_numbers
-                number_warning = check_hallucinated_numbers(
-                    full_answer, context, truth_rules_text, chunks,
-                )
-                if number_warning:
-                    full_answer += number_warning
-                    yield number_warning
-            except Exception as e:
-                _logger.warning(f"Hallucination guard error: {e}")
+            async def run_hallucination_guard():
+                try:
+                    from app.generation.hallucination_guard import check_hallucinated_numbers
+                    return check_hallucinated_numbers(full_answer, context, truth_rules_text, chunks)
+                except Exception as e:
+                    _logger.warning(f"Hallucination guard error: {e}")
+                    return ""
 
-            # --- Layer 4: Template Matcher ---
-            try:
-                from app.retrieval.template_matcher import search_templates, format_template_suggestions
-                matched_templates = search_templates(user_query, top_k=3)
-                template_block = format_template_suggestions(matched_templates)
-                if template_block:
-                    full_answer += template_block
-                    yield template_block
-            except Exception as e:
-                _logger.warning(f"Template matcher error: {e}")
+            async def run_template_matcher():
+                try:
+                    from app.retrieval.template_matcher import search_templates, format_template_suggestions
+                    matched = await asyncio.to_thread(search_templates, user_query, top_k=3)
+                    return format_template_suggestions(matched)
+                except Exception as e:
+                    _logger.warning(f"Template matcher error: {e}")
+                    return ""
+
+            # Standard Python 3.10+ execution
+            results = await asyncio.gather(
+                run_citation_validator(),
+                run_answer_verifier(),
+                run_hallucination_guard(),
+                run_template_matcher(),
+            )
+
+            annotated_answer, verify_warn, hallu_warn, template_block = results
+
+            # Update the answer and yield reports in order
+            if annotated_answer and len(annotated_answer) > len(full_answer):
+                report = annotated_answer[len(full_answer):]
+                full_answer = annotated_answer
+                yield report
+            
+            if verify_warn:
+                full_answer += verify_warn
+                yield verify_warn
+            
+            if hallu_warn:
+                full_answer += hallu_warn
+                yield hallu_warn
+            
+            if template_block:
+                full_answer += template_block
+                yield template_block
 
     except Exception as e:
         _logger.error(f"Error in stream_and_save: {e}")

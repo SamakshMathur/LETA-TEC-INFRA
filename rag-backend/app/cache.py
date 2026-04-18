@@ -15,10 +15,13 @@ Accuracy guarantee:
 import hashlib
 import json
 import logging
+import re
 import struct
+import threading
 import time
 from typing import Optional
 
+import faiss
 import numpy as np
 
 from app.config import (
@@ -189,52 +192,134 @@ def set_cached_embedding(query: str, vec: np.ndarray) -> None:
 
 
 # ── Layer 2: Semantic Cache ──────────────────────────────────────────────────
-# We store up to MAX_SEMANTIC_ENTRIES recent (embedding, answer, confidence)
-# tuples in a Redis hash keyed by a short content hash.
-# On lookup we load all entries, compute cosine similarity, and return the
-# best match if it clears the threshold.
+# We use a 2-Tiered Semantic Cache:
+# Tier 1: Local FAISS Index (In-memory, O(log N) search)
+# Tier 2: Redis Hash Index (Persistent storage, O(N) but used for sync)
 
-MAX_SEMANTIC_ENTRIES = 2000   # keep memory bounded (~2000 × 1024×4B ≈ 8MB)
+MAX_SEMANTIC_ENTRIES = 2000  # keep memory bounded
+_faiss_index = None
+_faiss_metadata = []         # Stores [answer, query_text, confidence]
+_faiss_lock = threading.Lock()
 
-
-def get_semantic(query_vec: np.ndarray) -> Optional[str]:
-    """
-    Returns cached answer if any stored entry has cosine similarity
-    >= CACHE_SIMILARITY_THRESHOLD with query_vec.
-    """
+def _refresh_faiss_index():
+    """Syncs the local FAISS index from Redis data."""
+    global _faiss_index, _faiss_metadata
     r = _get_redis()
     if r is None:
-        return None
+        return
+    
     try:
         index_key = _semantic_index_key()
         all_entries = r.hgetall(index_key)
         if not all_entries:
-            return None
+            return
 
-        best_sim = -1.0
-        best_answer = None
-
+        vectors = []
+        metadata = []
         for _, raw in all_entries.items():
             try:
                 entry = json.loads(raw)
-                stored_vec = _bytes_to_vec(bytes.fromhex(entry["vec_hex"]))
-                sim = _cosine_similarity(query_vec, stored_vec)
-                if sim > best_sim:
-                    best_sim = sim
-                    best_answer = entry["answer"]
+                vec = _bytes_to_vec(bytes.fromhex(entry["vec_hex"]))
+                vectors.append(vec)
+                metadata.append({
+                    "answer": entry["answer"],
+                    "query_text": entry.get("query_text", ""), # for guard check
+                    "confidence": entry["confidence"]
+                })
             except Exception:
                 continue
 
-        if best_sim >= CACHE_SIMILARITY_THRESHOLD and best_answer:
-            logger.info(f"Cache L2 HIT | similarity={best_sim:.3f}")
-            return best_answer
+        if vectors:
+            with _faiss_lock:
+                # Use IndexFlatIP for Cosine Similarity (vectors are normalized in Retriever)
+                dim = len(vectors[0])
+                new_index = faiss.IndexFlatIP(dim)
+                new_index.add(np.array(vectors).astype('float32'))
+                _faiss_index = new_index
+                _faiss_metadata = metadata
+                logger.info(f"FAISS Cache Index rebuilt: {len(metadata)} entries")
+    except Exception as e:
+        logger.error(f"Failed to refresh FAISS cache: {e}")
+
+def verify_cache_hit(query: str, cached_metadata: dict) -> bool:
+    """
+    Accuracy Guard: Ensures the cached answer is truly relevant.
+    Checks for high-priority legal keyword overlap.
+    """
+    q_lower = query.lower()
+    # Extract sections like "Sec 17", "Section 17(5)"
+    q_sections = set(re.findall(r'\bsec(?:tion)?\s*\d+', q_lower))
+    
+    if not q_sections:
+        return True # General query, rely on embedding similarity
+    
+    ans_text = (cached_metadata.get("answer", "") + " " + cached_metadata.get("query_text", "")).lower()
+    
+    # If the query specifies a section, the answer MUST contain it
+    for sec in q_sections:
+        # Normalize: "Sec 17" -> "17"
+        sec_num = re.search(r'\d+', sec).group()
+        if sec_num not in ans_text:
+            logger.warning(f"Accuracy Guard REJECTED cache hit: Query mentions Sec {sec_num} but answer does not.")
+            return False
+            
+    return True
+
+import re
+
+def get_semantic(query_vec: np.ndarray, query_text: str = "") -> Optional[str]:
+    """
+    Returns cached answer if any stored entry has cosine similarity
+    >= CACHE_SIMILARITY_THRESHOLD and passes accuracy guard.
+    """
+    global _faiss_index
+    if _faiss_index is None:
+        _refresh_faiss_index()
+    
+    if _faiss_index is None:
+        return None
+
+    try:
+        query_vec_np = np.array([query_vec]).astype('float32')
+        D, I = _faiss_index.search(query_vec_np, 1) # Get top 1 result
+        
+        if len(I[0]) > 0:
+            idx = I[0][0]
+            similarity = D[0][0]
+            
+            if idx != -1 and similarity >= CACHE_SIMILARITY_THRESHOLD:
+                meta = _faiss_metadata[idx]
+                
+                # Run Accuracy Guard
+                if query_text and not verify_cache_hit(query_text, meta):
+                    return None
+                    
+                logger.info(f"Cache L2 HIT (FAISS) | similarity={similarity:.3f}")
+                return meta["answer"]
 
     except Exception as e:
-        logger.warning(f"Cache L2 get error: {e}")
+        logger.warning(f"Cache L2 (FAISS) search error: {e}")
+        # Fallback to slow Redis scan if FAISS fails
+        return _get_semantic_slow(query_vec)
+    return None
+
+def _get_semantic_slow(query_vec: np.ndarray) -> Optional[str]:
+    """Legacy slow scan as fallback."""
+    r = _get_redis()
+    if r is None: return None
+    try:
+        index_key = _semantic_index_key()
+        all_entries = r.hgetall(index_key)
+        for _, raw in all_entries.items():
+            entry = json.loads(raw)
+            sim = _cosine_similarity(query_vec, _bytes_to_vec(bytes.fromhex(entry["vec_hex"])))
+            if sim >= CACHE_SIMILARITY_THRESHOLD:
+                return entry["answer"]
+    except: pass
     return None
 
 
-def set_semantic(query_vec: np.ndarray, answer: str, confidence: float) -> None:
+def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_text: str = "") -> None:
     if confidence < CACHE_MIN_CONFIDENCE:
         return
     r = _get_redis()
@@ -246,24 +331,34 @@ def set_semantic(query_vec: np.ndarray, answer: str, confidence: float) -> None:
         # Evict oldest entries if we're at the limit
         current_count = r.hlen(index_key)
         if current_count >= MAX_SEMANTIC_ENTRIES:
-            # Remove a random 10% to make room without full scan
             keys_to_delete = list(r.hkeys(index_key))[:MAX_SEMANTIC_ENTRIES // 10]
             if keys_to_delete:
                 r.hdel(index_key, *keys_to_delete)
 
         entry_key = hashlib.sha256(
-            (answer[:100] + str(time.time())).encode()
+            (answer[:100] + query_text[:50]).encode()
         ).hexdigest()[:16]
 
         entry = {
             "vec_hex": _vec_to_bytes(query_vec).hex(),
             "answer": answer,
+            "query_text": query_text,
             "confidence": confidence,
             "ts": time.time(),
         }
         r.hset(index_key, entry_key, json.dumps(entry))
-        # Refresh TTL on the index hash
         r.expire(index_key, CACHE_TTL_SECONDS)
+        
+        # Incremental update to local index
+        with _faiss_lock:
+            if _faiss_index is not None:
+                _faiss_index.add(np.array([query_vec]).astype('float32'))
+                _faiss_metadata.append({
+                    "answer": answer,
+                    "query_text": query_text,
+                    "confidence": confidence
+                })
+        
         logger.debug(f"Cache L2 SET | entries~={current_count + 1}")
     except Exception as e:
         logger.warning(f"Cache L2 set error: {e}")
@@ -281,7 +376,7 @@ def cache_lookup(query: str, query_vec: Optional[np.ndarray] = None) -> Optional
         return answer
 
     if query_vec is not None:
-        answer = get_semantic(query_vec)
+        answer = get_semantic(query_vec, query_text=query)
         if answer:
             return answer
 
@@ -297,7 +392,7 @@ def cache_store(
     """Store answer in both L1 (exact) and L2 (semantic) if confidence is sufficient."""
     set_exact(query, answer, confidence)
     if query_vec is not None:
-        set_semantic(query_vec, answer, confidence)
+        set_semantic(query_vec, answer, confidence, query_text=query)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

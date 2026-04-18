@@ -5,7 +5,7 @@ import { MessageSquare, X, Send, Sparkles, FileText, ChevronRight, Terminal, Men
 import LetaResponse from './LetaResponse';
 import { BASE_URL } from '../../config/api';
 import ChatSidebar from './ChatSidebar';
-import { NeuralLoader } from '../effects';
+import { SimpleSearchLoader } from '../effects';
 import { PDFViewer } from '../documents';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -171,20 +171,62 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
       const decoder = new TextDecoder("utf-8");
       setIsLoading(false); // Stop loader, show streaming text
 
+      let accumulatedMetadata = "";
+      let isParsingMetadata = false;
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         
         const chunk = decoder.decode(value, { stream: true });
         
+        // --- Metadata Parsing Logic ---
+        if (chunk.includes("__METADATA__:")) {
+          isParsingMetadata = true;
+          const parts = chunk.split("__METADATA__:");
+          // part[0] might be empty or old text
+          accumulatedMetadata += parts[1];
+        } else if (isParsingMetadata) {
+          if (chunk.includes("__END_METADATA__")) {
+            const parts = chunk.split("__END_METADATA__");
+            accumulatedMetadata += parts[0];
+            
+            try {
+              const meta = JSON.parse(accumulatedMetadata);
+              setMessages(prev => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last.role === 'assistant') {
+                  next[next.length - 1] = { ...last, consulted_sources: meta.sources };
+                }
+                return next;
+              });
+            } catch (e) {
+              console.error("Failed to parse metadata", e);
+            }
+            
+            isParsingMetadata = false;
+            // Process the rest of the chunk as normal text
+            const remainingText = parts[1];
+            if (remainingText) {
+              appendChunkToLastMessage(remainingText);
+            }
+          } else {
+            accumulatedMetadata += chunk;
+          }
+        } else {
+          appendChunkToLastMessage(chunk);
+        }
+      }
+
+      function appendChunkToLastMessage(text) {
         setMessages(prev => {
             const newHistory = [...prev];
             const lastMsg = newHistory[newHistory.length - 1];
             if (lastMsg.role === 'assistant') {
-                // Create a NEW object — prevents React double-render from direct mutation
                 newHistory[newHistory.length - 1] = {
                     ...lastMsg,
-                    content: lastMsg.content + chunk
+                    content: lastMsg.content + text
                 };
             }
             return newHistory;
@@ -384,13 +426,12 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                                                         <span className="text-xs font-mono text-sentinel-green uppercase">LETA AI Analysis</span>
                                                     </div>
                                                     
-                                                    {/* The Response Component */}
-                                                    {/* We adapt the data structure to fit LetaResponse */}
                                                     <LetaResponse 
                                                         data={{
                                                             query: messages[idx - 1]?.content || "",
                                                             answer: msg.content,
                                                             citations: msg.citations || [],
+                                                            consulted_sources: msg.consulted_sources || [],
                                                             confidence: msg.confidence || 0.95
                                                         }} 
                                                         isDark={true}
@@ -411,7 +452,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                                   ))}
                                   {isLoading && (
                                      <div className="flex justify-center py-8">
-                                        <NeuralLoader />
+                                        <SimpleSearchLoader />
                                      </div>
                                   )}
                                   <div ref={messagesEndRef} />
