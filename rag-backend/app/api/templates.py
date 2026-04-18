@@ -21,12 +21,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── LLM Client (uses configured provider) ────────────────────────────
-if LLM_PROVIDER == "anthropic":
-    import anthropic as _anthropic
-    _customize_client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-else:
-    import openai as _openai
-    _customize_client = _openai.OpenAI(api_key=OPENAI_API_KEY)
+def get_ai_client():
+    if LLM_PROVIDER == "anthropic":
+        import anthropic as _anthropic
+        return _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    else:
+        import openai as _openai
+        return _openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # --- Pydantic Models for Validation ---
 
@@ -313,9 +314,10 @@ STRICT OPERATIONAL RULES:
     chat_messages.append({"role": "user", "content": request.user_context})
 
     try:
+        client = get_ai_client()
         if LLM_PROVIDER == "anthropic":
             # Use Claude — system prompt goes in `system` param, not in messages
-            resp = _customize_client.messages.create(
+            resp = client.messages.create(
                 model=CLAUDE_MAIN_MODEL,
                 max_tokens=4096,
                 system=system_msg["content"],
@@ -326,7 +328,7 @@ STRICT OPERATIONAL RULES:
         else:
             # OpenAI / Ollama — system prompt is a message
             openai_messages = [system_msg] + chat_messages
-            resp = _customize_client.chat.completions.create(
+            resp = client.chat.completions.create(
                 model=LLM_MODEL,
                 messages=openai_messages,
                 temperature=0.4,
