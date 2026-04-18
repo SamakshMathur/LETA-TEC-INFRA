@@ -245,8 +245,8 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         "title": c.get("source", "Document"),
                         "page": c.get("page", 1),
                         # Construct a URL for the PDF viewer
-                        "url": f"/api/documents/view?filename={c.get('source')}&page={c.get('page', 1)}",
-                        "score": c.get("_rerank_score", 0)
+                        "url": f"/api/documents/view?category=all&filename={c.get('source')}&page={c.get('page', 1)}",
+                        "score": float(c.get("_rerank_score", 0))
                     })
                 if len(unique_sources) >= 8: # Limit to top 8 unique sources
                     break
@@ -370,7 +370,7 @@ async def ask_question(request: Request, req: QuestionRequest):
     query_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
     t0 = time.monotonic()
 
-    # IMMEDIATE SAVE: Save User Question First to prevent data loss on switch
+    # IMMEDIATE SAVE: Save User Question First
     if session_id:
         collection = get_session_collection()
         if collection is not None:
@@ -379,84 +379,82 @@ async def ask_question(request: Request, req: QuestionRequest):
                 {"$push": {"messages": {"role": "user", "content": question, "timestamp": datetime.now()}}}
             )
 
-    # 1. Fetch History if Session ID exists (exclude the just-added current question)
-    history_context = ""
-    if session_id:
-        collection = get_session_collection()
-        if collection is not None:
-            session = collection.find_one({"session_id": session_id})
-            if session and "messages" in session:
-                recent = session["messages"][:-1][-6:]
-                for msg in recent:
-                    history_context += f"{msg['role'].upper()}: {msg['content']}\n"
+    async def rag_pipeline_orchestrator():
+        # --- Pulse 1: Analyzer Initialize (~100ms) ---
+        yield f"__STATUS__:{json.dumps({'msg': 'Initializing Statutory Analyzer...'})}__END_STATUS__"
+        
+        # 1. Fetch History if Session ID exists
+        history_context = ""
+        if session_id:
+            collection = get_session_collection()
+            if collection is not None:
+                session = collection.find_one({"session_id": session_id})
+                if session and "messages" in session:
+                    recent = session["messages"][:-1][-6:]
+                    for msg in recent:
+                        history_context += f"{msg['role'].upper()}: {msg['content']}\n"
 
-    # ── Fast local routing (keyword-only, no LLM call) ──
-    route = route_query(question)
-    domain = route.get("domain", "general")
+        # ── Fast local routing (keyword-only, no LLM call) ──
+        from app.routing.router import route_query
+        route = route_query(question)
+        domain = route.get("domain", "general")
 
-    # ── Cache lookup (L1 exact + L2 semantic) ────────────────────────────────
-    from app.cache import cache_lookup, embed_query as _cache_embed
-    from app.retrieval.retriever import embed_query
-    query_vec = embed_query(question)
-    cached_answer = cache_lookup(question, query_vec)
-    if cached_answer:
-        _ask_logger.info(
-            "Cache HIT — serving cached answer",
-            extra={
-                "query_id": query_id, "cache_hit": True,
-                "domain": domain, "latency_ms": round((time.monotonic() - t0) * 1000, 1),
-            },
-        )
-        from fastapi.responses import StreamingResponse as _SR
-        async def _cached_stream():
+        # ── Cache lookup (L1 exact + L2 semantic) ────────────────────────────────
+        from app.cache import cache_lookup
+        from app.retrieval.retriever import embed_query
+        
+        yield f"__STATUS__:{json.dumps({'msg': f'Scanning Semantic Cache for {domain.upper()}...'})}__END_STATUS__"
+        query_vec = embed_query(question)
+        cached_answer = cache_lookup(question, query_vec)
+        
+        if cached_answer:
+            _ask_logger.info("Cache HIT", extra={"query_id": query_id, "cache_hit": True})
+            yield f"__STATUS__:{json.dumps({'msg': 'Instant Statutory Retrieval Complete.'})}__END_STATUS__"
             yield cached_answer
-        return _SR(_cached_stream(), media_type="text/event-stream")
+            return
 
-    # ── Single LLM call: query expansion + topic extraction ──
-    from app.retrieval.query_refiner import generate_advanced_queries
-    advanced_queries = generate_advanced_queries(question)
-    refined_q = advanced_queries.get("queries", [question])[0]
+        # --- Pulse 2: Expansion (~2-5s) ---
+        yield f"__STATUS__:{json.dumps({'msg': 'Expanding Legal Context & Topic Modeling...'})}__END_STATUS__"
+        from app.retrieval.query_refiner import generate_advanced_queries
+        advanced_queries = generate_advanced_queries(question)
+        refined_q = advanced_queries.get("queries", [question])[0]
 
-    retriever = get_retriever()
-    chunks = retriever.search(
-        query=refined_q,
-        top_k=50,
-        allowed_sources=route["use_sources"],
-        advanced_queries=advanced_queries,
-    )
-    context = build_context(chunks)
+        # --- Pulse 3: Retrieval (~1-3s) ---
+        yield f"__STATUS__:{json.dumps({'msg': f'Querying Statutory Provisions ({domain.upper()})...'})}__END_STATUS__"
+        retriever = get_retriever()
+        chunks = retriever.search(
+            query=refined_q,
+            top_k=50,
+            allowed_sources=route["use_sources"],
+            advanced_queries=advanced_queries,
+        )
+        context = build_context(chunks)
 
-    # Append History to Context
-    full_rag_context = context
-    if history_context:
-        full_rag_context = f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" + context
+        # Append History to Context
+        full_rag_context = context
+        if history_context:
+            full_rag_context = f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" + context
 
-    # Build truth rules text for hallucination guard
-    from app.generation.rules_engine import rules_engine
-    truth_rules_text = rules_engine.get_all_rules_as_text()
+        # Build truth rules text for hallucination guard
+        from app.generation.rules_engine import rules_engine
+        truth_rules_text = rules_engine.get_all_rules_as_text()
 
-    # Generate streaming answer
-    from app.generation.synthesizer import synthesize_answer_stream
-    response_stream = synthesize_answer_stream(question, full_rag_context)
+        # --- Pulse 4: Final Synthesis ---
+        yield f"__STATUS__:{json.dumps({'msg': 'Synthesizing Sovereign Legal Position...'})}__END_STATUS__"
+        
+        from app.generation.synthesizer import synthesize_answer_stream
+        response_stream = synthesize_answer_stream(question, full_rag_context)
 
-    _ask_logger.info(
-        "Cache MISS — running full RAG pipeline",
-        extra={
-            "query_id": query_id, "cache_hit": False,
-            "domain": domain, "chunks_retrieved": len(chunks),
-            "latency_ms": round((time.monotonic() - t0) * 1000, 1),
-        },
-    )
+        # Wrap with full post-generation accuracy pipeline + cache store
+        async for chunk in stream_and_save(
+            response_stream, session_id, question,
+            chunks=chunks, context=context, truth_rules_text=truth_rules_text,
+            query_vec=query_vec,
+        ):
+            yield chunk
 
     from fastapi.responses import StreamingResponse
-    # Wrap with full post-generation accuracy pipeline + cache store
-    wrapped_stream = stream_and_save(
-        response_stream, session_id, question,
-        chunks=chunks, context=context, truth_rules_text=truth_rules_text,
-        query_vec=query_vec,
-    )
-
-    return StreamingResponse(wrapped_stream, media_type="text/event-stream")
+    return StreamingResponse(rag_pipeline_orchestrator(), media_type="text/event-stream")
 
 @app.post("/ask-with-file")
 @limiter.limit("20/minute")

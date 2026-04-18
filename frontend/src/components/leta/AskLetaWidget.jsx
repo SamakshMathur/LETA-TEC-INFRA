@@ -6,7 +6,7 @@ import LetaResponse from './LetaResponse';
 import { BASE_URL } from '../../config/api';
 import ChatSidebar from './ChatSidebar';
 import { SimpleSearchLoader } from '../effects';
-import { PDFViewer } from '../documents';
+import { PDFViewer, DocumentViewer } from '../documents';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -38,11 +38,23 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
   const [activeDocId, setActiveDocId] = useState(null);
 
   const handleDocumentClick = ({ url, page, search }) => {
+    // If the URL is relative (e.g. starts with /api/), prepend the backend BASE_URL
+    let fullUrl = url;
+    if (url.startsWith('/api/')) {
+        fullUrl = BASE_URL + url;
+    }
+    
     // Check if doc already open
-    const id = url;
+    const id = fullUrl;
     const existing = openDocuments.find(d => d.id === id);
     if (!existing) {
-       setOpenDocuments(prev => [...prev, { id, url, title: url.split('filename=')[1]?.replace(/%20/g, ' ') || 'Document', page, search }]);
+       setOpenDocuments(prev => [...prev, { 
+           id, 
+           url: fullUrl, 
+           title: url.split('filename=')[1]?.split('&')[0]?.replace(/%20/g, ' ') || 'Document', 
+           page, 
+           search 
+       }]);
     } else {
        // Update page/search if clicking a new citation for same doc
        setOpenDocuments(prev => prev.map(d => d.id === id ? { ...d, page, search } : d));
@@ -169,53 +181,120 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
       // 4. Stream Response
       const reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
-      setIsLoading(false); // Stop loader, show streaming text
+      setIsLoading(false);
 
-      let accumulatedMetadata = "";
-      let isParsingMetadata = false;
+      let buffer = "";
 
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          // Process any remaining buffer as text
+          if (buffer) appendChunkToLastMessage(buffer);
+          break;
+        }
         
-        const chunk = decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
         
-        // --- Metadata Parsing Logic ---
-        if (chunk.includes("__METADATA__:")) {
-          isParsingMetadata = true;
-          const parts = chunk.split("__METADATA__:");
-          // part[0] might be empty or old text
-          accumulatedMetadata += parts[1];
-        } else if (isParsingMetadata) {
-          if (chunk.includes("__END_METADATA__")) {
-            const parts = chunk.split("__END_METADATA__");
-            accumulatedMetadata += parts[0];
+        // Process buffer for tags
+        let processed = true;
+        while (processed) {
+          processed = false;
+          
+          // 1. Status Check
+          if (buffer.includes("__STATUS__:")) {
+            const startIdx = buffer.indexOf("__STATUS__:");
+            const endIdx = buffer.indexOf("__END_STATUS__", startIdx);
             
-            try {
-              const meta = JSON.parse(accumulatedMetadata);
-              setMessages(prev => {
-                const next = [...prev];
-                const last = next[next.length - 1];
-                if (last.role === 'assistant') {
-                  next[next.length - 1] = { ...last, consulted_sources: meta.sources };
-                }
-                return next;
-              });
-            } catch (e) {
-              console.error("Failed to parse metadata", e);
+            if (endIdx !== -1) {
+              // Extract text before status
+              const beforeText = buffer.substring(0, startIdx);
+              if (beforeText) appendChunkToLastMessage(beforeText);
+              
+              // Extract status content
+              const statusContent = buffer.substring(startIdx + "__STATUS__:".length, endIdx);
+              try {
+                const statusData = JSON.parse(statusContent);
+                setMessages(prev => {
+                  const next = [...prev];
+                  const last = next[next.length - 1];
+                  if (last.role === 'assistant') {
+                    next[next.length - 1] = { ...last, current_status: statusData.msg };
+                  }
+                  return next;
+                });
+              } catch (e) {
+                console.error("Failed to parse status", e);
+              }
+              
+              // Remove processed portion from buffer
+              buffer = buffer.substring(endIdx + "__END_STATUS__".length);
+              processed = true;
+              continue;
             }
-            
-            isParsingMetadata = false;
-            // Process the rest of the chunk as normal text
-            const remainingText = parts[1];
-            if (remainingText) {
-              appendChunkToLastMessage(remainingText);
-            }
-          } else {
-            accumulatedMetadata += chunk;
           }
-        } else {
-          appendChunkToLastMessage(chunk);
+
+          // 2. Metadata Check
+          if (buffer.includes("__METADATA__:")) {
+            const startIdx = buffer.indexOf("__METADATA__:");
+            const endIdx = buffer.indexOf("__END_METADATA__", startIdx);
+            
+            if (endIdx !== -1) {
+              const beforeText = buffer.substring(0, startIdx);
+              if (beforeText) appendChunkToLastMessage(beforeText);
+              
+              const metaContent = buffer.substring(startIdx + "__METADATA__:".length, endIdx);
+              try {
+                const meta = JSON.parse(metaContent);
+                setMessages(prev => {
+                  const next = [...prev];
+                  const last = next[next.length - 1];
+                  if (last.role === 'assistant') {
+                    next[next.length - 1] = { ...last, consulted_sources: meta.sources };
+                  }
+                  return next;
+                });
+              } catch (e) {
+                console.error("Failed to parse metadata", e);
+              }
+              
+              buffer = buffer.substring(endIdx + "__END_METADATA__".length);
+              processed = true;
+              continue;
+            }
+          }
+          
+          // 3. Regular Text (if no partial tags are starting in the middle or end of buffer)
+          // We need to be careful not to consume half a tag.
+          const firstStatusIdx = buffer.indexOf("__STATUS__:");
+          const firstMetaIdx = buffer.indexOf("__METADATA__:");
+          
+          // If no tags are starting, or the first tag start is far into the buffer, 
+          // we can offload the safe text.
+          let safePoint = buffer.length;
+          
+          // Find the earliest starting tag
+          if (firstStatusIdx !== -1) safePoint = Math.min(safePoint, firstStatusIdx);
+          if (firstMetaIdx !== -1) safePoint = Math.min(safePoint, firstMetaIdx);
+          
+          // Also look for partial fragments of tags at the end of the buffer (e.g. "__STA")
+          // This prevents them from being treated as regular text and then failing the next tag check.
+          const partialTriggers = ["__STATUS__:", "__END_STATUS__", "__METADATA__:", "__END_METADATA__", "__"];
+          for (const trigger of partialTriggers) {
+             const lastIdx = buffer.lastIndexOf(trigger);
+             if (lastIdx !== -1 && lastIdx + trigger.length > buffer.length) {
+                safePoint = Math.min(safePoint, lastIdx);
+             }
+          }
+
+          if (safePoint > 0) {
+            const textToAppend = buffer.substring(0, safePoint);
+            appendChunkToLastMessage(textToAppend);
+            buffer = buffer.substring(safePoint);
+            // No need to set processed = true because we just moved text out, 
+            // the loop will check the remaining buffer in the next outer iteration anyway, 
+            // but we can stay in nested loop if safePoint was < buffer.length.
+            if (buffer.length > 0) processed = false; 
+          }
         }
       }
 
@@ -322,7 +401,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                         {openDocuments.map((doc) => (
                             doc.id === activeDocId && (
                                 <div key={doc.id} className="flex-1 h-full overflow-hidden">
-                                    <PDFViewer 
+                                    <DocumentViewer 
                                         url={doc.url} 
                                         onClose={() => closeDocument(doc.id)}
                                         title={doc.title}
@@ -432,7 +511,8 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                                                             answer: msg.content,
                                                             citations: msg.citations || [],
                                                             consulted_sources: msg.consulted_sources || [],
-                                                            confidence: msg.confidence || 0.95
+                                                            confidence: msg.confidence || 0.95,
+                                                            status: msg.current_status
                                                         }} 
                                                         isDark={true}
                                                         animate={!msg.isHistory}

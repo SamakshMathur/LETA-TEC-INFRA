@@ -71,9 +71,10 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
   
         {/* Content Area */}
         <div className="p-6 md:p-8 bg-[#050A10]">
-          {data.consulted_sources && data.consulted_sources.length > 0 && (
+          {(data.consulted_sources?.length > 0 || data.status) && (
             <ThinkingSources 
               sources={data.consulted_sources} 
+              status={data.status}
               onDocumentClick={onDocumentClick}
             />
           )}

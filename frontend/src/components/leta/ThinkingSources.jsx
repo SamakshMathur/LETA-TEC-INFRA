@@ -3,28 +3,37 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Brain, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import SourceCard from './SourceCard';
 
-const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentClick }) => {
+const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentClick, status: externalStatus }) => {
   const [isCollapsed, setIsCollapsed] = useState(isCollapsedInitial);
-  const [status, setStatus] = useState('searching');
+  const [status, setStatus] = useState('Initializing Statutory Analyzer...');
 
   useEffect(() => {
-    if (sources.length > 0) {
-      const timer = setTimeout(() => setStatus('thinking'), 1500);
-      return () => clearTimeout(timer);
+    if (externalStatus) {
+      setStatus(externalStatus);
     }
-  }, [sources]);
+  }, [externalStatus]);
 
-  if (!sources || sources.length === 0) return null;
+  const isSearching = !sources || sources.length === 0;
+
+  if (isSearching && !status) return null;
 
   return (
     <div className="w-full mb-6 animate-in fade-in slide-in-from-top-4 duration-700">
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-3">
           <div className="relative flex items-center justify-center w-5 h-5">
-             {status === 'searching' ? (
+             {isSearching ? (
                <Search size={14} className="text-sentinel-blue animate-pulse" />
              ) : (
-               <Brain size={14} className="text-sentinel-green animate-bounce" />
+               <div className="relative">
+                 <CheckCircle2 size={14} className="text-sentinel-green" />
+                 <motion.div 
+                    initial={{ scale: 1 }}
+                    animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="absolute inset-0 bg-sentinel-green rounded-full"
+                 />
+               </div>
              )}
              <motion.div 
                animate={{ rotate: 360 }}
@@ -33,7 +42,7 @@ const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentC
              />
           </div>
           <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-gray-400">
-            {status === 'searching' ? 'Retrieving Statutory Evidence...' : 'Synthesizing Legal Position...'}
+            {status || (isSearching ? 'Retrieving Statutory Evidence...' : 'Synthesizing Legal Position...')}
           </span>
         </div>
         
@@ -52,21 +61,35 @@ const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentC
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
-          ) : (
+          >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {sources.map((src, idx) => (
-                <SourceCard 
-                  key={`${src.title}-${idx}`} 
-                  source={src} 
-                  index={idx}
-                  onClick={onDocumentClick}
-                />
-              ))}
+              {isSearching ? (
+                // SKELETON CARDS while searching
+                [1, 2, 3, 4].map((i) => (
+                  <div key={`skeleton-${i}`} className="flex flex-col p-3 bg-[#0A1622]/40 border border-white/5 rounded-lg">
+                    <div className="flex items-start justify-between mb-2">
+                       <div className="w-7 h-7 bg-white/5 rounded animate-pulse" />
+                    </div>
+                    <div className="w-full h-3 bg-white/5 rounded mb-2 animate-pulse" />
+                    <div className="w-2/3 h-2 bg-white/5 rounded animate-pulse" />
+                  </div>
+                ))
+              ) : (
+                sources.map((src, idx) => (
+                  <SourceCard 
+                    key={`${src.title}-${idx}`} 
+                    source={src} 
+                    index={idx}
+                    onClick={onDocumentClick}
+                  />
+                ))
+              )}
             </div>
-          )}
-        </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
         
-        {!isCollapsed && (
+        {!isCollapsed && !isSearching && (
           <div className="mt-4 flex items-center gap-2 px-1">
             <CheckCircle2 size={12} className="text-sentinel-green" />
             <span className="text-[9px] font-mono text-sentinel-green/60 uppercase tracking-widest">
@@ -74,7 +97,7 @@ const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentC
             </span>
           </div>
         )}
-    </div>
+      </div>
   );
 };
 

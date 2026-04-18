@@ -1,4 +1,4 @@
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
 const STATS = [
@@ -9,8 +9,13 @@ const STATS = [
 
 const Hero = () => {
   const { scrollY } = useScroll();
-  const y1      = useTransform(scrollY, [0, 500], [0, 180]);
-  const opacity = useTransform(scrollY, [0, 280], [1, 0]);
+  
+  const rawY1 = useTransform(scrollY, [0, 500], [0, 180]);
+  const rawOpacity = useTransform(scrollY, [0, 280], [1, 0]);
+
+  // Smoothed spring-based values to eliminate jitter
+  const y1 = useSpring(rawY1, { stiffness: 100, damping: 30, restDelta: 0.001 });
+  const opacity = useSpring(rawOpacity, { stiffness: 100, damping: 30, restDelta: 0.001 });
 
   return (
     <div
@@ -65,26 +70,6 @@ const Hero = () => {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
         >
-          {/* Status pill */}
-          <motion.div
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.8 }}
-            className="inline-flex items-center gap-3 py-2 px-5 rounded-full mb-14"
-            style={{
-              backgroundColor: 'rgba(78,222,163,0.08)',
-              boxShadow: 'inset 0 0 0 1px rgba(78,222,163,0.20)',
-            }}
-          >
-            <span
-              className="w-2 h-2 rounded-full animate-ping"
-              style={{ backgroundColor: '#4edea3', boxShadow: '0 0 10px #4edea3' }}
-            />
-            <span className="text-xs font-bold tracking-[0.25em] uppercase font-mono" style={{ color: '#4edea3' }}>
-              Nebula Protocol Active
-            </span>
-          </motion.div>
-
           {/* Display headline — Orbitron only for h1/h2 */}
           <h1
             className="font-display font-black leading-[0.92] tracking-tight mb-6"
@@ -94,29 +79,25 @@ const Hero = () => {
               STATUTORY
             </span>
             <span
-              className="block"
+              className="block text-shimmer"
               style={{
-                WebkitTextFillColor: 'transparent',
-                WebkitBackgroundClip: 'text',
-                backgroundImage: 'linear-gradient(135deg, #4edea3 0%, #10b981 55%, #4edea3 100%)',
-                textShadow: 'none',
-                filter: 'drop-shadow(0 0 30px rgba(78,222,163,0.35))',
+                filter: 'drop-shadow(0 0 30px rgba(78,222,163,0.2))',
               }}
             >
               TITAN.
             </span>
           </h1>
 
-          {/* Sub-headline — Inter body */}
+          {/* Sub-headline — Sora body */}
           <motion.p
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.45, duration: 0.9 }}
-            className="mt-8 text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed"
+            className="mt-8 text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed tracking-wide"
             style={{ color: '#9a9a9a' }}
           >
             Engineering the future of{' '}
-            <span style={{ color: '#e5e2e1', fontWeight: 500 }}>GST Compliance</span>{' '}
+            <span style={{ color: '#4edea3', fontWeight: 600 }}>GST Compliance</span>{' '}
             with high-fidelity retrieval and sovereign intelligence.
           </motion.p>
 
@@ -128,10 +109,14 @@ const Hero = () => {
             className="mt-14 flex flex-col sm:flex-row gap-5 justify-center items-center"
           >
             <Link to="/gst">
-              <button className="btn-titan px-10 py-4">Initialize Titan</button>
+              <button className="px-10 py-4 bg-white/5 border border-white/10 rounded-sm font-black uppercase tracking-[0.2em] text-[11px] text-[#4edea3] hover:bg-[#4edea3] hover:text-black transition-all duration-500 shadow-[0_0_20px_rgba(78,222,163,0.1)]">
+                Initialize Titan
+              </button>
             </Link>
             <Link to="/docs">
-              <button className="btn-secondary px-10 py-4">Documentation</button>
+              <button className="px-10 py-4 border border-white/5 bg-transparent rounded-sm font-black uppercase tracking-[0.2em] text-[11px] text-white/40 hover:text-white transition-all duration-500">
+                Documentation
+              </button>
             </Link>
           </motion.div>
 

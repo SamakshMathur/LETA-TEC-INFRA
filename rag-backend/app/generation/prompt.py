@@ -34,7 +34,10 @@ Every response MUST follow this exact structure.
 STOP all generation immediately after finishing POINT 10. 
 
 ### INTERACTIVE CITATION RULE
-[Title](URL#page=X)
+1. Every time you mention a source heading (e.g., **Source [1]**), you MUST wrap the entire heading in a Markdown link using the URL found in that source's DOCUMENT block.
+   - FORMAT: `[Source [X] - FileName](URL#page=Y)`
+2. Use the exact URL specified in the context metadata. This allows the user to click the heading to open the document.
+3. If no link is available, use a standard bold heading.
 
 -------------------------------------------------------
 CONTEXT (RAG KNOWLEDGE)

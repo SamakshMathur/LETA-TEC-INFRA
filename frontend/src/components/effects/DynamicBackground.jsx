@@ -17,7 +17,8 @@ const DynamicBackground = ({ children, className = "" }) => {
                 repeat: Infinity,
                 ease: "linear"
             }}
-            className="absolute -top-[10%] -left-[10%] w-[600px] h-[600px] bg-sentinel-green/10 rounded-full blur-[100px] opacity-70"
+            className="absolute -top-[10%] -left-[10%] w-[600px] h-[600px] bg-sentinel-green/10 rounded-full blur-[80px] opacity-70"
+            style={{ willChange: 'transform' }}
           />
           <motion.div 
              animate={{ 
@@ -30,7 +31,8 @@ const DynamicBackground = ({ children, className = "" }) => {
                 repeat: Infinity,
                 ease: "linear"
              }}
-             className="absolute top-[40%] -right-[5%] w-[500px] h-[500px] bg-sentinel-blue/20 rounded-full blur-[80px] opacity-60"
+             className="absolute top-[40%] -right-[5%] w-[500px] h-[500px] bg-sentinel-blue/20 rounded-full blur-[60px] opacity-60"
+             style={{ willChange: 'transform' }}
           />
            <motion.div 
              animate={{ 
@@ -42,7 +44,8 @@ const DynamicBackground = ({ children, className = "" }) => {
                 repeat: Infinity,
                 ease: "easeInOut"
              }}
-             className="absolute bottom-0 left-[20%] w-[300px] h-[300px] bg-cyan-900/10 rounded-full blur-[60px]"
+             className="absolute bottom-0 left-[20%] w-[300px] h-[300px] bg-cyan-900/10 rounded-full blur-[40px]"
+             style={{ willChange: 'transform' }}
           />
        </div>
 

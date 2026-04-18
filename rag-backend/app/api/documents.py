@@ -48,8 +48,8 @@ def get_categories():
         if folder_path.exists():
             # Count files
             try:
-                # Count valid files only (PDFs usually, but count all for stats)
-                files = [f for f in folder_path.rglob("*") if f.is_file() and f.suffix.lower() == '.pdf']
+                # Count all supported files
+                files = [f for f in folder_path.rglob("*") if f.is_file() and f.suffix.lower() in ['.pdf', '.png', '.jpg', '.jpeg', '.docx', '.txt']]
                 stats[key] = len(files)
             except Exception as e:
                 print(f"Error counting {folder_name}: {e}")
@@ -72,8 +72,8 @@ def list_documents(category: str):
 
     docs = []
     try:
-        # Case insensitive search for PDFs
-        all_files = [f for f in folder_path.rglob("*") if f.is_file() and f.suffix.lower() == '.pdf']
+        # Case insensitive search for all supported files
+        all_files = [f for f in folder_path.rglob("*") if f.is_file() and f.suffix.lower() in ['.pdf', '.png', '.jpg', '.jpeg', '.docx', '.txt']]
         
         for idx, file_path in enumerate(all_files): 
             docs.append({
@@ -168,9 +168,21 @@ def view_document(category: str, filename: str, download: bool = False):
             with open(target_path, "rb") as f:
                 content = f.read()
             safe_print(f"DEBUG: Successfully read {len(content)} bytes via manual read. Download={download}")
+            # Determine media type based on extension
+            media_types = {
+                '.pdf': 'application/pdf',
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.txt': 'text/plain',
+                '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            }
+            ext = os.path.splitext(target_path)[1].lower()
+            media_type = media_types.get(ext, 'application/octet-stream')
+
             return Response(
                 content=content, 
-                media_type="application/pdf",
+                media_type=media_type,
                 headers=headers
             )
         except Exception as read_err:

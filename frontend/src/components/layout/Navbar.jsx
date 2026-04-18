@@ -54,44 +54,43 @@ const Navbar = () => {
         WebkitBackdropFilter: scrolled ? 'blur(20px)' : 'none',
       }}
     >
-      <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-6 h-full flex items-center">
+        
+        {/* ── Column 1: Logo (Left) ─────────────────────────────────── */}
+        <div className="flex-1 flex justify-start">
+          <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
+            <div
+              className="w-9 h-9 rounded flex items-center justify-center transition-all duration-300 group-hover:rotate-6"
+              style={{
+                background: 'linear-gradient(135deg, #4edea3 0%, #10b981 100%)',
+                boxShadow: '0 0 16px rgba(78,222,163,0.20)',
+              }}
+            >
+              <Shield className="w-4 h-4" style={{ color: '#0e0e0e' }} />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-display font-bold text-lg leading-none tracking-tight" style={{ color: '#e5e2e1' }}>
+                LETA <span style={{ color: '#4edea3' }}>TITAN</span>
+              </span>
+              <span className="text-[9px] font-bold uppercase tracking-[0.2em] mt-0.5" style={{ color: '#9a9a9a' }}>
+                SOVEREIGN AI
+              </span>
+            </div>
+          </Link>
+        </div>
 
-        {/* ── Logo ─────────────────────────────────────────────────── */}
-        <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
-          <div
-            className="w-9 h-9 rounded flex items-center justify-center transition-all duration-300 group-hover:rotate-6"
-            style={{
-              background: 'linear-gradient(135deg, #4edea3 0%, #10b981 100%)',
-              boxShadow: '0 0 16px rgba(78,222,163,0.20)',
-            }}
-          >
-            <Shield className="w-4 h-4" style={{ color: '#0e0e0e' }} />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-display font-bold text-lg leading-none tracking-tight" style={{ color: '#e5e2e1' }}>
-              LETA <span style={{ color: '#4edea3' }}>TITAN</span>
-            </span>
-            <span className="text-[9px] font-bold uppercase tracking-[0.2em] mt-0.5" style={{ color: '#9a9a9a' }}>
-              SOVEREIGN AI
-            </span>
-          </div>
-        </Link>
-
-        {/* ── Nav items ────────────────────────────────────────────── */}
-        <div className="hidden md:flex items-center gap-1">
-
+        {/* ── Column 2: Nav items (Center) ───────────────────────────── */}
+        <div className="hidden md:flex items-center gap-10">
           {/* Domains dropdown */}
           <div className="relative" ref={domainsMenuRef}>
             <button
               onClick={() => setDomainsOpen(v => !v)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-semibold tracking-wide transition-all duration-200"
-              style={{ color: anyDomainActive ? '#e5e2e1' : '#9a9a9a' }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#e5e2e1'; }}
-              onMouseLeave={e => { if (!anyDomainActive) e.currentTarget.style.color = '#9a9a9a'; }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 border border-transparent hover:border-white/10 hover:bg-white/5"
+              style={{ color: anyDomainActive ? '#4edea3' : '#9a9a9a' }}
             >
               Modules
               <ChevronDown
-                size={14}
+                size={12}
                 className="transition-transform duration-200"
                 style={{ transform: domainsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
               />
@@ -99,28 +98,31 @@ const Navbar = () => {
 
             {domainsOpen && (
               <div
-                className="absolute top-full left-0 mt-2 w-56 rounded py-1.5 z-50"
+                className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-60 rounded-sm py-2 z-50 overflow-hidden"
                 style={{
-                  backgroundColor: 'rgba(26,26,26,0.97)',
-                  backdropFilter: 'blur(20px)',
-                  WebkitBackdropFilter: 'blur(20px)',
-                  boxShadow: '0 20px 60px rgba(0,0,0,0.60), inset 0 0 0 1px rgba(229,226,225,0.08)',
+                  backgroundColor: 'rgba(10, 10, 10, 0.95)',
+                  backdropFilter: 'blur(32px)',
+                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.08)',
                 }}
               >
+                {/* dropdown content */}
+                <div className="px-4 py-2 mb-1">
+                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#4edea3]/60">Sovereign Modules</span>
+                </div>
                 {DOMAINS.map(({ label, path, icon: Icon }) => (
                   <Link
                     key={path}
                     to={path}
                     onClick={() => setDomainsOpen(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm transition-all duration-150"
+                    className="flex items-center gap-4 px-5 py-3 text-[11px] font-bold uppercase tracking-wider transition-all duration-200"
                     style={{
                       color: isActive(path) ? '#4edea3' : '#9a9a9a',
-                      backgroundColor: isActive(path) ? 'rgba(78,222,163,0.06)' : 'transparent',
+                      backgroundColor: isActive(path) ? 'rgba(78,222,163,0.08)' : 'transparent',
                     }}
                     onMouseEnter={e => {
                       if (!isActive(path)) {
                         e.currentTarget.style.color = '#e5e2e1';
-                        e.currentTarget.style.backgroundColor = 'rgba(229,226,225,0.04)';
+                        e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)';
                       }
                     }}
                     onMouseLeave={e => {
@@ -130,52 +132,7 @@ const Navbar = () => {
                       }
                     }}
                   >
-                    <Icon size={14} />
-                    {label}
-                    {isActive(path) && (
-                      <span
-                        className="ml-auto w-1.5 h-1.5 rounded-full"
-                        style={{ backgroundColor: '#4edea3' }}
-                      />
-                    )}
-                  </Link>
-                ))}
-
-                {/* Divider gap — no line */}
-                <div className="h-2.5" />
-
-                {/* Admin links always visible in dropdown */}
-                <div className="px-4 pb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: '#333' }}>
-                    Admin
-                  </span>
-                </div>
-                {[
-                  { label: 'Template Manager', path: '/admin/templates' },
-                  { label: 'Upload Portal',    path: '/admin/upload'    },
-                ].map(({ label, path }) => (
-                  <Link
-                    key={path}
-                    to={path}
-                    onClick={() => setDomainsOpen(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm transition-all duration-150"
-                    style={{
-                      color: isActive(path) ? '#4edea3' : '#9a9a9a',
-                      backgroundColor: isActive(path) ? 'rgba(78,222,163,0.06)' : 'transparent',
-                    }}
-                    onMouseEnter={e => {
-                      if (!isActive(path)) {
-                        e.currentTarget.style.color = '#e5e2e1';
-                        e.currentTarget.style.backgroundColor = 'rgba(229,226,225,0.04)';
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (!isActive(path)) {
-                        e.currentTarget.style.color = '#9a9a9a';
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }
-                    }}
-                  >
+                    <Icon size={14} className={isActive(path) ? "animate-pulse" : ""} />
                     {label}
                   </Link>
                 ))}
@@ -188,25 +145,29 @@ const Navbar = () => {
             <Link
               key={path}
               to={path}
-              className="relative px-4 py-2 text-sm font-semibold tracking-wide transition-all duration-200"
+              className="relative px-2 py-1 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 hover:text-white"
               style={{ color: isActive(path) ? '#e5e2e1' : '#9a9a9a' }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#e5e2e1'; }}
-              onMouseLeave={e => { if (!isActive(path)) e.currentTarget.style.color = '#9a9a9a'; }}
             >
               {label}
               {isActive(path) && (
-                <span
-                  className="absolute bottom-0 left-4 right-4 h-[2px] rounded-full"
-                  style={{ backgroundColor: '#4edea3', boxShadow: '0 0 6px rgba(78,222,163,0.6)' }}
+                <motion.span
+                  layoutId="activeNav"
+                  className="absolute -bottom-2 left-0 right-0 h-[1.5px] rounded-full"
+                  style={{ 
+                    background: 'linear-gradient(90deg, transparent, #4edea3, transparent)',
+                    boxShadow: '0 0 10px rgba(78,222,163,0.5)' 
+                  }}
                 />
               )}
             </Link>
           ))}
         </div>
 
-        {/* ── Auth section REMOVED ─────────────────────────────────────────── */}
-        <div className="flex items-center gap-3">
-          {/* No sign-in or profile controls */}
+        {/* ── Column 3: Spacer/Balance (Right) ────────────────────────── */}
+        <div className="flex-1 flex justify-end">
+           <div className="w-10 h-10 rounded-full border border-white/5 bg-white/5 flex items-center justify-center cursor-default opacity-40 hover:opacity-100 transition-opacity">
+              <span className="text-[8px] font-mono font-bold text-[#4edea3]">L.T</span>
+           </div>
         </div>
       </div>
     </nav>

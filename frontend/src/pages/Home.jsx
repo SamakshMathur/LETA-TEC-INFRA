@@ -9,6 +9,7 @@ import { ArrowRight, ShieldCheck, Scale, FileJson } from 'lucide-react';
 const Home = () => {
   return (
     <div className="relative">
+      <div className="film-grain" />
       <DynamicBackground />
       <Hero />
       <LetaIntro />
