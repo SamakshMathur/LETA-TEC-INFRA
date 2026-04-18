@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { AskLetaWidget } from '../leta';
 import { DocumentLibrary } from '../documents';
 import { FileText, TrendingUp, AlertCircle } from 'lucide-react';
@@ -86,9 +87,9 @@ const LawDashboard = ({ title, domainId, contextDesc, definition, implDate }) =>
                       Access 500+ litigation templates, notices, refunds, and appeals.
                       Match your scenario instantly.
                     </p>
-                    <a href="/gst/templates" className="btn-titan inline-block text-center w-full py-3 text-xs tracking-widest">
+                    <Link to="/responses" className="btn-titan inline-block text-center w-full py-3 text-xs tracking-widest">
                       OPEN LITIGATION SUPPORT
-                    </a>
+                    </Link>
                 </div>
               </div>
             )}

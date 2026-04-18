@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.database import get_template_collection
 from app.embeddings.embedder import embed_texts
 from app.ingestion.pdf_text import extract_text_from_pdf
-from app.ingestion.docx_reader import extract_text_from_docx
+from app.ingestion.docx_reader import extract_text_from_docx, extract_text_from_doc
 from app.ingestion.pdf_scanned import extract_text_from_scanned_pdf
 
 # Configuration
@@ -25,7 +25,7 @@ def get_files_recursively(directory: str) -> List[str]:
     for root, dirs, files in os.walk(directory):
         for file in files:
             # Skip junk and temp files
-            if file.lower().endswith(('.pdf', '.docx')) and not file.startswith('~') and '__MACOSX' not in root:
+            if file.lower().endswith(('.pdf', '.docx', '.doc')) and not file.startswith('~') and '__MACOSX' not in root:
                 file_list.append(os.path.join(root, file))
     return file_list
 
@@ -36,22 +36,32 @@ def ingest_templates():
         print("Error: Could not connect to MongoDB template collection.")
         return
 
-    # Clear existing templates for a fresh start as requested
-    print("Clearing existing templates...")
-    collection.delete_many({})
+    # REMOVED: Clear existing templates for a fresh start as requested
+    # We will now do INCREMENTAL ingestion to save time
+    print("Starting incremental ingestion (checking for duplicates)...")
 
     template_files = []
     for data_dir in DATA_DIRS:
         print(f"  - Searching in {data_dir}...")
         template_files.extend(get_files_recursively(data_dir))
-    print(f"Found {len(template_files)} files to process.")
+    print(f"Found {len(template_files)} files to check/process.")
 
     total_inserted = 0
+    total_skipped = 0
     batch_docs = []
     batch_texts = []
 
     for i, file_path in enumerate(template_files):
         filename = os.path.basename(file_path)
+        
+        # Duplicate Check
+        existing = collection.find_one({"file_path": file_path})
+        if existing:
+            total_skipped += 1
+            if total_skipped % 50 == 0:
+                print(f"  - Already ingested {total_skipped} files so far...")
+            continue
+
         print(f"[{i+1}/{len(template_files)}] Processing: {filename}")
         
         try:
@@ -67,6 +77,10 @@ def ingest_templates():
             
             elif filename.lower().endswith(".docx"):
                 blocks = extract_text_from_docx(file_path)
+                extracted_text = "\n".join(b["text"] for b in blocks)
+            
+            elif filename.lower().endswith(".doc"):
+                blocks = extract_text_from_doc(file_path) # Uses antiword/fallback
                 extracted_text = "\n".join(b["text"] for b in blocks)
 
             if not extracted_text.strip():

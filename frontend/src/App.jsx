@@ -92,6 +92,7 @@ function App() {
                 />
             } />
             <Route path="/gst/templates" element={<GstTemplates />} />
+            <Route path="/responses" element={<GstTemplates />} />
             <Route path="/gst/templates/:id/customize" element={<TemplateCustomization />} />
 
             {/* ── Income Tax ─────────────────────────────────────────── */}

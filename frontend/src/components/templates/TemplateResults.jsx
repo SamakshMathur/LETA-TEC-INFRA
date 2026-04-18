@@ -14,7 +14,7 @@ const TemplateResults = ({ groups }) => {
   }
 
   return (
-    <div className="flex flex-col space-y-12">
+    <div className="flex flex-col space-y-20 pb-32">
       {groups.map((group, index) => (
         <TemplateRow 
           key={index} 

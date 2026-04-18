@@ -159,22 +159,53 @@ async def search_templates(
             })
             
     else:
-        # Home Screen Rows
-        rows = [
-            {"title": "Most Recent Templates", "filter": {}, "limit": 10},
-            {"title": "ITC Reversals & Replies", "filter": {"category": "ITC"}, "limit": 10},
-            {"title": "Appeals & Writ Formats", "filter": {"stage": "Appeal"}, "limit": 10},
-            {"title": "Demand & Recovery Replies", "filter": {"category": "Demand/Recovery"}, "limit": 10}
-        ]
+        # ── Grouped Home View ──────────────────────────────────────────
+        # Fetching categories dynamically ensures all 1,200+ docs are visible
+        all_categories = collection.distinct("category")
         
-        for row in rows:
-            docs = list(collection.find(row["filter"]).sort("ingested_at", -1).limit(row["limit"]))
+        # 1. Start with a "Master Library" of most recent globally
+        recent_all = list(collection.find({}).sort("ingested_at", -1).limit(50))
+        if recent_all:
+            result_groups.append({
+                "title": "Master Litigation Library",
+                "type": "row",
+                "templates": [TemplateResponse.from_mongo(d).dict() for d in recent_all]
+            })
+
+        # 2. Dynamic Categories (Netflix-style shelves)
+        # We increase the limit to 100 per row to show "All" responses effectively
+        for cat in all_categories:
+            if not cat or cat == "General": continue 
+            
+            docs = list(collection.find({"category": cat}).sort("ingested_at", -1).limit(100))
             if docs:
+                # Map internal category names to human-friendly titles
+                titles = {
+                    "ITC": "ITC Reversals & Compliance",
+                    "Appeal": "Appeals & Writ Formats",
+                    "Demand/Recovery": "Demand & Recovery Responses",
+                    "Refund": "Refund Claims & Formats",
+                    "Registration": "Registration & Cancellation Replies",
+                    "Notification": "GST Notifications (2025-26)",
+                    "Circular": "GST Circulars & Clarifications",
+                    "E-Way Bill": "E-Way Bill & Detention Replies",
+                    "Compliance & Returns": "GSTR Returns & Mismatch Strategies",
+                    "Demand & Penalty": "Penalty, Interest & Demand Responses"
+                }
                 result_groups.append({
-                    "title": row["title"],
+                    "title": titles.get(cat, f"{cat} Intelligence"),
                     "type": "row",
                     "templates": [TemplateResponse.from_mongo(d).dict() for d in docs]
                 })
+
+        # 3. Add General / Miscellaneous at the bottom
+        general_docs = list(collection.find({"category": "General"}).sort("ingested_at", -1).limit(100))
+        if general_docs:
+            result_groups.append({
+                "title": "General Litigation Utility",
+                "type": "row",
+                "templates": [TemplateResponse.from_mongo(d).dict() for d in general_docs]
+            })
             
     return {"groups": result_groups}
 

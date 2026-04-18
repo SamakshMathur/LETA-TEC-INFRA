@@ -1,101 +1,90 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, FileText, CheckCircle, Wand2, ArrowRight } from 'lucide-react';
+import { Eye, FileText, CheckCircle, Wand2, ArrowRight, Plus, Sparkles, Zap, Play } from 'lucide-react';
 
 const TemplateCard = ({ template, isHero, onPreview }) => {
   const navigate = useNavigate();
   
-  const cardWidth = isHero ? 'w-80' : 'w-72';
-  const cardHeight = isHero ? 'h-[440px]' : 'h-[400px]';
+  // Card dimensions for the shelf look
+  const cardWidth = isHero ? 'w-[400px]' : 'w-[320px]';
+  const cardHeight = isHero ? 'h-[220px]' : 'h-[180px]';
 
   return (
-    <div className={`relative group ${cardWidth} ${cardHeight} rounded-2xl overflow-hidden bg-glass border-white/5 transition-all duration-700 hover:scale-[1.02] hover:border-emerald-500/50 hover:shadow-[0_20px_60px_rgba(16,185,129,0.15)] group`}>
+    <div className={`relative group ${cardWidth} ${cardHeight} rounded-md overflow-visible cursor-pointer transition-all duration-500 ease-out 
+      hover:scale-125 hover:z-[100] hover:shadow-[0_20px_50px_rgba(0,0,0,0.8)]`}>
       
-      {/* Premium Document Pattern Overlay */}
-      <div className="absolute inset-0 opacity-[0.03] group-hover:opacity-10 transition-opacity duration-700">
-        <div className="w-full h-full flex flex-col p-6 space-y-4">
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className={`h-1.5 bg-white rounded-full ${i % 3 === 0 ? 'w-full' : 'w-2/3'}`}></div>
-          ))}
+      {/* Base Card - Static View */}
+      <div className="absolute inset-0 bg-[#141414] rounded-md border border-white/5 overflow-hidden flex flex-col">
+        {/* Placeholder "Poster" with generic legal pattern */}
+        <div className="h-2/3 w-full bg-gradient-to-br from-emerald-900/20 to-blue-900/10 relative flex items-center justify-center p-4">
+           <FileText className="text-emerald-500/20 w-12 h-12" />
+           <div className="absolute top-2 right-2 text-[8px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase">
+             {template.category || 'TITAN_DOC'}
+           </div>
+        </div>
+        <div className="flex-1 p-3 bg-[#181818] flex flex-col justify-center">
+           <h3 className="text-white text-sm font-bold truncate leading-tight tracking-tight">
+             {template.title}
+           </h3>
+           <div className="mt-1 flex items-center gap-2">
+              <span className="text-[10px] text-emerald-400 font-bold">98% Match</span>
+              <span className="text-[10px] text-gray-400 font-medium tracking-tighter uppercase">{template.stage || 'Compliance'}</span>
+           </div>
         </div>
       </div>
 
-      {/* Decorative Accents */}
-      <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-3xl rounded-full" />
-      <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-500/5 blur-3xl rounded-full" />
+      {/* Expanded Hover Detail Overlay */}
+      <div className="absolute top-0 left-0 w-full bg-[#181818] rounded-md shadow-2xl overflow-hidden opacity-0 group-hover:opacity-100 
+        transition-all duration-300 pointer-events-none group-hover:pointer-events-auto border-t border-white/10"
+        style={{ transform: 'translateY(-10%)', height: 'fit-content', minHeight: '100%' }}>
+        
+        {/* Hover Mini-Billboard */}
+        <div className="h-32 bg-gradient-to-br from-emerald-600/30 to-blue-600/10 relative flex items-center justify-center">
+           <Zap size={32} className="text-emerald-400 opacity-40 animate-pulse" />
+           <div className="absolute bottom-2 left-3 flex items-center gap-2">
+              <span className="flex items-center gap-1 text-[10px] font-black text-white bg-emerald-600 px-2 py-1 rounded">
+                <Sparkles size={10} /> MUST READ
+              </span>
+           </div>
+        </div>
 
-      {/* Content - Static State */}
-      <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[9px] font-black tracking-[0.2em] text-emerald-400 px-3 py-1 transparent uppercase border border-emerald-500/30 rounded-md backdrop-blur-md">
-              {template.category || 'TITAN_DOC'}
-            </span>
-            {isHero && (
-              <div className="flex items-center gap-1 text-[8px] font-bold text-gray-500 tracking-tighter">
-                <CheckCircle size={10} className="text-emerald-500" />
-                VERIFIED AI DRAFT
+        {/* Hover Controls & Meta */}
+        <div className="p-4 flex flex-col gap-3 shadow-[0_-20px_40px_rgba(0,0,0,0.5)] bg-[#181818]">
+           <div className="flex items-center justify-between">
+              <div className="flex gap-2">
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); onPreview(); }}
+                   className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-black hover:bg-white/90 transition-all active:scale-95 shadow-xl"
+                   title="Preview Strategy"
+                 >
+                    <Play size={20} className="fill-black ml-1" />
+                 </button>
+                 <button 
+                   className="w-10 h-10 rounded-full bg-transparent border border-gray-600 flex items-center justify-center text-white hover:border-white transition-all active:scale-95"
+                   title="Add to Library"
+                 >
+                    <Plus size={20} />
+                 </button>
               </div>
-            )}
-          </div>
-          
-          <h3 className={`font-bold text-white leading-[1.3] font-sans transition-colors duration-500 ${isHero ? 'text-2xl' : 'text-xl'}`}>
-            {template.title}
-          </h3>
-          
-          <div className="mt-4 flex flex-wrap gap-2 opacity-60">
-             <span className="text-[10px] text-gray-300 font-medium">#{template.stage || 'Compliance'}</span>
-             <span className="text-[10px] text-gray-300 font-medium">• 12k Words</span>
-          </div>
-        </div>
-        
-        {isHero && (
-          <p className="text-sm text-gray-400 line-clamp-3 mb-6 font-light leading-relaxed">
-            {template.summary}
-          </p>
-        )}
+              <button 
+                onClick={(e) => { e.stopPropagation(); navigate(`/gst/templates/${template.id}/customize`); }}
+                className="btn-titan px-4 py-2 text-[9px] tracking-[0.1em]"
+              >
+                AI_CUSTOMIZE
+              </button>
+           </div>
 
-        {/* View Details Hint */}
-        <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-500 group-hover:opacity-0 transition-opacity duration-300">
-          <Eye size={12} />
-          SCROLL TO PREVIEW
-        </div>
-      </div>
-
-      {/* Titanium Hover Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/95 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 z-20 flex flex-col justify-end p-6 translate-y-4 group-hover:translate-y-0">
-        
-        <p className="text-[13px] text-gray-400 font-light leading-relaxed mb-8">
-          {template.summary || 'Premium AI-optimized legal template for rapid compliance and strategic filing.'}
-        </p>
-        
-        <div className="flex flex-col gap-3">
-          <div className="flex gap-3">
-            <button 
-              onClick={(e) => {
-                e.preventDefault();
-                onPreview();
-              }}
-              className="flex-1 flex items-center justify-center gap-2 bg-white text-black py-3 rounded-xl text-xs font-black tracking-widest uppercase hover:bg-emerald-50 transition-all active:scale-95"
-            >
-              PREVIEW
-            </button>
-            <button 
-              className="flex items-center justify-center p-3 bg-white/10 border border-white/10 rounded-xl text-white hover:bg-emerald-500/20 hover:border-emerald-500 transition-all"
-              title="Download Original"
-            >
-              <FileText size={18} />
-            </button>
-          </div>
-
-          <button 
-            onClick={() => navigate(`/gst/templates/${template.id}/customize`)}
-            className="w-full flex items-center justify-center gap-3 bg-emerald-600 text-white py-4 rounded-xl text-xs font-black tracking-[0.1em] uppercase shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:bg-emerald-500 transition-all hover:shadow-[0_15px_40px_rgba(16,185,129,0.4)] active:scale-95"
-          >
-            <Wand2 size={16} /> 
-            <span>CHAT WITH LETA</span>
-            <ArrowRight size={14} />
-          </button>
+           <div className="space-y-1">
+              <div className="flex items-center gap-2 text-[11px] font-bold">
+                 <span className="text-emerald-400">Trusted Strategy</span>
+                 <span className="text-gray-500">•</span>
+                 <span className="text-gray-300">Semantic Score: {template.score ? (template.score * 100).toFixed(0) : '95'}%</span>
+                 <span className="px-1.5 py-0.5 border border-gray-700 text-gray-500 text-[8px] rounded uppercase font-mono">HD</span>
+              </div>
+              <p className="text-[10px] text-gray-400 line-clamp-2 leading-relaxed font-light">
+                 {template.summary || 'Premium AI-optimized legal template for rapid compliance and strategic filing.'}
+              </p>
+           </div>
         </div>
       </div>
     </div>

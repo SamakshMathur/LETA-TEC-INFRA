@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Loader2, Zap } from 'lucide-react';
+import { Search, Loader2, Zap, Sparkles } from 'lucide-react';
 import { TemplateResults } from '../components/templates';
 import { BASE_URL } from '../config/api';
 
@@ -31,56 +31,77 @@ const GstTemplates = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-gray-200 selection:bg-emerald-500/30">
+    <div className="min-h-screen bg-[#141414] text-white selection:bg-emerald-500/30">
       
-      {/* Cinematic Search Hero */}
-      <div className="relative pt-32 pb-24 px-6 flex flex-col items-center overflow-hidden">
-        {/* Background Visual Accents */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.08)_0%,transparent_70%)] pointer-events-none" />
-        <div className="absolute -top-24 -left-24 w-96 h-96 bg-emerald-500/5 blur-[120px] rounded-full animate-pulse" />
+      {/* 🎬 Netflix-Style Billboard Hero */}
+      <div className="relative min-h-[90vh] w-full overflow-hidden flex flex-col">
+        {/* Cinematic Backdrop */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#141414] via-[#141414]/80 to-transparent z-10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent to-transparent z-10" />
         
-        <div className="relative z-10 max-w-4xl w-full text-center">
-          <div className="inline-flex items-center gap-2 py-1 px-4 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black tracking-[0.2em] text-emerald-400 mb-8 uppercase">
-             <Zap size={10} className="fill-emerald-400" />
-             Sovereign Retrieval Engine
-          </div>
-          
-          <h1 className="text-5xl md:text-7xl font-black tracking-tight text-white mb-6 leading-tight">
-            Litigation <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-emerald-600">Intelligence.</span>
-          </h1>
-          
-          <p className="text-gray-400 text-lg md:text-xl font-light max-w-2xl mx-auto mb-12 leading-relaxed">
-            Navigate through 1,150+ specialized legal templates and notifications with 
-            millisecond-latency semantic matching.
-          </p>
+        {/* Animated Visual Accent */}
+        <div className="absolute right-0 top-0 w-2/3 h-full overflow-hidden opacity-40">
+           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.15)_0%,transparent_70%)] animate-pulse" />
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-emerald-500/10 rounded-full animate-[spin_60s_linear_infinite]" />
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-blue-500/5 rounded-full animate-[spin_40s_linear_infinite_reverse]" />
+        </div>
 
-          {/* Premium Search Hub */}
-          <form onSubmit={handleSearch} className="w-full relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
-            <div className="relative flex items-center bg-white/5 backdrop-blur-3xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl transition-all duration-300 group-focus-within:border-emerald-500/50 group-focus-within:shadow-[0_0_50px_rgba(16,185,129,0.1)]">
-              <div className="pl-6 text-gray-500 group-focus-within:text-emerald-500 transition-colors">
-                <Search size={24} />
+        {/* Billboard Content */}
+        <div className="relative z-20 flex-1 flex flex-col justify-center px-12 md:px-24 max-w-4xl pt-40 pb-24">
+           <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-600 rounded text-[10px] font-black tracking-widest uppercase">
+                 <Zap size={12} fill="white" /> Trending
               </div>
-              <input
-                type="text"
-                placeholder="Search by case facts, section, or document ID (e.g., ITC mismatch 3B)..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="w-full bg-transparent border-none py-6 px-6 text-white focus:outline-none focus:ring-0 text-xl font-light placeholder-gray-600"
-              />
+              <span className="text-sm font-bold text-gray-400 tracking-tight">Legal Strategy #127: GSTR-3B vs 2B Mismatch</span>
+           </div>
+
+           <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-6 leading-[0.9] uppercase italic">
+              Litigation <br/>
+              <span className="text-emerald-500 text-shadow-[0_0_30px_rgba(16,185,129,0.5)]">Intelligence.</span>
+           </h1>
+
+           <p className="text-lg md:text-xl text-gray-300 font-light max-w-xl mb-10 leading-relaxed">
+              Navigate 1,150+ high-end litigation templates with millisecond-latency semantic matching. 
+              Drafted by senior counsels, optimized by TITAN AI for 100% compliance.
+           </p>
+
+           <div className="flex flex-wrap gap-4 mb-16">
               <button 
-                type="submit" 
-                className="mr-3 bg-emerald-600 hover:bg-emerald-500 text-white px-10 py-4 rounded-xl font-black transition-all uppercase tracking-widest text-xs active:scale-95 shadow-lg shadow-emerald-900/20"
+                onClick={() => fetchTemplates('ITC mismatch')}
+                className="flex items-center gap-3 bg-white text-black px-8 py-4 rounded-md font-bold text-lg hover:bg-white/90 transition-all active:scale-95 shadow-2xl"
               >
-                Match
+                 <Zap size={24} fill="black" /> Get Started
               </button>
-            </div>
-          </form>
+              <button 
+                className="flex items-center gap-3 bg-gray-500/30 backdrop-blur-md text-white px-8 py-4 rounded-md font-bold text-lg border border-white/10 hover:bg-gray-500/40 transition-all"
+              >
+                 <Sparkles size={24} /> More Info
+              </button>
+           </div>
+
+           {/* Integrated Search Hub - now part of the flow to prevent overlap */}
+           <div className="w-full max-w-2xl group focus-within:max-w-3xl transition-all duration-700">
+              <form onSubmit={handleSearch} className="relative">
+                 <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded blur opacity-0 group-hover:opacity-100 transition duration-1000"></div>
+                 <div className="relative flex items-center bg-[#181818]/60 backdrop-blur-xl border border-white/10 rounded overflow-hidden">
+                   <div className="pl-6 text-gray-500">
+                     <Search size={24} />
+                   </div>
+                   <input
+                     type="text"
+                     placeholder="Ask for specific case facts or sections..."
+                     value={query}
+                     onChange={(e) => setQuery(e.target.value)}
+                     className="w-full bg-transparent border-none py-6 px-6 text-white focus:outline-none focus:ring-0 text-lg font-light placeholder-gray-600"
+                   />
+                 </div>
+              </form>
+           </div>
         </div>
       </div>
 
       {/* Results Area */}
-      <div className="pb-24">
+      <div className="pb-24 mt-12">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-32">
             <Loader2 className="animate-spin text-emerald-500 w-16 h-16 mb-6" />
