@@ -57,7 +57,7 @@ const LawDashboard = ({ title, domainId, contextDesc, definition, implDate }) =>
       {/* ── Main grid — Level 0 canvas, 2.5 gap (No-Line Rule) ──────────── */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-2.5">
         <div className="flex flex-col gap-2.5">
-          
+
           {/* Top Row: Equal width interaction widgets */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             {/* Litigation banner — Level 2 card */}
@@ -76,20 +76,20 @@ const LawDashboard = ({ title, domainId, contextDesc, definition, implDate }) =>
                   }}
                 />
                 <div className="relative z-10">
-                    <h2
-                      className="text-lg font-bold uppercase tracking-wide flex items-center gap-2 mb-2"
-                      style={{ color: '#4edea3' }}
-                    >
-                      <FileText className="w-5 h-5" />
-                      Litigation Support
-                    </h2>
-                    <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#9a9a9a' }}>
-                      Access 1,100+ litigation templates, notices, refunds, and appeals.
-                      Match your scenario instantly.
-                    </p>
-                    <Link to="/responses" className="btn-titan inline-block text-center w-full py-3 text-xs tracking-widest">
-                      OPEN LITIGATION SUPPORT
-                    </Link>
+                  <h2
+                    className="text-lg font-bold uppercase tracking-wide flex items-center gap-2 mb-2"
+                    style={{ color: '#4edea3' }}
+                  >
+                    <FileText className="w-5 h-5" />
+                    Litigation Support
+                  </h2>
+                  <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#9a9a9a' }}>
+                    Access 500+ litigation templates, notices, refunds, and appeals.
+                    Match your scenario instantly.
+                  </p>
+                  <Link to="/responses" className="btn-titan inline-block text-center w-full py-3 text-xs tracking-widest">
+                    OPEN LITIGATION SUPPORT
+                  </Link>
                 </div>
               </div>
             )}
