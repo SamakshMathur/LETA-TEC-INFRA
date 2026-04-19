@@ -33,6 +33,21 @@ def get_retriever():
         )
     return _retriever
 
+def preload_all_models():
+    """Trigger eager-loading of all models (Retriever + Embedding)."""
+    logger.info("⚡ Pre-loading all AI models into memory (Eager load)...")
+    
+    # 1. Load Retriever (FAISS + Chunks + Reranker)
+    r = get_retriever()
+    
+    # 2. Load Embedding Model (SentenceTransformer)
+    try:
+        from app.retrieval.retriever import get_model
+        get_model()
+        logger.info("✅ All AI models pre-loaded and ready.")
+    except Exception as e:
+        logger.error(f"❌ Failed to pre-load embedding model: {e}", exc_info=True)
+
 def reload_retriever():
     """Force-reload the retriever after incremental ingestion."""
     global _retriever

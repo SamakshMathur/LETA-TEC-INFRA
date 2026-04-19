@@ -30,6 +30,10 @@ async def startup_event():
         logger.error("Configuration validation failed — check warnings above")
     else:
         logger.info("Configuration validated successfully")
+        
+    # Eagerly load AI models so first query is instant (prevents Vercel timeout errors)
+    from app.dependencies import preload_all_models
+    preload_all_models()
 
 
 if __name__ == "__main__":
