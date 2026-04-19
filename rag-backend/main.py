@@ -1,5 +1,6 @@
 import logging
 import sys
+import os
 
 # ─── Logging Configuration (must be first) ─────────────────────────────────
 logging.basicConfig(
@@ -32,9 +33,10 @@ async def startup_event():
 
 
 if __name__ == "__main__":
-    logger.info("Starting uvicorn server on 0.0.0.0:8000")
+    port = int(os.getenv("PORT", "8080"))
+    logger.info(f"Starting uvicorn server on 0.0.0.0:{port}")
     try:
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        uvicorn.run(app, host="0.0.0.0", port=port)
     except Exception as e:
         logger.critical(f"Uvicorn crashed: {e}", exc_info=True)
         sys.exit(1)
