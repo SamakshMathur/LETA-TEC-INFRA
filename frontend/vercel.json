@@ -9,11 +9,6 @@
       "destination": "/index.html"
     }
   ],
-  "functions": {
-    "api/**": {
-      "maxDuration": 60
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",
