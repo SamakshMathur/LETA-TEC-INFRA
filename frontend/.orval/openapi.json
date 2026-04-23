@@ -1,0 +1,1757 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GST Legal RAG API",
+    "description": "In-house GST knowledge assistant",
+    "version": "1.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/health": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_documents_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/categories": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Get Categories",
+        "description": "Returns available categories and file counts.",
+        "operationId": "get_categories_api_documents_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/list/{category}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "List Documents",
+        "description": "Lists files in a category.",
+        "operationId": "list_documents_api_documents_list__category__get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/view": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "View Document",
+        "operationId": "view_document_api_documents_view_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Category"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Download"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/ai_search": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Ai Search",
+        "description": "AI-powered semantic search across the document library.",
+        "operationId": "ai_search_api_documents_ai_search_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Query"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/advisory/generate": {
+      "post": {
+        "tags": [
+          "Advisory"
+        ],
+        "summary": "Create Advisory",
+        "operationId": "create_advisory_api_advisory_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvisoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/sessions/new": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Create Session",
+        "operationId": "create_session_api_sessions_new_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/list": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "List Sessions",
+        "operationId": "list_sessions_api_sessions_list_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Session"
+                  },
+                  "type": "array",
+                  "title": "Response List Sessions Api Sessions List Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Get Session",
+        "operationId": "get_session_api_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Delete Session",
+        "operationId": "delete_session_api_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Register User",
+        "description": "Step 1 of sign-up: create the user profile.\nAfter this, call /send-otp to verify ownership of email or phone.",
+        "operationId": "register_user_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/send-otp": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Send Otp",
+        "description": "Step 2: Generate and store a 4-digit OTP for the given contact (email or phone).\nIn DEV MODE the OTP is returned in the response so you can test without a\nreal SMS/email provider. Remove `otp_preview` from the response once a\nreal provider (Twilio, SendGrid, etc.) is wired in.",
+        "operationId": "send_otp_api_auth_send_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendOTPRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify-otp": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Verify Otp",
+        "description": "Step 3: Verify the OTP and receive a JWT access token.\n\nDEV BEHAVIOUR: Any valid 4-digit number is accepted as long as a pending\nOTP record exists for this contact. Once a real provider is added, swap\nthe check from `record exists` to `record.otp == req.otp`.",
+        "operationId": "verify_otp_api_auth_verify_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyOTPRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Get Me",
+        "description": "Returns the currently authenticated user's profile.",
+        "operationId": "get_me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/auth/make-admin": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Make Admin",
+        "description": "Elevates an existing registered user to role='admin'.\nRequires ADMIN_MASTER_SECRET from .env — call this once per admin account.",
+        "operationId": "make_admin_api_auth_make_admin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSeedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/search": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Search Templates",
+        "description": "SOTA Semantic Search for Litigation Templates.\nGenerates query embeddings and ranks documents by cosine similarity.",
+        "operationId": "search_templates_api_templates_search_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Search Templates Api Templates Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/{template_id}": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Get Template",
+        "operationId": "get_template_api_templates__template_id__get",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/{template_id}/download": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Download Template",
+        "description": "Generates and returns a .docx file for the template.",
+        "operationId": "download_template_api_templates__template_id__download_get",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          },
+          {
+            "name": "content",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Customized content to download. If None, downloads base template.",
+              "title": "Content"
+            },
+            "description": "Customized content to download. If None, downloads base template."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/{template_id}/customize": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Customize Template",
+        "description": "Conversational AI Customization Engine.\nHandles multi-turn chat interaction to refine a legal draft.",
+        "operationId": "customize_template_api_templates__template_id__customize_post",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/upload": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Upload Templates",
+        "operationId": "upload_templates_api_templates_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_templates_api_templates_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/status": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Status",
+        "description": "Returns FAISS index stats and per-category document counts.",
+        "operationId": "admin_status_api_admin_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/upload": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Upload Documents",
+        "description": "Upload files to a category folder and trigger incremental ingestion.\nReturns a job_id — poll /api/admin/jobs/{job_id} for progress.",
+        "operationId": "upload_documents_api_admin_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_documents_api_admin_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get Job Status",
+        "description": "Poll ingestion job progress.",
+        "operationId": "get_job_status_api_admin_jobs__job_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/jobs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List Jobs",
+        "description": "List all ingestion jobs, newest first.",
+        "operationId": "list_jobs_api_admin_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List Users",
+        "description": "Returns all registered users.",
+        "operationId": "list_users_api_admin_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/users/{contact}/toggle-admin": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Toggle Admin Role",
+        "description": "Flip a user between role='user' and role='admin'.",
+        "operationId": "toggle_admin_role_api_admin_users__contact__toggle_admin_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health Check",
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ask": {
+      "post": {
+        "summary": "Ask Question",
+        "operationId": "ask_question_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ask-with-file": {
+      "post": {
+        "summary": "Ask Question With File",
+        "operationId": "ask_question_with_file_ask_with_file_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ask_question_with_file_ask_with_file_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/feedback": {
+      "post": {
+        "summary": "Submit Feedback",
+        "description": "Stores user ratings (thumbs up/down) for quality monitoring and future fine-tuning.",
+        "operationId": "submit_feedback_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/generate-pdf": {
+      "post": {
+        "summary": "Create Pdf",
+        "operationId": "create_pdf_generate_pdf_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PDFRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdminSeedRequest": {
+        "properties": {
+          "master_secret": {
+            "type": "string",
+            "title": "Master Secret"
+          },
+          "contact": {
+            "type": "string",
+            "title": "Contact"
+          }
+        },
+        "type": "object",
+        "required": [
+          "master_secret",
+          "contact"
+        ],
+        "title": "AdminSeedRequest"
+      },
+      "AdvisoryRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "context_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Text"
+          },
+          "manual_case": {
+            "type": "boolean",
+            "title": "Manual Case",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "AdvisoryRequest"
+      },
+      "Body_ask_question_with_file_ask_with_file_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "question"
+        ],
+        "title": "Body_ask_question_with_file_ask_with_file_post"
+      },
+      "Body_upload_documents_api_admin_upload_post": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "Target category key e.g. 'acts', 'circulars'"
+          },
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "One or more files to upload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "files"
+        ],
+        "title": "Body_upload_documents_api_admin_upload_post"
+      },
+      "Body_upload_templates_api_templates_upload_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_templates_api_templates_upload_post"
+      },
+      "ChatMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "ChatMessage"
+      },
+      "CustomizeRequest": {
+        "properties": {
+          "user_context": {
+            "type": "string",
+            "title": "User Context",
+            "description": "The user's specific case details and instructions for the AI."
+          },
+          "messages": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Messages",
+            "description": "Optional chat history for multi-turn customization."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_context"
+        ],
+        "title": "CustomizeRequest"
+      },
+      "FeedbackRequest": {
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "answer_preview": {
+            "type": "string",
+            "title": "Answer Preview"
+          },
+          "rating": {
+            "type": "integer",
+            "title": "Rating"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "answer_preview",
+          "rating"
+        ],
+        "title": "FeedbackRequest"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "PDFRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "content"
+        ],
+        "title": "PDFRequest"
+      },
+      "QuestionRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "intent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent",
+            "default": "general"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "QuestionRequest"
+      },
+      "SendOTPRequest": {
+        "properties": {
+          "contact": {
+            "type": "string",
+            "title": "Contact"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone"
+            ],
+            "title": "Method"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact",
+          "method"
+        ],
+        "title": "SendOTPRequest"
+      },
+      "Session": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Messages",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "title",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Session"
+      },
+      "SessionCreate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "default": "New Chat"
+          }
+        },
+        "type": "object",
+        "title": "SessionCreate"
+      },
+      "TemplateResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "sub_category": {
+            "type": "string",
+            "title": "Sub Category"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "category",
+          "sub_category",
+          "stage",
+          "keywords",
+          "summary"
+        ],
+        "title": "TemplateResponse"
+      },
+      "Token": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type"
+          },
+          "user_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "User Info"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type",
+          "user_info"
+        ],
+        "title": "Token"
+      },
+      "UserRegister": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ],
+            "title": "Gender"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "email",
+          "phone",
+          "gender"
+        ],
+        "title": "UserRegister"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VerifyOTPRequest": {
+        "properties": {
+          "contact": {
+            "type": "string",
+            "title": "Contact"
+          },
+          "otp": {
+            "type": "string",
+            "title": "Otp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact",
+          "otp"
+        ],
+        "title": "VerifyOTPRequest"
+      }
+    },
+    "securitySchemes": {
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "/api/auth/verify-otp"
+          }
+        }
+      }
+    }
+  }
+}
