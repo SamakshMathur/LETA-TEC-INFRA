@@ -1,10 +1,11 @@
-import random
+import os
 import re
+import secrets as _secrets
 from datetime import datetime, timedelta
-from typing import Literal, Optional
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr, field_validator
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, field_validator
 
 from app.database import get_user_collection, get_otp_collection
 from app.security import create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
@@ -61,10 +62,15 @@ class Token(BaseModel):
     user_info: dict
 
 
+# DEV_MODE=true → return otp_preview in response and skip OTP validation.
+# Always false in production; set in .env.local for local development.
+_DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() == "true"
+
+
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
 def _generate_otp() -> str:
-    return str(random.randint(1000, 9999))
+    return str(_secrets.randbelow(9000) + 1000)
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -140,15 +146,23 @@ async def send_otp(req: SendOTPRequest):
         upsert=True,
     )
 
-    # ── DEV MODE: return otp_preview ──────────────────────────────────────────
-    # TODO: Replace this block with real SMS/email delivery before going live.
-    # e.g.  send_sms(req.contact, f"Your LETA OTP is {otp}")
-    #        send_email(req.contact, f"Your LETA OTP is {otp}")
-    return {
-        "message": f"OTP generated. In production it would be sent to your {req.method}.",
-        "otp_preview": otp,          # ← REMOVE IN PRODUCTION
+    # TODO: Wire real SMS/email delivery here before going live:
+    #   if req.method == "phone":  send_sms(req.contact, f"Your LETA OTP is {otp}")
+    #   else:                      send_email(req.contact, f"Your LETA OTP is {otp}")
+    # OTP is always logged server-side so admins can verify during onboarding.
+    import logging as _log
+    _log.getLogger("leta.auth").info(
+        "OTP generated",
+        extra={"contact_hash": hash(req.contact), "method": req.method},
+    )
+
+    body: dict = {
+        "message": f"OTP sent to your {req.method}.",
         "expires_in_minutes": 10,
     }
+    if _DEV_MODE:
+        body["otp_preview"] = otp   # only visible in local dev
+    return body
 
 
 @router.post("/verify-otp", response_model=Token)
@@ -179,11 +193,9 @@ async def verify_otp(req: VerifyOTPRequest):
         otp_col.delete_one({"contact": req.contact})
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
 
-    # ── DEV MODE: accept any 4-digit number ───────────────────────────────────
-    # Production: uncomment the strict check below and remove the pass.
-    # if record["otp"] != req.otp:
-    #     raise HTTPException(status_code=400, detail="Invalid OTP")
-    # ─────────────────────────────────────────────────────────────────────────
+    # Strict OTP check — bypassed only when DEV_MODE=true (local dev only)
+    if not _DEV_MODE and record["otp"] != req.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
 
     # Mark OTP as used
     otp_col.delete_one({"contact": req.contact})

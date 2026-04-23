@@ -37,3 +37,5 @@ Pillow
 ftfy
 gdown
 redis
+gunicorn
+tenacity

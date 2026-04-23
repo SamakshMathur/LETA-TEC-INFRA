@@ -33,5 +33,21 @@ for path_str, file_id in GDRIVE_FILES.items():
         print(f"[DATA] File OK: {dest}", flush=True)
 PYEOF
 
-echo "[START] DATA SYNC COMPLETE — starting uvicorn"
-exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8080}"
+echo "[START] DATA SYNC COMPLETE — starting gunicorn"
+
+# Worker count: default 2 (each worker loads ~600 MB of models).
+# Increase WORKERS if your instance has ≥ 4 GB free RAM per extra worker.
+WORKERS=${WORKERS:-2}
+
+exec gunicorn main:app \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --workers "${WORKERS}" \
+  --bind "0.0.0.0:${PORT:-8080}" \
+  --timeout 180 \
+  --graceful-timeout 30 \
+  --keep-alive 5 \
+  --max-requests 1000 \
+  --max-requests-jitter 100 \
+  --log-level info \
+  --access-logfile - \
+  --error-logfile -

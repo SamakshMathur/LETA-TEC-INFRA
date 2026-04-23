@@ -5,10 +5,11 @@ from app.config import (
     OPENAI_API_KEY, OLLAMA_API_KEY, LLM_MODEL,
     # Claude
     ANTHROPIC_API_KEY, CLAUDE_MAIN_MODEL, CLAUDE_UTILITY_MODEL,
-    CLAUDE_THINKING_BUDGET, MAX_RESPONSE_POINTS,
+    CLAUDE_THINKING_BUDGET, CLAUDE_MAX_TOKENS, MAX_RESPONSE_POINTS,
     MAX_INPUT_TOKENS, HAIKU_COMPLEXITY_THRESHOLD,
+    BRIEF_RESPONSE_THRESHOLD, STANDARD_RESPONSE_THRESHOLD, SONNET_THINKING_THRESHOLD,
 )
-from app.generation.prompt import SYSTEM_PROMPT
+from app.generation.prompt import SYSTEM_PROMPT, BRIEF_PROMPT, STANDARD_PROMPT
 from app.generation.rules_engine import rules_engine
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ _COMPLEX_SIGNALS = {
     "gstr", "annual return", "audit", "assessment", "demand", "adjudication",
     "fema", "company law", "income tax", "tds", "tcs", "capital gains",
     "export", "import", "customs", "sez", "e-way bill", "refund",
+    "draft", "notice", "reply", "advisory", "legal draft", "observation", "written submission",
 }
 
 _SIMPLE_SIGNALS = {
@@ -46,8 +48,14 @@ def _estimate_complexity(question: str) -> float:
     complex_hits = sum(1 for kw in _COMPLEX_SIGNALS if kw in q_lower)
     simple_hits  = sum(1 for kw in _SIMPLE_SIGNALS  if kw in q_lower)
 
-    # Base score from keyword signals
-    score = min(1.0, complex_hits * 0.15) - min(0.3, simple_hits * 0.15)
+    # Base score from keyword signals - ITC and Drafting have higher weight
+    base_weight = 0.15
+    if "itc" in q_lower or "input tax credit" in q_lower:
+        base_weight = 0.35
+    if any(k in q_lower for k in ["draft", "notice", "reply"]):
+        base_weight = 0.35
+
+    score = min(1.0, complex_hits * base_weight) - min(0.3, simple_hits * 0.15)
 
     # Long questions are generally more complex
     if word_count > 40:
@@ -66,6 +74,22 @@ def _estimate_complexity(question: str) -> float:
 def _count_tokens_approx(text: str) -> int:
     """Rough token count: ~4 chars per token (good enough for budget gating)."""
     return len(text) // 4
+
+
+def _select_response_mode(complexity: float) -> tuple:
+    """
+    Maps a complexity score to (mode_name, prompt_template, max_tokens).
+
+    brief    (< BRIEF_RESPONSE_THRESHOLD)    → 3-point compact, 1 500 tokens
+    standard (< STANDARD_RESPONSE_THRESHOLD) → 5-point focused, 4 000 tokens
+    detailed (>= STANDARD_RESPONSE_THRESHOLD)→ 10-point full opinion, 20 000 tokens
+    """
+    if complexity < BRIEF_RESPONSE_THRESHOLD:
+        return "brief", BRIEF_PROMPT, 1500
+    elif complexity < STANDARD_RESPONSE_THRESHOLD:
+        return "standard", STANDARD_PROMPT, 4000
+    else:
+        return "detailed", SYSTEM_PROMPT, CLAUDE_MAX_TOKENS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -104,19 +128,15 @@ else:  # openai
 
 _ONESHOT_USER = "What is the GST on cars?"
 _ONESHOT_ASSISTANT = (
-    "<thinking>Analyzing Sec 17(5) for motor vehicles.</thinking>\n\n"
-    "[POINT 1/10] **LETA INTERPRETATION OF USER QUERY**: Assessment of GST rate and ITC eligibility for motor vehicles.\n"
-    "[POINT 2/10] **MAIN CONCLUSIVE ANSWER (EXECUTIVE SUMMARY)**: GST is generally 28% plus cess. ITC is blocked under Section 17(5).\n"
-    "[POINT 3/10] **FACTUAL UNDERSTANDING / ASSUMPTIONS**: User is asking about standard motor vehicle purchase.\n"
-    "[POINT 4/10] **RELEVANT LEGAL PROVISIONS**: Section 17(5)(a) of the CGST Act 2017.\n"
-    "[POINT 5/10] **VERBATIM STATUTORY EXTRACTS**: \"Input tax credit shall not be available in respect of... "
+    "<thinking>Analyzing Sec 17(5) for motor vehicles — checking ITC block conditions.</thinking>\n\n"
+    "[POINT 1/7] **QUERY INTERPRETATION & KEY LEGAL ISSUE**: GST rate and ITC eligibility for motor vehicle purchase.\n"
+    "[POINT 2/7] **CONCLUSIVE ANSWER (EXECUTIVE SUMMARY)**: GST is 28% + cess. ITC is blocked under Section 17(5)(a) for vehicles with seating ≤ 13.\n"
+    "[POINT 3/7] **RELEVANT LEGAL PROVISIONS**: Section 17(5)(a) of the CGST Act 2017 — denies ITC on motor vehicles used for transportation of persons (seating ≤ 13), unless used for taxable onward supply.\n"
+    "[POINT 4/7] **VERBATIM STATUTORY EXTRACTS**: \"Input tax credit shall not be available in respect of... "
     "motor vehicles for transportation of persons having approved seating capacity of not more than thirteen persons...\"\n"
-    "[POINT 6/10] **LEGAL ANALYSIS & ADVERSARIAL CHECK**: ITC is blocked unless used for further supply, "
-    "transportation of passengers, or training.\n"
-    "[POINT 7/10] **APPLICATION TO PRESENT CASE**: If seating capacity <= 13, ITC is blocked.\n"
-    "[POINT 8/10] **NUMERIC DATA / RATES (TRUTH RULES)**: Rate: **28%**. Thresholds: **N/A**.\n"
-    "[POINT 9/10] **RELEVANT NOTIFICATIONS / CIRCULARS / PRECEDENTS**: Circular 177/08/2022.\n"
-    "[POINT 10/10] **FINAL TAX POSITION & CAVEATS**: **FINAL POSITION:** ITC Blocked. Taxable at 28%.\n"
+    "[POINT 5/7] **LEGAL ANALYSIS, ADVERSARIAL CHECK & APPLICABLE NOTIFICATIONS**: ITC block applies unless the vehicle is used for (i) further supply of vehicles, (ii) transportation of passengers, or (iii) imparting training on driving. Circular 177/09/2022 clarifies no ITC on demo vehicles. No notification overrides Sec 17(5) for general purchase.\n"
+    "[POINT 6/7] **NUMERIC DATA / RATES (TRUTH RULES ONLY)**: GST Rate: **28%** + applicable cess. ITC block threshold: seating capacity **≤ 13 persons**.\n"
+    "[POINT 7/7] **FINAL TAX POSITION & CAVEATS**: **FINAL POSITION:** Taxable at 28% + cess. ITC Blocked under Sec 17(5)(a). Verify current cess rates from latest CBIC notification.\n"
     "[TERMINATE]"
 )
 
@@ -139,21 +159,39 @@ After closing the </thinking> block, immediately begin the LETA_OUTPUT_V2.0 resp
 # Claude (Anthropic) streaming generator
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _stream_claude(question: str, system_prompt: str, use_haiku: bool = False):
+def _stream_claude(
+    question: str,
+    system_prompt: str,
+    use_haiku: bool = False,
+    use_thinking: bool = False,
+    max_tokens_override: int = None,
+    response_mode: str = "detailed",
+):
     """
-    Streams the answer using Claude.
+    3-tier model routing:
+      use_haiku=True               → Haiku, no thinking  (simple factual, ~9x cheaper)
+      use_haiku=False, use_thinking=False → Sonnet, no thinking  (standard analysis)
+      use_haiku=False, use_thinking=True  → Sonnet + extended thinking  (complex drafting)
 
-    use_haiku=False  → Sonnet with Extended Thinking (full legal analysis)
-    use_haiku=True   → Haiku (simple factual queries, ~9x cheaper, no thinking)
+    response_mode controls one-shot injection:
+      "detailed" → 7-point example injected
+      "brief" / "standard" → no one-shot (system prompt is self-contained)
 
     Only visible text deltas are yielded; thinking tokens stay internal.
     """
     model = CLAUDE_UTILITY_MODEL if use_haiku else CLAUDE_MAIN_MODEL
-    messages = [
-        {"role": "user",      "content": _ONESHOT_USER},
-        {"role": "assistant", "content": _ONESHOT_ASSISTANT},
-        {"role": "user",      "content": question},
-    ]
+
+    # Only inject the 10-point one-shot for detailed mode; for brief/standard the
+    # system prompt instructions are self-contained and a mismatched example would
+    # confuse the model into using the wrong number of points.
+    if response_mode == "detailed":
+        messages = [
+            {"role": "user",      "content": _ONESHOT_USER},
+            {"role": "assistant", "content": _ONESHOT_ASSISTANT},
+            {"role": "user",      "content": question},
+        ]
+    else:
+        messages = [{"role": "user", "content": question}]
 
     # Anthropic prompt caching: pass system prompt as a content block with
     # cache_control so Anthropic caches it server-side.
@@ -167,48 +205,80 @@ def _stream_claude(question: str, system_prompt: str, use_haiku: bool = False):
         }
     ]
 
+    resolved_max_tokens = max_tokens_override if max_tokens_override is not None else (
+        4000 if use_haiku else CLAUDE_MAX_TOKENS
+    )
     stream_kwargs = dict(
         model=model,
-        max_tokens=4000 if use_haiku else 8000,
+        max_tokens=resolved_max_tokens,
         system=system_blocks,
         messages=messages,
         stop_sequences=["[TERMINATE]"],
         temperature=1,
     )
 
-    # Extended thinking only on Sonnet (Haiku doesn't support it)
-    if not use_haiku:
+    # Extended thinking: Sonnet only, and only when complexity warrants it
+    if not use_haiku and use_thinking:
         stream_kwargs["thinking"] = {
             "type": "enabled",
             "budget_tokens": CLAUDE_THINKING_BUDGET,
         }
+        # Anthropic requirement: max_tokens must be strictly greater than thinking budget
+        if stream_kwargs["max_tokens"] <= CLAUDE_THINKING_BUDGET:
+            stream_kwargs["max_tokens"] = CLAUDE_THINKING_BUDGET + 4000
+
+    def _is_retryable(exc: Exception) -> bool:
+        return type(exc).__name__ in {
+            "APIConnectionError", "RateLimitError",
+            "InternalServerError", "APITimeoutError",
+        }
 
     full_content = ""
-    try:
-        with _claude_client.messages.stream(**stream_kwargs) as stream:
-            for event in stream:
-                try:
-                    if (
-                        getattr(event, "type", None) == "content_block_delta"
-                        and getattr(getattr(event, "delta", None), "type", "") == "text_delta"
-                    ):
-                        text = event.delta.text
-                        if text:
-                            if full_content.count("[POINT") > MAX_RESPONSE_POINTS:
-                                break
-                            full_content += text
-                            yield text
-                except (AttributeError, TypeError):
-                    continue
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        full_content = ""
+        try:
+            with _claude_client.messages.stream(**stream_kwargs) as stream:
+                for event in stream:
+                    try:
+                        if (
+                            getattr(event, "type", None) == "content_block_delta"
+                            and getattr(getattr(event, "delta", None), "type", "") == "text_delta"
+                        ):
+                            text = event.delta.text
+                            if text:
+                                if full_content.count("[POINT") > MAX_RESPONSE_POINTS:
+                                    break
+                                full_content += text
+                                yield text
+                    except (AttributeError, TypeError):
+                        continue
 
-        logger.info(
-            f"Claude stream complete | model={'haiku' if use_haiku else 'sonnet'} "
-            f"| chars={len(full_content)}"
-        )
+            logger.info(
+                f"Claude stream complete | model={'haiku' if use_haiku else 'sonnet'} "
+                f"| thinking={use_thinking} | attempt={attempt + 1} | chars={len(full_content)}"
+            )
+            return  # success — exit generator
 
-    except Exception as e:
-        logger.error(f"Claude stream error: {e}", exc_info=True)
-        yield f"Error generating answer: {str(e)}"
+        except Exception as e:
+            if attempt < max_attempts - 1 and _is_retryable(e):
+                wait = 2 ** attempt
+                logger.warning(
+                    f"Claude transient error (attempt {attempt + 1}/{max_attempts}), "
+                    f"retrying in {wait}s: {e}"
+                )
+                import time as _time
+                _time.sleep(wait)
+                continue
+
+            logger.error(f"Claude stream error: {e}", exc_info=True)
+            if not use_haiku:
+                logger.warning("Attempting emergency fallback to Haiku...")
+                yield "\n[System: Falling back to fast-drafting mode...]\n\n"
+                yield from _stream_claude(question, system_prompt, use_haiku=True)
+            else:
+                yield "Error generating answer. Please try again."
+            return
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -287,7 +357,20 @@ def synthesize_answer_stream(question: str, context: str):
 
     try:
         truth_rules_text = rules_engine.get_all_rules_as_text()
-        formatted_system_prompt = SYSTEM_PROMPT.format(
+    except Exception as e:
+        logger.error(f"Rules engine error: {e}")
+        yield f"Error: Could not load truth rules ({e})"
+        return
+
+    if LLM_PROVIDER == "anthropic":
+        complexity = _estimate_complexity(question)
+        response_mode, prompt_template, max_tokens = _select_response_mode(complexity)
+    else:
+        complexity = _estimate_complexity(question)
+        response_mode, prompt_template, max_tokens = "detailed", SYSTEM_PROMPT, CLAUDE_MAX_TOKENS
+
+    try:
+        formatted_system_prompt = prompt_template.format(
             context=context,
             truth_rules=truth_rules_text,
         )
@@ -311,14 +394,20 @@ def synthesize_answer_stream(question: str, context: str):
         return
 
     if LLM_PROVIDER == "anthropic":
-        # ── Haiku routing ─────────────────────────────────────────────────────
-        complexity = _estimate_complexity(question)
-        use_haiku = complexity < HAIKU_COMPLEXITY_THRESHOLD
+        use_haiku   = complexity < HAIKU_COMPLEXITY_THRESHOLD     # < 0.4 → Haiku
+        use_thinking = complexity >= SONNET_THINKING_THRESHOLD    # >= 0.7 → Sonnet + thinking
         logger.info(
-            f"synthesize | complexity={complexity:.2f} | "
-            f"model={'haiku' if use_haiku else 'sonnet'} | q={question[:80]}"
+            f"synthesize | complexity={complexity:.2f} | mode={response_mode} | "
+            f"model={'haiku' if use_haiku else 'sonnet'} | thinking={use_thinking} | "
+            f"max_tokens={max_tokens} | q={question[:80]}"
         )
-        yield from _stream_claude(question, formatted_system_prompt, use_haiku=use_haiku)
+        yield from _stream_claude(
+            question, formatted_system_prompt,
+            use_haiku=use_haiku,
+            use_thinking=use_thinking,
+            max_tokens_override=max_tokens,
+            response_mode=response_mode,
+        )
     else:
         logger.debug(f"synthesize_answer_stream | provider={LLM_PROVIDER} | question={question[:80]}")
         yield from _stream_openai(question, formatted_system_prompt)

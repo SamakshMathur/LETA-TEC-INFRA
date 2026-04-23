@@ -33,6 +33,12 @@ def _ensure_indexes(db) -> None:
         db["sessions"].create_index([("user_id", ASCENDING)])
         db["sessions"].create_index([("session_id", ASCENDING)], unique=True)
         db["sessions"].create_index([("updated_at", DESCENDING)])
+        # sessions: auto-expire sessions inactive for 90 days
+        db["sessions"].create_index(
+            [("updated_at", ASCENDING)],
+            expireAfterSeconds=90 * 24 * 3600,
+            name="sessions_ttl",
+        )
 
         # templates: domain + tag filtering (Netflix-style browse)
         db["templates"].create_index([("domain", ASCENDING), ("tags", ASCENDING)])
@@ -67,11 +73,14 @@ class Database:
                 self.client = MongoClient(
                     MONGO_URI,
                     serverSelectionTimeoutMS=5000,
-                    connectTimeoutMS=5000,
-                    socketTimeoutMS=10000,
-                    # Atlas requires TLS; local dev works fine with these too
+                    connectTimeoutMS=10000,
+                    socketTimeoutMS=30000,
+                    minPoolSize=5,
+                    maxPoolSize=50,
+                    maxIdleTimeMS=45000,
                     tls=MONGO_URI.startswith("mongodb+srv"),
                     retryWrites=True,
+                    w="majority",
                 )
                 self.client.admin.command("ping")
                 logger.info("MongoDB connection successful")

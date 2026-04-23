@@ -125,17 +125,54 @@ async def log_requests(request: Request, call_next):
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
-    response.headers["X-Frame-Options"] = "DENY"
+    # Skip X-Frame-Options for document view so the frontend iframe can embed PDFs
+    if not request.url.path.startswith("/api/documents/view"):
+        response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
-# Maximum Security: Rate Limiting
+# Rate limiting — user-ID keyed, Redis-backed when available
+import base64 as _b64
+import json as _json_ratelimit
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-limiter = Limiter(key_func=get_remote_address)
+
+def _rate_limit_key(request: Request) -> str:
+    """Prefer JWT user-ID over IP so limits survive proxy/CDN hops."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            parts = auth.split(".")
+            if len(parts) == 3:
+                padded = parts[1] + "=" * (-len(parts[1]) % 4)
+                payload = _json_ratelimit.loads(_b64.b64decode(padded))
+                if "sub" in payload:
+                    return f"user:{payload['sub']}"
+        except Exception:
+            pass
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+def _build_limiter() -> Limiter:
+    _redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    try:
+        import redis as _r
+        _r.from_url(_redis_url, socket_connect_timeout=1).ping()
+        lim = Limiter(key_func=_rate_limit_key, storage_uri=_redis_url)
+        logger.info("Rate limiter: Redis-backed (distributed)")
+        return lim
+    except Exception as _e:
+        logger.warning(f"Rate limiter: in-memory fallback (Redis unavailable: {_e})")
+        return Limiter(key_func=_rate_limit_key)
+
+
+limiter = _build_limiter()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -237,15 +274,18 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
         try:
             unique_sources = []
             seen_src = set()
+            import urllib.parse as _urlparse
             for c in chunks:
                 src_key = (c.get("source"), c.get("page", 0))
                 if src_key not in seen_src:
                     seen_src.add(src_key)
+                    _raw_src = c.get("source", "")
+                    _basename = os.path.basename(_raw_src)
+                    _enc_name = _urlparse.quote(_basename, safe="")
                     unique_sources.append({
-                        "title": c.get("source", "Document"),
+                        "title": _basename or "Document",
                         "page": c.get("page", 1),
-                        # Construct a URL for the PDF viewer
-                        "url": f"/api/documents/view?category=all&filename={c.get('source')}&page={c.get('page', 1)}",
+                        "url": f"/api/documents/view?category=all&filename={_enc_name}&page={c.get('page', 1)}",
                         "score": float(c.get("_rerank_score", 0))
                     })
                 if len(unique_sources) >= 8: # Limit to top 8 unique sources
@@ -303,13 +343,19 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                     _logger.warning(f"Template matcher error: {e}")
                     return ""
 
-            # Standard Python 3.10+ execution
-            results = await asyncio.gather(
-                run_citation_validator(),
-                run_answer_verifier(),
-                run_hallucination_guard(),
-                run_template_matcher(),
-            )
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.gather(
+                        run_citation_validator(),
+                        run_answer_verifier(),
+                        run_hallucination_guard(),
+                        run_template_matcher(),
+                    ),
+                    timeout=30.0,
+                )
+            except asyncio.TimeoutError:
+                _logger.warning("Post-generation validators timed out after 30s — skipping")
+                results = (full_answer, None, "", "")
 
             annotated_answer, verify_warn, hallu_warn, template_block = results
 
@@ -332,30 +378,33 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                 yield template_block
 
     except Exception as e:
-        _logger.error(f"Error in stream_and_save: {e}")
-        yield f"\n[System Error: {str(e)}]"
+        _logger.error(f"Error in stream_and_save: {e}", exc_info=True)
+        yield "\n[System: An error occurred processing your request. Please try again.]"
     finally:
-        # Save whatever we have generated so far
+        # DB save — wrapped in to_thread so the sync pymongo write doesn't
+        # block the event loop while the HTTP response is still open.
         if session_id and full_answer.strip():
             collection = get_session_collection()
             if collection is not None:
-                collection.update_one(
-                    {"session_id": session_id},
-                    {"$push": {"messages": {"role": "assistant", "content": full_answer, "timestamp": datetime.now()}},
-                     "$set": {"updated_at": datetime.now()}}
-                )
+                try:
+                    await asyncio.to_thread(
+                        collection.update_one,
+                        {"session_id": session_id},
+                        {
+                            "$push": {"messages": {"role": "assistant", "content": full_answer, "timestamp": datetime.now()}},
+                            "$set": {"updated_at": datetime.now()},
+                        },
+                    )
+                except Exception as dbe:
+                    _logger.warning(f"DB save error (non-fatal): {dbe}")
 
-        # ── Confidence-gated cache store ──────────────────────────────────
-        # Only cache if the answer is non-empty and has a high confidence score.
-        # Confidence is estimated from the validation layers: an answer that
-        # passed citation validation, hallucination guard, and answer verifier
-        # without warnings is scored higher.
+        # Confidence-gated cache store — also off the event loop
         if full_answer.strip() and query_vec is not None:
             try:
                 from app.cache import cache_store
                 from app.generation.confidence import estimate_confidence
-                confidence = estimate_confidence(full_answer, chunks or [])
-                cache_store(user_query, query_vec, full_answer, confidence)
+                confidence = await asyncio.to_thread(estimate_confidence, full_answer, chunks or [])
+                await asyncio.to_thread(cache_store, user_query, query_vec, full_answer, confidence)
                 _logger.debug(f"Cache store attempt | confidence={confidence:.2f}")
             except Exception as ce:
                 _logger.warning(f"Cache store error (non-fatal): {ce}")
