@@ -19,9 +19,9 @@
     --surface-bright:            #2a2a2a;
     --surface-variant:           #1a1a1a;
     
-    --primary:           #4edea3;
-    --primary-container: #10b981;
-    --on-primary:        #000000;
+    --primary:           #6366f1;
+    --primary-container: #4f46e5;
+    --on-primary:        #ffffff;
 
     --on-surface:         #f0f0f0;
     --on-surface-variant: #888888;
@@ -40,8 +40,8 @@
     --surface-bright:            #ffffff;
     --surface-variant:           #adb5bd;
     
-    --primary:           #059669; /* Slightly deeper emerald for light mode */
-    --primary-container: #10b981;
+    --primary:           #4f46e5; 
+    --primary-container: #6366f1;
     --on-primary:        #ffffff;
 
     --on-surface:         #1a1a1a;
@@ -53,7 +53,7 @@
     @apply antialiased;
     background-color: var(--surface);
     color: var(--on-surface);
-    font-family: 'Sora', system-ui, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
     overflow-x: hidden;
     scroll-behavior: auto; /* Prevent conflict with Framer Motion scroll logic */
   }

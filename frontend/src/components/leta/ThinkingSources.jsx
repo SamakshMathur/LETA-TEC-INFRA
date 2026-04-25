@@ -5,13 +5,9 @@ import SourceCard from './SourceCard';
 
 const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentClick, status: externalStatus }) => {
   const [isCollapsed, setIsCollapsed] = useState(isCollapsedInitial);
-  const [status, setStatus] = useState('Initializing Statutory Analyzer...');
+  const [internalStatus, setInternalStatus] = useState('Initializing Statutory Analyzer...');
 
-  useEffect(() => {
-    if (externalStatus) {
-      setStatus(externalStatus);
-    }
-  }, [externalStatus]);
+  const status = externalStatus || internalStatus;
 
   const isSearching = !sources || sources.length === 0;
 

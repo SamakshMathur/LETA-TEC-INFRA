@@ -166,6 +166,8 @@ const ParticleBrain = ({ count = 3000 }) => {
 };
 
 export default function NeuralBrainLoader() {
+  const nodeCount = useMemo(() => Math.floor(Math.random() * 500) + 1000, []);
+
   return (
     <div className="w-full h-80 relative">
         {/* Overlay Text */}
@@ -174,7 +176,7 @@ export default function NeuralBrainLoader() {
                 Synthesizing TITAN Intelligence
             </h3>
             <p className="text-xs text-gray-500 mt-2 font-mono tracking-wide">
-                Optimizing {Math.floor(Math.random() * 500) + 1000} statutory nodes...
+                Optimizing {nodeCount} statutory nodes...
             </p>
         </div>
 

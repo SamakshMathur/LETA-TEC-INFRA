@@ -39,7 +39,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Health check using the correct endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
 # Note: Adjusting the CWD to rag-backend so relative paths resolve correctly
 WORKDIR /app/rag-backend

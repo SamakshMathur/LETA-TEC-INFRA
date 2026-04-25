@@ -143,6 +143,9 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
   const [isAdvisoryOpen, setIsAdvisoryOpen] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
 
+  // Stable ID for the response to satisfy React purity rules (impure to call Math.random during render)
+  const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
+
   const handleCopy = () => {
     if (!data?.answer) return;
     navigator.clipboard.writeText(data.answer);
@@ -213,19 +216,19 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
                   components={{
-                    h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-6 mb-4" {...props} />,
-                    h2: ({node, ...props}) => <h2 className="text-lg font-bold mt-5 mb-3" {...props} />,
-                    h3: ({node, ...props}) => <h3 className="text-base font-bold mt-4 mb-2" {...props} />,
-                    ul: ({node, ...props}) => <ul className="list-disc list-outside ml-5 mb-4 space-y-2" {...props} />,
-                    ol: ({node, ...props}) => <ol className="list-decimal list-outside ml-5 mb-4 space-y-2" {...props} />,
-                    li: ({node, ...props}) => <li className="pl-1" {...props} />,
-                    p: ({node, ...props}) => <p className="mb-4" {...props} />,
-                    strong: ({node, ...props}) => <strong className="font-bold text-sentinel-green dark:text-sentinel-green" {...props} />,
-                    table: ({node, ...props}) => <div className="overflow-x-auto my-6"><table className="min-w-full text-sm font-mono border border-white/10 rounded-sm" {...props} /></div>,
-                    thead: ({node, ...props}) => <thead className="bg-[#020202] border-b border-white/10 text-white" {...props} />,
-                    th: ({node, ...props}) => <th className="px-4 py-3 text-left font-bold" {...props} />,
-                    td: ({node, ...props}) => <td className="px-4 py-3 border-b border-white/5 bg-[#050A10]" {...props} />,
-                    a: ({node, ...props}) => {
+                    h1: (props) => <h1 className="text-xl font-bold mt-6 mb-4" {...props} />,
+                    h2: (props) => <h2 className="text-lg font-bold mt-5 mb-3" {...props} />,
+                    h3: (props) => <h3 className="text-base font-bold mt-4 mb-2" {...props} />,
+                    ul: (props) => <ul className="list-disc list-outside ml-5 mb-4 space-y-2" {...props} />,
+                    ol: (props) => <ol className="list-decimal list-outside ml-5 mb-4 space-y-2" {...props} />,
+                    li: (props) => <li className="pl-1" {...props} />,
+                    p: (props) => <p className="mb-4" {...props} />,
+                    strong: (props) => <strong className="font-bold text-sentinel-green dark:text-sentinel-green" {...props} />,
+                    table: (props) => <div className="overflow-x-auto my-6"><table className="min-w-full text-sm font-mono border border-white/10 rounded-sm" {...props} /></div>,
+                    thead: (props) => <thead className="bg-[#020202] border-b border-white/10 text-white" {...props} />,
+                    th: (props) => <th className="px-4 py-3 text-left font-bold" {...props} />,
+                    td: (props) => <td className="px-4 py-3 border-b border-white/5 bg-[#050A10]" {...props} />,
+                    a: (props) => {
                       const isDocLink = props.href && props.href.includes('/api/documents/view');
 
                       const openInViewer = (href, linkText) => {
@@ -308,7 +311,7 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
              : 'bg-sentinel-blue/5 border-sentinel-blue/10 text-sentinel-blue/60'
         }`}>
           <span>GENERATED_BY_SENTINEL.AI_ENGINE</span>
-          <span>ID: {data && Math.random().toString(36).substr(2, 9).toUpperCase()}</span>
+          <span>ID: {data && responseId}</span>
         </div>
       </motion.div>
 

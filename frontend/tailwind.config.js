@@ -1,4 +1,5 @@
-/* eslint-env node */
+import typography from '@tailwindcss/typography';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
@@ -51,17 +52,17 @@ export default {
       },
 
       backgroundImage: {
-        'brand-gradient':   'linear-gradient(135deg, #4edea3 0%, #10b981 100%)',
-        'spotlight-radial': 'radial-gradient(circle at center, rgba(78,222,163,0.12) 0%, rgba(20,19,19,0) 70%)',
+        'brand-gradient':   'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+        'spotlight-radial': 'radial-gradient(circle at center, rgba(99,102,241,0.12) 0%, rgba(20,19,19,0) 70%)',
         'gold-glow':        'radial-gradient(circle at center, rgba(233,196,0,0.08) 0%, rgba(20,19,19,0) 60%)',
-        'glass-border':     'linear-gradient(135deg, rgba(78,222,163,0.15) 0%, rgba(0,238,252,0.15) 100%)',
+        'glass-border':     'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(79,70,229,0.15) 100%)',
       },
 
       fontFamily: {
         sans:    ['Inter', 'system-ui', 'sans-serif'],
-        display: ['"Orbitron"', 'sans-serif'],
+        display: ['Inter', 'sans-serif'],
         mono:    ['"Space Grotesk"', 'monospace'],
-        brand:   ['"Orbitron"', 'sans-serif'],
+        brand:   ['Inter', 'sans-serif'],
         pixel:   ['"Silkscreen"', '"Press Start 2P"', 'monospace'],
       },
 
@@ -108,6 +109,6 @@ export default {
     },
   },
   plugins: [
-    require('@tailwindcss/typography'),
+    typography,
   ],
 };
