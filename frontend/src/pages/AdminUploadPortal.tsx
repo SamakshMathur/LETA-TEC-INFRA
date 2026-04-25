@@ -23,14 +23,22 @@ const CATEGORIES = [
 
 const ALLOWED = /\.(pdf|docx|xlsx|xls|txt)$/i;
 
-const statusStyle = (s) => ({
+const statusStyleMap = {
   queued:     { dot: 'bg-yellow-400',       text: 'text-yellow-400',       card: 'border-yellow-400/20 bg-yellow-400/5' },
   processing: { dot: 'bg-blue-400 animate-pulse', text: 'text-blue-400',  card: 'border-blue-400/20 bg-blue-400/5' },
   done:       { dot: 'bg-sentinel-green',   text: 'text-sentinel-green',   card: 'border-sentinel-green/20 bg-sentinel-green/5' },
   error:      { dot: 'bg-red-400',          text: 'text-red-400',          card: 'border-red-400/20 bg-red-500/5' },
-}[s] || { dot: 'bg-gray-500', text: 'text-gray-400', card: 'border-white/10 bg-white/5' });
+};
 
-const StatCard = ({ label, value, sub }) => (
+const statusStyle = (s: string) => (statusStyleMap[s as keyof typeof statusStyleMap] || { dot: 'bg-gray-500', text: 'text-gray-400', card: 'border-white/10 bg-white/5' });
+
+interface StatCardProps {
+  label: string;
+  value?: string | number;
+  sub?: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ label, value, sub }) => (
   <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/[0.07] transition-colors">
     <p className="text-[11px] text-gray-500 uppercase tracking-wider">{label}</p>
     <p className="text-2xl font-bold text-white mt-1">{value ?? '—'}</p>
@@ -38,14 +46,14 @@ const StatCard = ({ label, value, sub }) => (
   </div>
 );
 
-const formatBytes = (b) => {
+const formatBytes = (b: number) => {
   if (!b) return '0 B';
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(b) / Math.log(1024));
   return `${(b / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
 };
 
-const fileIcon = (name) => {
+const fileIcon = (name: string) => {
   if (/\.pdf$/i.test(name)) return '📕';
   if (/\.docx?$/i.test(name)) return '📘';
   if (/\.xlsx?$/i.test(name)) return '📗';
@@ -53,16 +61,16 @@ const fileIcon = (name) => {
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-const AdminUploadPortal = () => {
-  const [selectedCategory, setSelectedCategory] = useState('circulars');
-  const [dragging, setDragging]   = useState(false);
-  const [fileQueue, setFileQueue] = useState([]);   // { id, file }
-  const [jobs, setJobs]           = useState([]);
-  const [sysStatus, setSysStatus] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError]         = useState('');
+const AdminUploadPortal: React.FC = () => {
+  const [selectedCategory, setSelectedCategory] = useState<string>('circulars');
+  const [dragging, setDragging]   = useState<boolean>(false);
+  const [fileQueue, setFileQueue] = useState<any[]>([]);   // { id, file }
+  const [jobs, setJobs]           = useState<any[]>([]);
+  const [sysStatus, setSysStatus] = useState<any>(null);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [error, setError]         = useState<string>('');
 
-  const fileInputRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef   = useRef({});
 
   const authHdr = () => ({});
@@ -78,14 +86,14 @@ const AdminUploadPortal = () => {
   useEffect(() => { fetchStatus(); }, []);
 
   // ── Drag & Drop ────────────────────────────────────────────────────────────
-  const onDragOver  = useCallback((e) => { e.preventDefault(); setDragging(true);  }, []);
+  const onDragOver  = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragging(true);  }, []);
   const onDragLeave = useCallback(()  => setDragging(false), []);
-  const onDrop      = useCallback((e) => {
+  const onDrop      = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragging(false);
     addFiles(Array.from(e.dataTransfer.files));
   }, []);
 
-  const addFiles = (incoming) => {
+  const addFiles = (incoming: File[]) => {
     const valid   = incoming.filter(f => ALLOWED.test(f.name));
     const skipped = incoming.length - valid.length;
     if (skipped) setError(`${skipped} file(s) skipped — only PDF, DOCX, XLSX, TXT allowed.`);
@@ -93,7 +101,7 @@ const AdminUploadPortal = () => {
     setFileQueue(prev => [...prev, ...valid.map(f => ({ id: Math.random().toString(36).slice(2), file: f }))]);
   };
 
-  const removeFile = (id) => setFileQueue(prev => prev.filter(f => f.id !== id));
+  const removeFile = (id: string) => setFileQueue(prev => prev.filter(f => f.id !== id));
 
   // ── Upload ─────────────────────────────────────────────────────────────────
   const handleUpload = async () => {
@@ -127,13 +135,13 @@ const AdminUploadPortal = () => {
   };
 
   // ── Job polling ────────────────────────────────────────────────────────────
-  const startPolling = (jobId) => {
+  const startPolling = (jobId: string) => {
     const iv = setInterval(async () => {
       try {
         const res = await fetch(`${BASE_URL}/api/admin/jobs/${jobId}`, { headers: authHdr() });
         if (res.ok) {
           const job = await res.json();
-          setJobs(prev => prev.map(j => j.job_id === jobId ? { ...j, ...job } : j));
+          setJobs(prev => prev.map((j: any) => j.job_id === jobId ? { ...j, ...job } : j));
           if (job.status === 'done' || job.status === 'error') {
             clearInterval(iv);
             delete pollingRef.current[jobId];
@@ -147,7 +155,7 @@ const AdminUploadPortal = () => {
 
   useEffect(() => () => Object.values(pollingRef.current).forEach(clearInterval), []);
 
-  const catLabel = (key) => CATEGORIES.find(c => c.key === key)?.label ?? key;
+  const catLabel = (key: string) => CATEGORIES.find(c => c.key === key)?.label ?? key;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -179,7 +187,7 @@ const AdminUploadPortal = () => {
             <StatCard label="Embedding Dim" value={sysStatus.faiss?.dimension} sub="BGE-large" />
             <StatCard label="Total Chunks"  value={sysStatus.faiss?.total_chunks?.toLocaleString()} sub="chunks.jsonl" />
             <StatCard label="Documents"
-              value={Object.values(sysStatus.categories || {}).reduce((a, b) => a + b, 0)}
+              value={Object.values(sysStatus.categories || {}).reduce((a: any, b: any) => a + b, 0) as number}
               sub={`across ${Object.keys(sysStatus.categories || {}).length} categories`} />
           </div>
         )}
@@ -216,7 +224,7 @@ const AdminUploadPortal = () => {
                   : 'border-white/10 hover:border-white/25 bg-black/20 hover:bg-black/30'
               }`}>
               <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.xls,.txt"
-                className="hidden" onChange={(e) => addFiles(Array.from(e.target.files))} />
+                className="hidden" onChange={(e) => addFiles(Array.from(e.target.files || []))} />
               <div className="text-5xl mb-3 transition-transform">{dragging ? '📂' : '📄'}</div>
               <p className="text-white font-semibold text-sm">
                 {dragging ? 'Drop files here' : 'Drag & drop files, or click to browse'}
@@ -310,7 +318,7 @@ const AdminUploadPortal = () => {
 
                       {/* File list */}
                       <div className="mt-2 space-y-1">
-                        {job.files?.slice(0, 3).map((f, i) => (
+                        {job.files?.slice(0, 3).map((f: string, i: number) => (
                           <p key={i} className="text-[11px] text-gray-600 truncate flex items-center gap-1">
                             <span>{fileIcon(f)}</span> {f}
                           </p>

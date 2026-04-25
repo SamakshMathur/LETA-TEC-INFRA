@@ -268,6 +268,7 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
     import asyncio
     import json
     full_answer = ""
+    unique_sources = []
 
     # 1. Immediately emit metadata about retrieved sources (Perplexity-style transparency)
     if chunks:
@@ -305,77 +306,73 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             yield chunk
 
         if chunks and full_answer.strip():
-            # --- Parallel Accuracy Pipeline ---
-            # We run all validation layers concurrently to minimize post-generation delay.
-            # Layer 2 (LLM Verifier) is the longest (I/O bound), while others are fast.
+            # Detect drafting intent to bypass the accuracy pipeline
+            is_draft = any(kw in user_query.lower() for kw in ["draft", "notice", "reply", "appeal", "submission", "advisory"])
             
-            async def run_citation_validator():
+            if not is_draft:
+                # --- Parallel Accuracy Pipeline ---
+                async def run_citation_validator():
+                    try:
+                        from app.generation.citation_validator import CitationValidator
+                        return CitationValidator.validate_citations(full_answer, chunks)
+                    except Exception as e:
+                        _logger.warning(f"Citation validator error: {e}")
+                        return full_answer
+
+                async def run_answer_verifier():
+                    try:
+                        from app.generation.answer_verifier import verify_answer
+                        return await asyncio.to_thread(verify_answer, user_query, full_answer, chunks)
+                    except Exception as e:
+                        _logger.warning(f"Answer verifier error: {e}")
+                        return None
+
+                async def run_hallucination_guard():
+                    try:
+                        from app.generation.hallucination_guard import check_hallucinated_numbers
+                        return check_hallucinated_numbers(full_answer, context, truth_rules_text, chunks)
+                    except Exception as e:
+                        _logger.warning(f"Hallucination guard error: {e}")
+                        return ""
+
+                async def run_template_matcher():
+                    try:
+                        from app.retrieval.template_matcher import search_templates, format_template_suggestions
+                        matched = await asyncio.to_thread(search_templates, user_query, top_k=3)
+                        return format_template_suggestions(matched)
+                    except Exception as e:
+                        _logger.warning(f"Template matcher error: {e}")
+                        return ""
+
                 try:
-                    from app.generation.citation_validator import CitationValidator
-                    return CitationValidator.validate_citations(full_answer, chunks)
-                except Exception as e:
-                    _logger.warning(f"Citation validator error: {e}")
-                    return full_answer
+                    results = await asyncio.wait_for(
+                        asyncio.gather(
+                            run_citation_validator(),
+                            run_hallucination_guard(),
+                        ),
+                        timeout=8.0,
+                    )
+                except asyncio.TimeoutError:
+                    _logger.warning("Post-generation validators timed out — skipping")
+                    results = (full_answer, "")
 
-            async def run_answer_verifier():
-                try:
-                    # verify_answer is currently sync, but we can run it in a thread pool
-                    from app.generation.answer_verifier import verify_answer
-                    return await asyncio.to_thread(verify_answer, user_query, full_answer, chunks)
-                except Exception as e:
-                    _logger.warning(f"Answer verifier error: {e}")
-                    return None
+                annotated_answer, hallu_warn = results
+                verify_warn = None
 
-            async def run_hallucination_guard():
-                try:
-                    from app.generation.hallucination_guard import check_hallucinated_numbers
-                    return check_hallucinated_numbers(full_answer, context, truth_rules_text, chunks)
-                except Exception as e:
-                    _logger.warning(f"Hallucination guard error: {e}")
-                    return ""
-
-            async def run_template_matcher():
-                try:
-                    from app.retrieval.template_matcher import search_templates, format_template_suggestions
-                    matched = await asyncio.to_thread(search_templates, user_query, top_k=3)
-                    return format_template_suggestions(matched)
-                except Exception as e:
-                    _logger.warning(f"Template matcher error: {e}")
-                    return ""
-
-            try:
-                results = await asyncio.wait_for(
-                    asyncio.gather(
-                        run_citation_validator(),
-                        run_answer_verifier(),
-                        run_hallucination_guard(),
-                        run_template_matcher(),
-                    ),
-                    timeout=30.0,
-                )
-            except asyncio.TimeoutError:
-                _logger.warning("Post-generation validators timed out after 30s — skipping")
-                results = (full_answer, None, "", "")
-
-            annotated_answer, verify_warn, hallu_warn, template_block = results
-
-            # Update the answer and yield reports in order
-            if annotated_answer and len(annotated_answer) > len(full_answer):
-                report = annotated_answer[len(full_answer):]
-                full_answer = annotated_answer
-                yield report
-            
-            if verify_warn:
-                full_answer += verify_warn
-                yield verify_warn
-            
-            if hallu_warn:
-                full_answer += hallu_warn
-                yield hallu_warn
-            
-            if template_block:
-                full_answer += template_block
-                yield template_block
+                if annotated_answer and len(annotated_answer) > len(full_answer):
+                    report = annotated_answer[len(full_answer):]
+                    full_answer = annotated_answer
+                    yield report
+                
+                if verify_warn:
+                    full_answer += verify_warn
+                    yield verify_warn
+                
+                if hallu_warn:
+                    full_answer += hallu_warn
+                    yield hallu_warn
+                
+                # template_block intentionally not streamed — surfaced via /api/templates instead
 
     except Exception as e:
         _logger.error(f"Error in stream_and_save: {e}", exc_info=True)
@@ -404,7 +401,7 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                 from app.cache import cache_store
                 from app.generation.confidence import estimate_confidence
                 confidence = await asyncio.to_thread(estimate_confidence, full_answer, chunks or [])
-                await asyncio.to_thread(cache_store, user_query, query_vec, full_answer, confidence)
+                await asyncio.to_thread(cache_store, user_query, query_vec, full_answer, confidence, unique_sources if chunks else [])
                 _logger.debug(f"Cache store attempt | confidence={confidence:.2f}")
             except Exception as ce:
                 _logger.warning(f"Cache store error (non-fatal): {ce}")
@@ -457,23 +454,33 @@ async def ask_question(request: Request, req: QuestionRequest):
         cached_answer = cache_lookup(question, query_vec)
         
         if cached_answer:
+            cached_text, cached_sources = cached_answer
             _ask_logger.info("Cache HIT", extra={"query_id": query_id, "cache_hit": True})
             yield f"__STATUS__:{json.dumps({'msg': 'Instant Statutory Retrieval Complete.'})}__END_STATUS__"
-            yield cached_answer
+            if cached_sources:
+                import json as _json
+                yield f"__METADATA__:{_json.dumps({'type': 'metadata', 'sources': cached_sources})}__END_METADATA__"
+            yield cached_text
             return
 
-        # --- Pulse 2: Expansion (~2-5s) ---
-        yield f"__STATUS__:{json.dumps({'msg': 'Expanding Legal Context & Topic Modeling...'})}__END_STATUS__"
-        from app.retrieval.query_refiner import generate_advanced_queries
-        advanced_queries = generate_advanced_queries(question)
-        refined_q = advanced_queries.get("queries", [question])[0]
+        # --- Pulse 2: Expansion (skipped for simple queries to save 3-5s) ---
+        from app.generation.synthesizer import _estimate_complexity
+        _complexity = _estimate_complexity(question)
+        if _complexity >= 0.25:
+            yield f"__STATUS__:{json.dumps({'msg': 'Expanding Legal Context & Topic Modeling...'})}__END_STATUS__"
+            from app.retrieval.query_refiner import generate_advanced_queries
+            advanced_queries = generate_advanced_queries(question)
+            refined_q = advanced_queries.get("queries", [question])[0]
+        else:
+            advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
+            refined_q = question
 
-        # --- Pulse 3: Retrieval (~1-3s) ---
+        # --- Pulse 3: Retrieval ---
         yield f"__STATUS__:{json.dumps({'msg': f'Querying Statutory Provisions ({domain.upper()})...'})}__END_STATUS__"
         retriever = get_retriever()
         chunks = retriever.search(
             query=refined_q,
-            top_k=50,
+            top_k=15,
             allowed_sources=route["use_sources"],
             advanced_queries=advanced_queries,
         )

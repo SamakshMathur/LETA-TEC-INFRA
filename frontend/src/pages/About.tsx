@@ -1,6 +1,7 @@
+import React from 'react';
 import { motion } from 'framer-motion';
 
-const About = () => (
+const About: React.FC = () => (
   <div className="min-h-screen" style={{ backgroundColor: 'var(--surface)' }}>
 
     {/* Header */}

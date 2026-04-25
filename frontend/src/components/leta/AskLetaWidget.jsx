@@ -37,23 +37,28 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
   const [openDocuments, setOpenDocuments] = useState([]);
   const [activeDocId, setActiveDocId] = useState(null);
 
-  const handleDocumentClick = ({ url, page, search }) => {
+  const handleDocumentClick = ({ url, page, search, title }) => {
     // If the URL is relative (e.g. starts with /api/), prepend the backend BASE_URL
     let fullUrl = url;
     if (url.startsWith('/api/')) {
         fullUrl = BASE_URL + url;
     }
-    
+
+    // Derive a human-readable title: prefer the passed title, fall back to URL parsing
+    const derivedTitle = title
+      || (() => { try { return decodeURIComponent(fullUrl.split('filename=')[1]?.split('&')[0] || ''); } catch { return ''; } })()
+      || 'Document';
+
     // Check if doc already open
     const id = fullUrl;
     const existing = openDocuments.find(d => d.id === id);
     if (!existing) {
-       setOpenDocuments(prev => [...prev, { 
-           id, 
-           url: fullUrl, 
-           title: url.split('filename=')[1]?.split('&')[0]?.replace(/%20/g, ' ') || 'Document', 
-           page, 
-           search 
+       setOpenDocuments(prev => [...prev, {
+           id,
+           url: fullUrl,
+           title: derivedTitle,
+           page,
+           search
        }]);
     } else {
        // Update page/search if clicking a new citation for same doc

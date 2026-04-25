@@ -321,7 +321,7 @@ const DocumentLibrary = () => {
       {/* Sidebar Portal for Previews */}
       <DocPreviewSidebar 
         isOpen={!!selectedDoc} 
-        document={selectedDoc} 
+        docMetadata={selectedDoc} 
         onClose={() => setSelectedDoc(null)} 
         onDownload={handleDownload}
       />

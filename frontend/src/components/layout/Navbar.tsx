@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FileText, Landmark, Globe, Briefcase, ChevronDown, Shield } from 'lucide-react';
+import { motion } from 'framer-motion';
+import ThemeToggle from '../common/ThemeToggle';
 
 const DOMAINS = [
   { label: 'GST Intelligence',  path: '/gst',          icon: FileText,  status: 'ACTIVE' },
@@ -46,7 +48,7 @@ const Navbar = () => {
 
   return (
     <nav
-      className="fixed top-0 left-0 w-full z-50 transition-all duration-500"
+      className="fixed top-0 left-0 w-full z-50 transition-all duration-300"
       style={{
         height: scrolled ? '60px' : '84px',
         backgroundColor: scrolled ? 'rgba(14,14,14,0.90)' : 'transparent',
@@ -60,10 +62,10 @@ const Navbar = () => {
         <div className="flex-1 flex justify-start">
           <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
             <div
-              className="w-9 h-9 rounded flex items-center justify-center transition-all duration-300 group-hover:rotate-6"
+              className="w-9 h-9 rounded flex items-center justify-center transition-all duration-200"
               style={{
                 background: 'linear-gradient(135deg, #4edea3 0%, #10b981 100%)',
-                boxShadow: '0 0 16px rgba(78,222,163,0.20)',
+                boxShadow: '0 0 10px rgba(78,222,163,0.15)',
               }}
             >
               <Shield className="w-4 h-4" style={{ color: '#0e0e0e' }} />
@@ -85,7 +87,7 @@ const Navbar = () => {
           <div className="relative" ref={domainsMenuRef}>
             <button
               onClick={() => setDomainsOpen(v => !v)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 border border-transparent hover:border-white/10 hover:bg-white/5"
+              className="flex items-center gap-1.5 px-4 py-2 rounded text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-200 border border-transparent hover:border-white/10 hover:bg-white/5"
               style={{ color: anyDomainActive ? '#4edea3' : '#9a9a9a' }}
             >
               Modules
@@ -145,7 +147,7 @@ const Navbar = () => {
             <Link
               key={path}
               to={path}
-              className="relative px-2 py-1 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 hover:text-white"
+              className="relative px-2 py-1 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-200 hover:text-white"
               style={{ color: isActive(path) ? '#e5e2e1' : '#9a9a9a' }}
             >
               {label}
@@ -155,7 +157,7 @@ const Navbar = () => {
                   className="absolute -bottom-2 left-0 right-0 h-[1.5px] rounded-full"
                   style={{ 
                     background: 'linear-gradient(90deg, transparent, #4edea3, transparent)',
-                    boxShadow: '0 0 10px rgba(78,222,163,0.5)' 
+                    boxShadow: '0 0 5px rgba(78,222,163,0.3)' 
                   }}
                 />
               )}
@@ -163,11 +165,9 @@ const Navbar = () => {
           ))}
         </div>
 
-        {/* ── Column 3: Spacer/Balance (Right) ────────────────────────── */}
+        {/* ── Column 3: Theme Toggle (Right) ────────────────────────── */}
         <div className="flex-1 flex justify-end">
-           <div className="w-10 h-10 rounded-full border border-white/5 bg-white/5 flex items-center justify-center cursor-default opacity-40 hover:opacity-100 transition-opacity">
-              <span className="text-[8px] font-mono font-bold text-[#4edea3]">L.T</span>
-           </div>
+           <ThemeToggle />
         </div>
       </div>
     </nav>

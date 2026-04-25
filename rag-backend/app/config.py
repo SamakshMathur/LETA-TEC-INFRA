@@ -21,7 +21,8 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")           # used only when provider
 # Claude Models (used when LLM_PROVIDER=anthropic)
 CLAUDE_MAIN_MODEL = os.getenv("CLAUDE_MAIN_MODEL", "claude-sonnet-4-6")
 CLAUDE_UTILITY_MODEL = os.getenv("CLAUDE_UTILITY_MODEL", "claude-haiku-4-5-20251001")
-CLAUDE_THINKING_BUDGET = int(os.getenv("CLAUDE_THINKING_BUDGET", "8000"))
+CLAUDE_THINKING_BUDGET = int(os.getenv("CLAUDE_THINKING_BUDGET", "1500"))
+CLAUDE_MAX_TOKENS = int(os.getenv("CLAUDE_MAX_TOKENS", "6000"))
 VISUAL_LLM_MODEL = "claude-sonnet-4-6"
 
 # ─── Embedding Config ─────────────────────────────────────────────────────
@@ -31,9 +32,9 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
 VECTOR_DIM = 1024 if EMBEDDING_PROVIDER == "local" else 3072
 
 # ─── Retrieval Tuning (externalized magic numbers) ─────────────────────────
-VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "150"))
-VECTOR_EXPANDED_TOP_K = int(os.getenv("VECTOR_EXPANDED_TOP_K", "50"))
-BM25_TOP_K = int(os.getenv("BM25_TOP_K", "100"))
+VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "50"))
+VECTOR_EXPANDED_TOP_K = int(os.getenv("VECTOR_EXPANDED_TOP_K", "15"))
+BM25_TOP_K = int(os.getenv("BM25_TOP_K", "30"))
 MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.7"))
 MAX_RESPONSE_POINTS = int(os.getenv("MAX_RESPONSE_POINTS", "15"))
 
@@ -50,6 +51,20 @@ MAX_INPUT_TOKENS = int(os.getenv("MAX_INPUT_TOKENS", "150000"))
 # answered by the cheaper Haiku model instead of Sonnet.
 # Scale: 0.0 (trivial) → 1.0 (highly complex multi-section analysis)
 HAIKU_COMPLEXITY_THRESHOLD = float(os.getenv("HAIKU_COMPLEXITY_THRESHOLD", "0.4"))
+
+# Response-length routing thresholds (independent of model routing above):
+#   score < BRIEF_RESPONSE_THRESHOLD          → 3-point compact answer
+#   BRIEF <= score < STANDARD_RESPONSE_THRESHOLD → 5-point focused analysis
+#   score >= STANDARD_RESPONSE_THRESHOLD      → full 10-point legal opinion
+BRIEF_RESPONSE_THRESHOLD    = float(os.getenv("BRIEF_RESPONSE_THRESHOLD",    "0.25"))
+STANDARD_RESPONSE_THRESHOLD = float(os.getenv("STANDARD_RESPONSE_THRESHOLD", "0.60"))
+
+# Extended-thinking gate: Sonnet is used for complexity >= HAIKU_COMPLEXITY_THRESHOLD,
+# but extended thinking (expensive) is only switched ON when complexity is high enough
+# to justify it (drafting, multi-section disputes, adversarial analysis).
+#   0.4–0.7 → Sonnet, NO thinking  (standard legal analysis, saves ~8 000 thinking tokens)
+#   >= 0.7  → Sonnet + thinking    (complex drafting / ITC disputes / SCN replies)
+SONNET_THINKING_THRESHOLD = float(os.getenv("SONNET_THINKING_THRESHOLD", "0.95"))
 
 # Redis Cache Config
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

@@ -13,10 +13,10 @@ const SourceCard = ({ source, onClick, index = 0 }) => {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      whileHover={{ scale: 1.02, backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
+      whileTap={{ opacity: 0.8 }}
       onClick={() => onClick({ url, page, title: cleanTitle })}
-      className="flex flex-col p-3 bg-[#0A1622] border border-white/10 rounded-lg cursor-pointer group transition-all duration-300 hover:border-sentinel-green/40 shadow-sm"
+      className="flex flex-col p-3 bg-[#0A1622] border border-white/10 rounded-lg cursor-pointer group transition-all duration-150 hover:border-sentinel-green/40 shadow-sm"
     >
       <div className="flex items-start justify-between mb-2">
         <div className="p-1.5 bg-sentinel-green/10 rounded text-sentinel-green group-hover:bg-sentinel-green/20 transition-colors">

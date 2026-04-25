@@ -112,7 +112,7 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 # ── Layer 1: Exact Hash Cache ────────────────────────────────────────────────
 
-def get_exact(query: str) -> Optional[str]:
+def get_exact(query: str):
     key = _exact_key(query)
     # Try Redis first
     r = _get_redis()
@@ -122,7 +122,7 @@ def get_exact(query: str) -> Optional[str]:
             if data:
                 payload = json.loads(data)
                 logger.info(f"Cache L1 HIT (Redis) | q={query[:60]}")
-                return payload["answer"]
+                return (payload["answer"], payload.get("sources", []))
         except Exception as e:
             logger.warning(f"Cache L1 Redis get error: {e}")
     # Fallback to DiskCache
@@ -132,18 +132,18 @@ def get_exact(query: str) -> Optional[str]:
             payload = dc.get(key)
             if payload:
                 logger.info(f"Cache L1 HIT (DiskCache) | q={query[:60]}")
-                return payload["answer"]
+                return (payload["answer"], payload.get("sources", []))
         except Exception as e:
             logger.warning(f"Cache L1 DiskCache get error: {e}")
     return None
 
 
-def set_exact(query: str, answer: str, confidence: float) -> None:
+def set_exact(query: str, answer: str, confidence: float, sources: list = None) -> None:
     if confidence < CACHE_MIN_CONFIDENCE:
         logger.debug(f"Cache L1 SKIP (low confidence {confidence:.2f}) | q={query[:60]}")
         return
     key = _exact_key(query)
-    payload = {"answer": answer, "confidence": confidence, "ts": time.time()}
+    payload = {"answer": answer, "confidence": confidence, "sources": sources or [], "ts": time.time()}
     # Try Redis first
     r = _get_redis()
     if r is not None:
@@ -267,43 +267,40 @@ def verify_cache_hit(query: str, cached_metadata: dict) -> bool:
 
 import re
 
-def get_semantic(query_vec: np.ndarray, query_text: str = "") -> Optional[str]:
+def get_semantic(query_vec: np.ndarray, query_text: str = ""):
     """
-    Returns cached answer if any stored entry has cosine similarity
-    >= CACHE_SIMILARITY_THRESHOLD and passes accuracy guard.
+    Returns (answer, sources) tuple if cosine similarity >= threshold and passes accuracy guard.
     """
     global _faiss_index
     if _faiss_index is None:
         _refresh_faiss_index()
-    
+
     if _faiss_index is None:
         return None
 
     try:
         query_vec_np = np.array([query_vec]).astype('float32')
-        D, I = _faiss_index.search(query_vec_np, 1) # Get top 1 result
-        
+        D, I = _faiss_index.search(query_vec_np, 1)
+
         if len(I[0]) > 0:
             idx = I[0][0]
             similarity = D[0][0]
-            
+
             if idx != -1 and similarity >= CACHE_SIMILARITY_THRESHOLD:
                 meta = _faiss_metadata[idx]
-                
-                # Run Accuracy Guard
+
                 if query_text and not verify_cache_hit(query_text, meta):
                     return None
-                    
+
                 logger.info(f"Cache L2 HIT (FAISS) | similarity={similarity:.3f}")
-                return meta["answer"]
+                return (meta["answer"], meta.get("sources", []))
 
     except Exception as e:
         logger.warning(f"Cache L2 (FAISS) search error: {e}")
-        # Fallback to slow Redis scan if FAISS fails
         return _get_semantic_slow(query_vec)
     return None
 
-def _get_semantic_slow(query_vec: np.ndarray) -> Optional[str]:
+def _get_semantic_slow(query_vec: np.ndarray):
     """Legacy slow scan as fallback."""
     r = _get_redis()
     if r is None: return None
@@ -314,12 +311,12 @@ def _get_semantic_slow(query_vec: np.ndarray) -> Optional[str]:
             entry = json.loads(raw)
             sim = _cosine_similarity(query_vec, _bytes_to_vec(bytes.fromhex(entry["vec_hex"])))
             if sim >= CACHE_SIMILARITY_THRESHOLD:
-                return entry["answer"]
+                return (entry["answer"], entry.get("sources", []))
     except: pass
     return None
 
 
-def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_text: str = "") -> None:
+def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_text: str = "", sources: list = None) -> None:
     if confidence < CACHE_MIN_CONFIDENCE:
         return
     r = _get_redis()
@@ -328,7 +325,6 @@ def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_te
     try:
         index_key = _semantic_index_key()
 
-        # Evict oldest entries if we're at the limit
         current_count = r.hlen(index_key)
         if current_count >= MAX_SEMANTIC_ENTRIES:
             keys_to_delete = list(r.hkeys(index_key))[:MAX_SEMANTIC_ENTRIES // 10]
@@ -344,21 +340,22 @@ def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_te
             "answer": answer,
             "query_text": query_text,
             "confidence": confidence,
+            "sources": sources or [],
             "ts": time.time(),
         }
         r.hset(index_key, entry_key, json.dumps(entry))
         r.expire(index_key, CACHE_TTL_SECONDS)
-        
-        # Incremental update to local index
+
         with _faiss_lock:
             if _faiss_index is not None:
                 _faiss_index.add(np.array([query_vec]).astype('float32'))
                 _faiss_metadata.append({
                     "answer": answer,
                     "query_text": query_text,
-                    "confidence": confidence
+                    "confidence": confidence,
+                    "sources": sources or [],
                 })
-        
+
         logger.debug(f"Cache L2 SET | entries~={current_count + 1}")
     except Exception as e:
         logger.warning(f"Cache L2 set error: {e}")
@@ -366,19 +363,20 @@ def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_te
 
 # ── Combined lookup / store (used by retriever + app.py) ────────────────────
 
-def cache_lookup(query: str, query_vec: Optional[np.ndarray] = None) -> Optional[str]:
+def cache_lookup(query: str, query_vec: Optional[np.ndarray] = None):
     """
     Check L1 (exact) then L2 (semantic).
-    Returns cached answer string or None on miss.
+    Returns (answer, sources) tuple or None on miss.
+    sources is a list of {title, page, url, score} dicts (may be empty list).
     """
-    answer = get_exact(query)
-    if answer:
-        return answer
+    result = get_exact(query)
+    if result:
+        return result
 
     if query_vec is not None:
-        answer = get_semantic(query_vec, query_text=query)
-        if answer:
-            return answer
+        result = get_semantic(query_vec, query_text=query)
+        if result:
+            return result
 
     return None
 
@@ -388,11 +386,12 @@ def cache_store(
     query_vec: Optional[np.ndarray],
     answer: str,
     confidence: float,
+    sources: list = None,
 ) -> None:
-    """Store answer in both L1 (exact) and L2 (semantic) if confidence is sufficient."""
-    set_exact(query, answer, confidence)
+    """Store answer + sources in both L1 (exact) and L2 (semantic) if confidence is sufficient."""
+    set_exact(query, answer, confidence, sources=sources or [])
     if query_vec is not None:
-        set_semantic(query_vec, answer, confidence, query_text=query)
+        set_semantic(query_vec, answer, confidence, query_text=query, sources=sources or [])
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

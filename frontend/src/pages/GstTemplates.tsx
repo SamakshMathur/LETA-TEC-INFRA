@@ -3,12 +3,12 @@ import { Search, Loader2, Zap, Sparkles } from 'lucide-react';
 import { TemplateResults } from '../components/templates';
 import { BASE_URL } from '../config/api';
 
-const GstTemplates = () => {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+const GstTemplates: React.FC = () => {
+  const [query, setQuery] = useState<string>('');
+  const [results, setResults] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const fetchTemplates = async (searchQuery = '') => {
+  const fetchTemplates = async (searchQuery: string = '') => {
     setIsLoading(true);
     try {
       const response = await fetch(`${BASE_URL}/api/templates/search?query=${encodeURIComponent(searchQuery)}`);
@@ -25,7 +25,7 @@ const GstTemplates = () => {
     fetchTemplates();
   }, []);
 
-  const handleSearch = (e) => {
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     fetchTemplates(query);
   };

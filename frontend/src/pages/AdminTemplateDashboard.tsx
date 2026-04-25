@@ -3,12 +3,12 @@ import { useDropzone } from 'react-dropzone';
 import { UploadCloud, FileText, CheckCircle, AlertCircle, Trash2, Edit3, Loader } from 'lucide-react';
 import { BASE_URL } from '../config/api';
 
-const AdminTemplateDashboard = () => {
-  const [files, setFiles] = useState([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadResults, setUploadResults] = useState(null);
+const AdminTemplateDashboard: React.FC = () => {
+  const [files, setFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadResults, setUploadResults] = useState<any>(null);
 
-  const onDrop = useCallback((acceptedFiles) => {
+  const onDrop = useCallback((acceptedFiles: File[]) => {
     // Append new files to existing state
     setFiles(prev => [...prev, ...acceptedFiles]);
     setUploadResults(null); 
@@ -25,7 +25,7 @@ const AdminTemplateDashboard = () => {
     }
   });
 
-  const removeFile = (index) => {
+  const removeFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -55,7 +55,7 @@ const AdminTemplateDashboard = () => {
       if (data.successful > 0) {
           setFiles([]); // Clear success
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Bulk upload error:", error);
       setUploadResults({ failed: files.length, successful: 0, errors: [error.message] });
     } finally {
@@ -122,7 +122,7 @@ const AdminTemplateDashboard = () => {
                 </button>
               </h3>
               <ul role="list" className="mt-6 divide-y divide-white/10 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                {files.map((file, index) => (
+                {files.map((file: File, index: number) => (
                   <li key={index} className="flex items-center justify-between py-4 group">
                     <div className="flex items-center">
                       <FileText className="h-8 w-8 text-sentinel-green/70 mr-4" />
@@ -188,7 +188,7 @@ const AdminTemplateDashboard = () => {
                 <div className="mt-4">
                   <p className="text-sm font-medium text-gray-300 mb-2">Error Logs:</p>
                   <ul className="list-disc pl-5 text-xs text-red-300 space-y-1 max-h-32 overflow-y-auto">
-                    {uploadResults.errors.map((err, i) => (
+                    {uploadResults.errors.map((err: string, i: number) => (
                       <li key={i}>{err}</li>
                     ))}
                   </ul>

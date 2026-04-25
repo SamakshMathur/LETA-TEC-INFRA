@@ -1,25 +1,32 @@
 import React from 'react';
-import { Layers, FileText, BookOpen, Gavel, Smartphone, Scroll, File, Globe, Truck } from 'lucide-react';
+import { Layers, FileText, BookOpen, Gavel, Smartphone, Scroll, File, Globe, Truck, LucideIcon } from 'lucide-react';
 
-const categories = [
+interface Category {
+  id: string;
+  label: string;
+  count: number;
+  icon: LucideIcon;
+}
+
+const categories: Category[] = [
   { id: 'circulars', label: 'CIRCULARS', count: 0, icon: Layers },
   { id: 'forms', label: 'FORMS', count: 0, icon: FileText },
   { id: 'flyers', label: 'FLYERS', count: 0, icon: BookOpen },
   { id: 'aars', label: 'AARS', count: 0, icon: Gavel },
-  { id: 'acts', label: 'ACTS', count: 0, icon: Smartphone }, // Using Smartphone as proxy for 'mobile-like' icon in screenshot, or maybe Book
+  { id: 'acts', label: 'ACTS', count: 0, icon: Smartphone },
   { id: 'rules', label: 'RULES', count: 0, icon: Scroll },
   { id: 'cgst', label: 'CGST', count: 0, icon: File },
   { id: 'igst', label: 'IGST', count: 0, icon: Globe },
   { id: 'export', label: 'EXPORT', count: 0, icon: Truck },
 ];
 
-const DocLibrary = () => {
+const DocLibrary: React.FC = () => {
   return (
     <div className="w-full bg-[#050505] border border-white/10 rounded-lg overflow-hidden font-mono">
       {/* Header */}
       <div className="p-4 border-b border-white/10 flex justify-between items-center bg-[#0a0a0a]">
         <div className="flex items-center gap-2 text-xl text-white font-bold tracking-wider">
-           <BookOpen className="text-sentinel-green" size={20} />
+           <BookOpen className="text-[#00df9a]" size={20} />
            <span>DOC_LIBRARY_V1.0</span>
         </div>
         <div className="text-xs text-gray-600 tracking-widest">
@@ -34,7 +41,7 @@ const DocLibrary = () => {
             key={item.id} 
             className="group relative p-8 flex flex-col items-center justify-center gap-4 hover:bg-white/5 transition-colors cursor-pointer"
           >
-            <div className="text-gray-500 group-hover:text-sentinel-green transition-colors duration-300">
+            <div className="text-gray-500 group-hover:text-[#00df9a] transition-colors duration-300">
               <item.icon strokeWidth={1.5} size={32} />
             </div>
             

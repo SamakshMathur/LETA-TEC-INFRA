@@ -48,9 +48,8 @@ const VideoSection = () => {
                 <div className="absolute inset-0 bg-[#050A10]/60" />
                 
                 <motion.button 
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="relative z-10 w-24 h-24 flex items-center justify-center text-sentinel-green group-hover:text-white transition-colors duration-300"
+                    whileTap={{ opacity: 0.8 }}
+                    className="relative z-10 w-24 h-24 flex items-center justify-center text-sentinel-green group-hover:text-white transition-colors duration-200"
                 >
                     <div className="absolute inset-0 border border-sentinel-green/30 rounded-full animate-[spin_10s_linear_infinite]" />
                     <div className="absolute inset-2 border border-sentinel-green/10 rounded-full animate-[spin_5s_linear_infinite_reverse]" />

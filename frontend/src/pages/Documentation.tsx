@@ -1,3 +1,4 @@
+import React from 'react';
 import { FileText, Code, Book } from 'lucide-react';
 import { DocumentLibrary } from '../components/documents';
 
@@ -22,7 +23,7 @@ const DOC_CARDS = [
   },
 ];
 
-const Documentation = () => (
+const Documentation: React.FC = () => (
   <div className="min-h-screen pt-28 pb-16" style={{ backgroundColor: 'var(--surface)' }}>
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 

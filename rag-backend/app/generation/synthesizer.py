@@ -9,7 +9,7 @@ from app.config import (
     MAX_INPUT_TOKENS, HAIKU_COMPLEXITY_THRESHOLD,
     BRIEF_RESPONSE_THRESHOLD, STANDARD_RESPONSE_THRESHOLD, SONNET_THINKING_THRESHOLD,
 )
-from app.generation.prompt import SYSTEM_PROMPT, BRIEF_PROMPT, STANDARD_PROMPT
+from app.generation.prompt import SYSTEM_PROMPT, BRIEF_PROMPT, STANDARD_PROMPT, DRAFTING_PROMPT
 from app.generation.rules_engine import rules_engine
 
 logger = logging.getLogger(__name__)
@@ -78,18 +78,18 @@ def _count_tokens_approx(text: str) -> int:
 
 def _select_response_mode(complexity: float) -> tuple:
     """
-    Maps a complexity score to (mode_name, prompt_template, max_tokens).
+    Maps complexity score to (mode_name, prompt_template, max_tokens).
 
-    brief    (< BRIEF_RESPONSE_THRESHOLD)    → 3-point compact, 1 500 tokens
-    standard (< STANDARD_RESPONSE_THRESHOLD) → 5-point focused, 4 000 tokens
-    detailed (>= STANDARD_RESPONSE_THRESHOLD)→ 10-point full opinion, 20 000 tokens
+    brief    (< BRIEF_RESPONSE_THRESHOLD)    → prose, 150–300 words,  ~800 tokens
+    standard (< STANDARD_RESPONSE_THRESHOLD) → prose, 400–700 words,  ~2000 tokens
+    detailed (>= STANDARD_RESPONSE_THRESHOLD)→ prose, 700–1200 words, ~4000 tokens
     """
     if complexity < BRIEF_RESPONSE_THRESHOLD:
-        return "brief", BRIEF_PROMPT, 1500
+        return "brief", BRIEF_PROMPT, 800
     elif complexity < STANDARD_RESPONSE_THRESHOLD:
-        return "standard", STANDARD_PROMPT, 4000
+        return "standard", STANDARD_PROMPT, 2000
     else:
-        return "detailed", SYSTEM_PROMPT, CLAUDE_MAX_TOKENS
+        return "detailed", SYSTEM_PROMPT, 4000
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,33 +165,18 @@ def _stream_claude(
     use_haiku: bool = False,
     use_thinking: bool = False,
     max_tokens_override: int = None,
-    response_mode: str = "detailed",
 ):
     """
     3-tier model routing:
-      use_haiku=True               → Haiku, no thinking  (simple factual, ~9x cheaper)
-      use_haiku=False, use_thinking=False → Sonnet, no thinking  (standard analysis)
-      use_haiku=False, use_thinking=True  → Sonnet + extended thinking  (complex drafting)
-
-    response_mode controls one-shot injection:
-      "detailed" → 7-point example injected
-      "brief" / "standard" → no one-shot (system prompt is self-contained)
+      use_haiku=True                          → Haiku, no thinking  (simple factual, ~9x cheaper)
+      use_haiku=False, use_thinking=False     → Sonnet, no thinking  (standard analysis)
+      use_haiku=False, use_thinking=True      → Sonnet + extended thinking  (complex drafting)
 
     Only visible text deltas are yielded; thinking tokens stay internal.
     """
     model = CLAUDE_UTILITY_MODEL if use_haiku else CLAUDE_MAIN_MODEL
 
-    # Only inject the 10-point one-shot for detailed mode; for brief/standard the
-    # system prompt instructions are self-contained and a mismatched example would
-    # confuse the model into using the wrong number of points.
-    if response_mode == "detailed":
-        messages = [
-            {"role": "user",      "content": _ONESHOT_USER},
-            {"role": "assistant", "content": _ONESHOT_ASSISTANT},
-            {"role": "user",      "content": question},
-        ]
-    else:
-        messages = [{"role": "user", "content": question}]
+    messages = [{"role": "user", "content": question}]
 
     # Anthropic prompt caching: pass system prompt as a content block with
     # cache_control so Anthropic caches it server-side.
@@ -285,13 +270,18 @@ def _stream_claude(
 # OpenAI / Ollama streaming generator (kept as fallback)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _stream_openai(question: str, system_prompt: str):
-    messages = [
-        {"role": "system",    "content": system_prompt + "\n\n" + _COT_INSTRUCTION},
-        {"role": "user",      "content": _ONESHOT_USER},
-        {"role": "assistant", "content": _ONESHOT_ASSISTANT},
-        {"role": "user",      "content": question},
-    ]
+def _stream_openai(question: str, system_prompt: str, response_mode: str = "detailed"):
+    if response_mode == "draft":
+        messages = [{"role": "user", "content": question}]
+    elif response_mode == "detailed":
+        messages = [
+            {"role": "system",    "content": system_prompt + "\n\n" + _COT_INSTRUCTION},
+            {"role": "user",      "content": _ONESHOT_USER},
+            {"role": "assistant", "content": _ONESHOT_ASSISTANT},
+            {"role": "user",      "content": question},
+        ]
+    else:
+        messages = [{"role": "user", "content": question}]
 
     api_params = {
         "model": LLM_MODEL,
@@ -362,11 +352,14 @@ def synthesize_answer_stream(question: str, context: str):
         yield f"Error: Could not load truth rules ({e})"
         return
 
-    if LLM_PROVIDER == "anthropic":
-        complexity = _estimate_complexity(question)
+    complexity = _estimate_complexity(question)
+    is_draft_request = any(kw in question.lower() for kw in ["draft", "notice", "reply", "appeal", "submission", "advisory"])
+
+    if is_draft_request:
+        response_mode, prompt_template, max_tokens = "draft", DRAFTING_PROMPT, CLAUDE_MAX_TOKENS
+    elif LLM_PROVIDER == "anthropic":
         response_mode, prompt_template, max_tokens = _select_response_mode(complexity)
     else:
-        complexity = _estimate_complexity(question)
         response_mode, prompt_template, max_tokens = "detailed", SYSTEM_PROMPT, CLAUDE_MAX_TOKENS
 
     try:
@@ -406,11 +399,10 @@ def synthesize_answer_stream(question: str, context: str):
             use_haiku=use_haiku,
             use_thinking=use_thinking,
             max_tokens_override=max_tokens,
-            response_mode=response_mode,
         )
     else:
         logger.debug(f"synthesize_answer_stream | provider={LLM_PROVIDER} | question={question[:80]}")
-        yield from _stream_openai(question, formatted_system_prompt)
+        yield from _stream_openai(question, formatted_system_prompt, response_mode=response_mode)
 
 
 def synthesize_answer(question: str, context: str) -> str:

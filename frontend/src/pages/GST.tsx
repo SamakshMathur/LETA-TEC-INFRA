@@ -2,7 +2,7 @@ import React from 'react';
 import { AskLeta } from '../components/leta';
 import { FileText, TrendingUp, AlertCircle, Shield, Zap, Activity } from 'lucide-react';
 
-const GST = () => {
+const GST: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#020202] pb-24 pt-32">
       {/* Cinematic Page Header */}

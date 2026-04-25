@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, FileText, PenTool, Download, ChevronLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -87,9 +88,9 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
     element.click();
   };
 
-  return (
+  return ReactDOM.createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
         {/* Backdrop */}
         <motion.div 
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -233,7 +234,8 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
           )}
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 

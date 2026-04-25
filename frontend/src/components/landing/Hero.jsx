@@ -81,7 +81,7 @@ const Hero = () => {
             <span
               className="block text-shimmer"
               style={{
-                filter: 'drop-shadow(0 0 30px rgba(78,222,163,0.2))',
+                filter: 'drop-shadow(0 0 15px rgba(78,222,163,0.15))',
               }}
             >
               TITAN.
@@ -109,12 +109,12 @@ const Hero = () => {
             className="mt-14 flex flex-col sm:flex-row gap-5 justify-center items-center"
           >
             <Link to="/gst">
-              <button className="px-10 py-4 bg-white/5 border border-white/10 rounded-sm font-black uppercase tracking-[0.2em] text-[11px] text-[#4edea3] hover:bg-[#4edea3] hover:text-black transition-all duration-500 shadow-[0_0_20px_rgba(78,222,163,0.1)]">
+              <button className="px-10 py-4 bg-white/5 border border-white/10 rounded-sm font-black uppercase tracking-[0.2em] text-[11px] text-[#4edea3] hover:bg-[#4edea3] hover:text-black transition-all duration-200">
                 Initialize Titan
               </button>
             </Link>
             <Link to="/docs">
-              <button className="px-10 py-4 border border-white/5 bg-transparent rounded-sm font-black uppercase tracking-[0.2em] text-[11px] text-white/40 hover:text-white transition-all duration-500">
+              <button className="px-10 py-4 border border-white/5 bg-transparent rounded-sm font-black uppercase tracking-[0.2em] text-[11px] text-white/40 hover:text-white transition-all duration-200">
                 Documentation
               </button>
             </Link>
@@ -135,7 +135,7 @@ const Hero = () => {
               >
                 <span
                   className="font-display font-bold text-2xl"
-                  style={{ color: '#4edea3', filter: 'drop-shadow(0 0 8px rgba(78,222,163,0.4))' }}
+                  style={{ color: '#4edea3', filter: 'drop-shadow(0 0 4px rgba(78,222,163,0.3))' }}
                 >
                   {value}
                 </span>

@@ -3,7 +3,15 @@ import { AskLetaWidget } from '../leta';
 import { DocumentLibrary } from '../documents';
 import { FileText, TrendingUp, AlertCircle } from 'lucide-react';
 
-const LawDashboard = ({ title, domainId, contextDesc, definition, implDate }) => {
+interface LawDashboardProps {
+  title: string;
+  domainId: string;
+  contextDesc: string;
+  definition?: string;
+  implDate?: string;
+}
+
+const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDesc, definition, implDate }) => {
   return (
     <div className="min-h-screen pb-20" style={{ backgroundColor: 'var(--surface)' }}>
 

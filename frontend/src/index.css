@@ -8,7 +8,7 @@
 /* ── Design System Tokens ─────────────────────────────────────────────── */
 @layer base {
   :root {
-    /* Surfaces — Obsidian Spectrum */
+    /* Surfaces — Obsidian Spectrum (Default/Dark) */
     --surface:                   #050505;
     --surface-dim:               #050505;
     --surface-container-lowest:  #000000;
@@ -19,13 +19,34 @@
     --surface-bright:            #2a2a2a;
     --surface-variant:           #1a1a1a;
     
-    /* ... existing tokens ... */
     --primary:           #4edea3;
     --primary-container: #10b981;
     --on-primary:        #000000;
 
     --on-surface:         #f0f0f0;
     --on-surface-variant: #888888;
+    --outline-variant:    rgba(229, 226, 225, 0.10);
+  }
+
+  .light {
+    /* Surfaces — Platinum Minimal */
+    --surface:                   #f8f9fa;
+    --surface-dim:               #f1f3f5;
+    --surface-container-lowest:  #ffffff;
+    --surface-container-low:     #f8f9fa;
+    --surface-container:         #e9ecef;
+    --surface-container-high:    #dee2e6;
+    --surface-container-highest: #ced4da;
+    --surface-bright:            #ffffff;
+    --surface-variant:           #adb5bd;
+    
+    --primary:           #059669; /* Slightly deeper emerald for light mode */
+    --primary-container: #10b981;
+    --on-primary:        #ffffff;
+
+    --on-surface:         #1a1a1a;
+    --on-surface-variant: #495057;
+    --outline-variant:    rgba(0, 0, 0, 0.10);
   }
 
   body {
@@ -105,8 +126,7 @@
     -webkit-backdrop-filter: blur(32px);
     box-shadow:
       inset 0 0 0 1px rgba(78, 222, 163, 0.08),
-      inset 0 1px 0 rgba(78, 222, 163, 0.12),
-      0 20px 60px rgba(0, 238, 252, 0.08);
+      inset 0 1px 0 rgba(78, 222, 163, 0.12);
   }
 
   /* Legacy border-glass — now uses ghost border only */
@@ -123,7 +143,7 @@
   .btn-titan {
     @apply relative inline-flex items-center justify-center gap-2
            px-8 py-3.5 font-bold rounded
-           transition-all duration-300 overflow-hidden
+           transition-all duration-100 overflow-hidden
            text-xs uppercase tracking-[0.05em];
     background-color: var(--primary-container);
     color: var(--on-primary);
@@ -135,17 +155,16 @@
     inset: 0;
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.15s ease;
   }
 
   .btn-titan:hover::before { opacity: 1; }
 
   .btn-titan:hover {
-    box-shadow: 0 0 15px rgba(78, 222, 163, 0.30), 0 0 30px rgba(78, 222, 163, 0.12);
-    transform: translateY(-1px);
+    box-shadow: 0 0 5px rgba(78, 222, 163, 0.1);
   }
 
-  .btn-titan:active { transform: translateY(0) scale(0.98); }
+  .btn-titan:active { opacity: 0.9; }
 
   .btn-titan > * { position: relative; z-index: 1; }
 
@@ -153,7 +172,7 @@
   .btn-secondary {
     @apply relative inline-flex items-center justify-center gap-2
            px-8 py-3.5 font-bold rounded
-           transition-all duration-300
+           transition-all duration-100
            text-xs uppercase tracking-[0.05em];
     color: var(--primary);
     box-shadow: inset 0 0 0 1px rgba(229, 226, 225, 0.20);
@@ -161,19 +180,18 @@
 
   .btn-secondary:hover {
     box-shadow:
-      inset 0 0 0 1px rgba(78, 222, 163, 0.40),
-      0 0 15px rgba(78, 222, 163, 0.15);
+      inset 0 0 0 1px rgba(78, 222, 163, 0.30);
     color: var(--on-surface);
-    background-color: rgba(78, 222, 163, 0.06);
+    background-color: rgba(78, 222, 163, 0.04);
   }
 
-  .btn-secondary:active { transform: scale(0.98); }
+  .btn-secondary:active { opacity: 0.8; }
 
   /* ── Citation Pills ─────────────────────────────────────────────────── */
   .citation-pill {
     @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-full
            text-xs font-bold uppercase tracking-[0.05em]
-           cursor-pointer transition-all duration-200;
+           cursor-pointer transition-all duration-100;
     background-color: var(--surface-container-highest);
     color: var(--on-surface-variant);
     border-left: 2px solid var(--primary-container);
@@ -182,7 +200,6 @@
   .citation-pill:hover {
     background-color: var(--surface-bright);
     color: var(--primary);
-    box-shadow: 0 0 12px rgba(78, 222, 163, 0.15);
   }
 
   /* ── Status Badges ──────────────────────────────────────────────────── */
@@ -218,7 +235,7 @@
 
   /* ── Ambient Glow Card ──────────────────────────────────────────────── */
   .card-sovereign {
-    @apply rounded transition-all duration-300;
+    @apply rounded transition-all duration-150;
     background-color: var(--surface-container-high);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.40);
   }
@@ -226,9 +243,8 @@
   .card-sovereign:hover {
     background-color: var(--surface-bright);
     box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.50),
-      inset 0 0 0 1px rgba(78, 222, 163, 0.08);
-    transform: scale(1.02);
+      0 8px 32px rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(78, 222, 163, 0.1);
   }
 
   /* ── Netflix Horizontal Scroll ──────────────────────────────────────── */
@@ -282,3 +298,26 @@
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(78, 222, 163, 0.40); }
+
+/* ── View Transitions API — Circular Reveal ─────────────────────────── */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+.light::view-transition-old(root) {
+  z-index: 9999;
+}
+
+.light::view-transition-new(root) {
+  z-index: 1;
+}

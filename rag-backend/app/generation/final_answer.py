@@ -7,9 +7,23 @@ from app.generation.safety import apply_safety_guards
 def build_final_answer(question: str, context: str, chunks: list) -> dict:
     """
     Builds the final, safe, demo-ready answer.
+    For legal drafts (notices, replies, etc.), bypasses all extra verification reports 
+    to provide a clean document.
     """
+    # Detect drafting intent (must match synthesizer logic)
+    is_draft = any(kw in question.lower() for kw in ["draft", "notice", "reply", "appeal", "submission", "advisory"])
 
     raw_answer = synthesize_answer(question, context)
+    
+    # If it's a draft, return raw content immediately to avoid "Verification Reports" and "Safety Checks"
+    if is_draft:
+        # Strip internal termination marker if present
+        content = raw_answer.replace("[TERMINATE]", "").strip()
+        return {
+            "content": content,
+            "reasoning": None
+        }
+
     confidence = estimate_confidence(context, chunks=chunks)
     sources = format_sources(chunks)
 
@@ -33,11 +47,6 @@ def build_final_answer(question: str, context: str, chunks: list) -> dict:
         confidence=confidence,
         sources=sources
     )
-    
-    # Attach reasoning if available (assuming apply_safety_guards returns a dict, 
-    # if it returns a string we might need to adjust app.py instead. 
-    # Checking app.py, 'final_answer' is just a string. 
-    # We should probably return a tuple or dict here to pass reasoning up.)
     
     return {
         "content": result,

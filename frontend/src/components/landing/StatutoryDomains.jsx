@@ -240,7 +240,7 @@ const StatutoryDomains = () => {
                             Initialize Module
                             <ChevronRight
                               size={15}
-                              className="group-hover:translate-x-1 transition-transform"
+                              className="transition-transform"
                             />
                           </Link>
                         </div>

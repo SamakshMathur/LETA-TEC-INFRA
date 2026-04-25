@@ -225,6 +225,7 @@ async def ai_search(query: str = Query(...)):
             formatted_results.append({
                 "id": f"ai_{res.get('chunk_id', source)}",
                 "title": os.path.basename(source),
+                "filename": os.path.basename(source),
                 "category": category,
                 "path": source,
                 "desc": res.get("text", "")[:150] + "...",

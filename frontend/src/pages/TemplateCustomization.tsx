@@ -3,17 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, Download, Copy, Loader2, FileText, User, Sparkles, AlertCircle, Trash2, CheckCircle2, Zap, Share2 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
 
-const TemplateCustomization = () => {
+const TemplateCustomization: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const chatEndRef = useRef(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
   
-  const [template, setTemplate] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [inputValue, setInputValue] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedDraft, setGeneratedDraft] = useState('');
-  const [showCopyFeedback, setShowCopyFeedback] = useState(false);
+  const [template, setTemplate] = useState<any>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [inputValue, setInputValue] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generatedDraft, setGeneratedDraft] = useState<string>('');
+  const [showCopyFeedback, setShowCopyFeedback] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchTemplate = async () => {
@@ -37,7 +37,7 @@ const TemplateCustomization = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = async (e) => {
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputValue.trim() || isGenerating) return;
 
@@ -193,7 +193,7 @@ const TemplateCustomization = () => {
               <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded-2xl blur opacity-0 group-focus-within:opacity-100 transition duration-700"></div>
               <div className="relative">
                 <textarea
-                  rows="3"
+                  rows={3}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder="Instruct LETA (e.g., 'Incorporate the new ITC circular 183' or 'Set date as 24/03/24')"
@@ -283,7 +283,7 @@ const TemplateCustomization = () => {
 
       </div>
 
-      <style jsx="true">{`
+      <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }

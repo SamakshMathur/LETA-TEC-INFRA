@@ -1,4 +1,8 @@
+import React, { useState } from 'react';
+import { Search } from 'lucide-react';
+import { Button } from '../common';
 import { NeuralLoader } from '../effects';
+import LetaResponse from './LetaResponse';
 
 const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
   const [query, setQuery] = useState('');

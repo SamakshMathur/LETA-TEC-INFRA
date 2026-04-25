@@ -1,7 +1,12 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const DynamicBackground = ({ children, className = "" }) => {
+interface DynamicBackgroundProps {
+  children?: React.ReactNode;
+  className?: string;
+}
+
+const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ children, className = "" }) => {
   return (
     <div className={`relative overflow-hidden ${className}`}>
        {/* Animated Blobs */}
