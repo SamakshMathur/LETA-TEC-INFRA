@@ -16,9 +16,9 @@ services:
       - key: CLAUDE_UTILITY_MODEL
         value: claude-haiku-4-5-20251001
       - key: CLAUDE_THINKING_BUDGET
-        value: "1500"
+        value: "500"
       - key: CLAUDE_MAX_TOKENS
-        value: "6000"
+        value: "2500"
 
       # ── Embedding ─────────────────────────────────────────────────────────────
       - key: EMBEDDING_PROVIDER
@@ -60,4 +60,4 @@ services:
       - key: BM25_TOP_K
         value: "30"
       - key: SONNET_THINKING_THRESHOLD
-        value: "0.95"
+        value: "1.1"
