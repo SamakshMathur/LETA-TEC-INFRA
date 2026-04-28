@@ -17,20 +17,21 @@ logger = logging.getLogger(__name__)
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
 class UserRegister(BaseModel):
-    username: str
+    full_name: str
     email: str
     password: str
-    phone: Optional[str] = None
-    gender: Optional[Literal["male", "female"]] = "male"
+    phone: str
+    profession: str
+    city: str
+    state: str
+    pincode: str
 
-    @field_validator("username")
+    @field_validator("full_name")
     @classmethod
-    def username_valid(cls, v):
+    def full_name_valid(cls, v):
         v = v.strip()
-        if len(v) < 3:
-            raise ValueError("Username must be at least 3 characters")
-        if not re.match(r'^[a-zA-Z0-9_]+$', v):
-            raise ValueError("Username may only contain letters, numbers, and underscores")
+        if len(v) < 2:
+            raise ValueError("Full name must be at least 2 characters")
         return v
 
     @field_validator("phone")
@@ -39,7 +40,27 @@ class UserRegister(BaseModel):
         digits = re.sub(r'\D', '', v)
         if len(digits) < 10:
             raise ValueError("Phone number must have at least 10 digits")
-        return digits  # store digits only
+        return digits
+
+    @field_validator("pincode")
+    @classmethod
+    def pincode_valid(cls, v):
+        if not re.match(r'^\d{6}$', v.strip()):
+            raise ValueError("Pincode must be exactly 6 digits")
+        return v.strip()
+
+    @field_validator("profession")
+    @classmethod
+    def profession_valid(cls, v):
+        allowed = {
+            "Advocate / Lawyer", "Chartered Accountant (CA)",
+            "Company Secretary (CS)", "Tax Consultant",
+            "Business Owner", "Finance Professional",
+            "Government Official", "Student", "Other"
+        }
+        if v not in allowed:
+            raise ValueError(f"Profession must be one of: {', '.join(sorted(allowed))}")
+        return v
 
 
 class SendOTPRequest(BaseModel):
@@ -123,26 +144,31 @@ async def register_user(user: UserRegister):
         raise HTTPException(status_code=500, detail="Database not connected")
 
     # Uniqueness checks
-    if users_col is not None and users_col.find_one({"username": user.username}):
-        raise HTTPException(status_code=400, detail="Username already taken")
-    if users_col is not None and users_col.find_one({"email": user.email}):
+    if users_col.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
-    if users_col is not None and users_col.find_one({"phone": user.phone}):
+    if users_col.find_one({"phone": user.phone}):
         raise HTTPException(status_code=400, detail="Phone number already registered")
 
+    # Auto-generate username from email prefix
+    username = re.sub(r'[^a-zA-Z0-9_]', '_', user.email.split('@')[0])[:30]
+
     users_col.insert_one({
-        "username": user.username,
+        "username": username,
+        "full_name": user.full_name,
         "email": user.email,
         "password": _hash_password(user.password),
         "phone": user.phone,
-        "gender": user.gender,
+        "profession": user.profession,
+        "city": user.city,
+        "state": user.state,
+        "pincode": user.pincode,
         "verified": True,
         "created_at": datetime.now(),
     })
 
     return {
-        "message": "Account created. Please verify via OTP to activate your account.",
-        "username": user.username,
+        "message": "Account created successfully.",
+        "username": username,
     }
 
 
@@ -294,9 +320,13 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """Returns the currently authenticated user's profile."""
     return {
         "username": current_user.get("username"),
+        "full_name": current_user.get("full_name"),
         "email": current_user.get("email"),
         "phone": current_user.get("phone"),
-        "gender": current_user.get("gender"),
+        "profession": current_user.get("profession"),
+        "city": current_user.get("city"),
+        "state": current_user.get("state"),
+        "pincode": current_user.get("pincode"),
         "verified": current_user.get("verified", False),
     }
 
