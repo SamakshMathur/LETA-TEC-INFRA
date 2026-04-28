@@ -85,11 +85,11 @@ def _select_response_mode(complexity: float) -> tuple:
     detailed (>= STANDARD_RESPONSE_THRESHOLD)→ prose, 700–1200 words, ~4000 tokens
     """
     if complexity < BRIEF_RESPONSE_THRESHOLD:
-        return "brief", BRIEF_PROMPT, 800
+        return "brief", BRIEF_PROMPT, 500
     elif complexity < STANDARD_RESPONSE_THRESHOLD:
-        return "standard", STANDARD_PROMPT, 2000
+        return "standard", STANDARD_PROMPT, 1200
     else:
-        return "detailed", SYSTEM_PROMPT, 4000
+        return "detailed", SYSTEM_PROMPT, 1800
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -182,13 +182,32 @@ def _stream_claude(
     # cache_control so Anthropic caches it server-side.
     # Cache reads cost $0.30/MTok vs $3.00/MTok uncached — ~90% cheaper on
     # the system prompt + legal context (typically 70% of input tokens).
-    system_blocks = [
-        {
-            "type": "text",
-            "text": system_prompt,
-            "cache_control": {"type": "ephemeral"},
-        }
-    ]
+    # Split system prompt into two blocks so Anthropic can cache the static part.
+    # All prompt templates use this exact separator before the dynamic context.
+    # Block 1 (with cache_control) — instructions only, same every call → CACHED
+    # Block 2 (no cache_control)   — retrieved chunks + truth rules → NOT cached
+    _SEP = "\n-------------------------------------------------------\nRETRIEVED SOURCE DOCUMENTS\n-------------------------------------------------------\n"
+    if _SEP in system_prompt:
+        static_part, dynamic_part = system_prompt.split(_SEP, 1)
+        system_blocks = [
+            {
+                "type": "text",
+                "text": static_part,
+                "cache_control": {"type": "ephemeral"},
+            },
+            {
+                "type": "text",
+                "text": _SEP + dynamic_part,
+            },
+        ]
+    else:
+        system_blocks = [
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
 
     resolved_max_tokens = max_tokens_override if max_tokens_override is not None else (
         4000 if use_haiku else CLAUDE_MAX_TOKENS

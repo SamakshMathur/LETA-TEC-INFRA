@@ -350,7 +350,7 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                             run_citation_validator(),
                             run_hallucination_guard(),
                         ),
-                        timeout=8.0,
+                        timeout=3.0,
                     )
                 except asyncio.TimeoutError:
                     _logger.warning("Post-generation validators timed out — skipping")
@@ -463,11 +463,13 @@ async def ask_question(request: Request, req: QuestionRequest):
             yield cached_text
             return
 
-        # --- Pulse 2: Expansion (skipped for simple queries to save 3-5s) ---
+        # --- Pulse 2: Expansion (only for very complex multi-section queries) ---
+        # Threshold raised 0.25 → 0.70: query expansion is a blocking Haiku API
+        # call (~3-5s). Skip it for everything except complex drafting / disputes.
         from app.generation.synthesizer import _estimate_complexity
         _complexity = _estimate_complexity(question)
-        if _complexity >= 0.25:
-            yield f"__STATUS__:{json.dumps({'msg': 'Expanding Legal Context & Topic Modeling...'})}__END_STATUS__"
+        if _complexity >= 0.70:
+            yield f"__STATUS__:{json.dumps({'msg': 'Deep Legal Analysis Mode...'})}__END_STATUS__"
             from app.retrieval.query_refiner import generate_advanced_queries
             advanced_queries = generate_advanced_queries(question)
             refined_q = advanced_queries.get("queries", [question])[0]
