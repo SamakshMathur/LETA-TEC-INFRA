@@ -5,24 +5,12 @@ import { ROUTES } from '../../../constants/routes';
 import { ChevronDown } from 'lucide-react';
 
 const PROFESSIONS = [
-  'Advocate / Lawyer',
-  'Chartered Accountant (CA)',
-  'Company Secretary (CS)',
-  'Tax Consultant',
-  'Business Owner',
-  'Finance Professional',
-  'Government Official',
-  'Student',
-  'Other',
+  'Advocate / Lawyer', 'Chartered Accountant (CA)', 'Company Secretary (CS)',
+  'Tax Consultant', 'Business Owner', 'Finance Professional',
+  'Government Official', 'Student', 'Other',
 ];
 
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer not to say'];
-
-const inputCls =
-  'w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all disabled:opacity-50';
-
-const labelCls =
-  'block text-[10px] font-black uppercase tracking-[0.15em] text-white/60 ml-1';
 
 const SelectField = ({
   id, value, onChange, disabled, placeholder, children,
@@ -32,11 +20,8 @@ const SelectField = ({
   disabled?: boolean; placeholder: string; children: React.ReactNode;
 }) => (
   <div className="relative">
-    <select
-      id={id} value={value} onChange={onChange}
-      required disabled={disabled}
-      className={`${inputCls} appearance-none cursor-pointer pr-10`}
-    >
+    <select id={id} value={value} onChange={onChange} required disabled={disabled}
+      className="select-auth">
       <option value="" disabled className="bg-[#0a0a0a] text-white/40">{placeholder}</option>
       {children}
     </select>
@@ -44,25 +29,20 @@ const SelectField = ({
   </div>
 );
 
-interface FormState {
-  full_name: string;
-  phone: string;
-  profession: string;
-  gender: string;
-}
+interface FormState { full_name: string; phone: string; profession: string; gender: string; }
 
 const SignupPage: React.FC = () => {
   const [form, setForm] = useState<FormState>({ full_name: '', phone: '', profession: '', gender: '' });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [loading, setLoading]  = useState(false);
+  const [error, setError]      = useState<string | null>(null);
+  const [success, setSuccess]  = useState(false);
   const navigate = useNavigate();
 
   const set = (field: keyof FormState) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm(prev => ({ ...prev, [field]: e.target.value }));
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -83,19 +63,17 @@ const SignupPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface relative overflow-hidden px-6 py-12">
+    <div className="auth-page">
       <div className="absolute inset-0 bg-noise opacity-20 pointer-events-none" />
 
       <div className="relative z-20 w-full max-w-md">
-        <div className="bg-[#0a0a0a]/80 backdrop-blur-3xl p-10 rounded-2xl border border-white/10 shadow-2xl">
+        <div className="auth-card">
 
           <div className="mb-8 text-center">
             <h1 className="font-display font-bold text-3xl text-white mb-2 uppercase tracking-tight">
               LETA <span className="text-primary">TITAN</span>
             </h1>
-            <p className="text-xs font-mono text-white/40 uppercase tracking-widest">
-              Account Setup
-            </p>
+            <p className="text-xs font-mono text-white/40 uppercase tracking-widest">Account Setup</p>
           </div>
 
           {error && (
@@ -110,33 +88,23 @@ const SignupPage: React.FC = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-
             <div className="space-y-2">
-              <label htmlFor="full_name" className={labelCls}>Full Name</label>
-              <input
-                id="full_name" type="text" value={form.full_name}
-                onChange={set('full_name')} required disabled={success}
-                className={inputCls} placeholder="e.g. Samaksh Mathur"
-              />
+              <label htmlFor="full_name" className="label-auth">Full Name</label>
+              <input id="full_name" type="text" value={form.full_name} onChange={set('full_name')}
+                required disabled={success} className="input-auth" placeholder="e.g. Samaksh Mathur" />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="phone" className={labelCls}>Mobile Number</label>
-              <input
-                id="phone" type="tel" value={form.phone}
-                onChange={set('phone')} required disabled={success}
-                className={inputCls} placeholder="10-digit mobile number"
-                maxLength={15}
-              />
+              <label htmlFor="phone" className="label-auth">Mobile Number</label>
+              <input id="phone" type="tel" value={form.phone} onChange={set('phone')}
+                required disabled={success} className="input-auth"
+                placeholder="10-digit mobile number" maxLength={15} />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="profession" className={labelCls}>Profession</label>
-              <SelectField
-                id="profession" value={form.profession}
-                onChange={set('profession')} disabled={success}
-                placeholder="Select your profession"
-              >
+              <label htmlFor="profession" className="label-auth">Profession</label>
+              <SelectField id="profession" value={form.profession} onChange={set('profession')}
+                disabled={success} placeholder="Select your profession">
                 {PROFESSIONS.map(p => (
                   <option key={p} value={p} className="bg-[#0a0a0a] text-white">{p}</option>
                 ))}
@@ -144,12 +112,9 @@ const SignupPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="gender" className={labelCls}>Gender</label>
-              <SelectField
-                id="gender" value={form.gender}
-                onChange={set('gender')} disabled={success}
-                placeholder="Select gender"
-              >
+              <label htmlFor="gender" className="label-auth">Gender</label>
+              <SelectField id="gender" value={form.gender} onChange={set('gender')}
+                disabled={success} placeholder="Select gender">
                 {GENDERS.map(g => (
                   <option key={g} value={g} className="bg-[#0a0a0a] text-white">{g}</option>
                 ))}
@@ -157,10 +122,7 @@ const SignupPage: React.FC = () => {
             </div>
 
             {!success && (
-              <button
-                type="submit" disabled={loading}
-                className="w-full py-4 bg-primary text-surface font-black uppercase tracking-[0.2em] text-xs rounded-lg hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(78,222,163,0.15)] mt-2"
-              >
+              <button type="submit" disabled={loading} className="btn-auth-primary mt-2">
                 {loading ? 'Setting up...' : 'Setup Account'}
               </button>
             )}

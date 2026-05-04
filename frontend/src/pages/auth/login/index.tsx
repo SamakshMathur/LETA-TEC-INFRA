@@ -4,124 +4,89 @@ import { useAuth } from '../../../context/AuthContext';
 import { sendOtpApi, verifyOtpApi } from '../../../services/auth';
 import { ROUTES } from '../../../constants/routes';
 
-const inputCls =
-  'w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all disabled:opacity-50';
-
-const labelCls =
-  'block text-[10px] font-black uppercase tracking-[0.15em] text-white/60 ml-1';
-
 type Method = 'phone' | 'email';
-type Step = 'contact' | 'otp';
+type Step   = 'contact' | 'otp';
 
 const LoginPage: React.FC = () => {
-  const [method, setMethod]   = useState<Method>('phone');
-  const [contact, setContact] = useState('');
-  const [step, setStep]       = useState<Step>('contact');
-  const [otp, setOtp]         = useState(['', '', '', '', '', '']);
+  const [method,    setMethod]    = useState<Method>('phone');
+  const [contact,   setContact]   = useState('');
+  const [step,      setStep]      = useState<Step>('contact');
+  const [otp,       setOtp]       = useState(['', '', '', '', '', '']);
   const [countdown, setCountdown] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { login } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const from = location.state?.from?.pathname || '/dashboard';
+  const from = (location.state as any)?.from?.pathname || '/dashboard';
 
-  // Countdown timer for resend
   useEffect(() => {
     if (countdown <= 0) return;
     const id = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(id);
   }, [countdown]);
 
-  // Auto-focus first OTP box when step changes
   useEffect(() => {
     if (step === 'otp') inputRefs.current[0]?.focus();
   }, [step]);
 
-  const handleMethodSwitch = (m: Method) => {
-    setMethod(m);
-    setContact('');
-    setError(null);
-  };
+  const switchMethod = (m: Method) => { setMethod(m); setContact(''); setError(null); };
 
   const handleSendOtp = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       await sendOtpApi(contact.trim(), method);
-      setStep('otp');
-      setOtp(['', '', '', '', '', '']);
-      setCountdown(30);
+      setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(30);
     } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Failed to send OTP. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+      const d = err.response?.data?.detail;
+      setError(typeof d === 'string' ? d : 'Failed to send OTP. Please try again.');
+    } finally { setLoading(false); }
   };
 
   const handleResend = async () => {
     if (countdown > 0) return;
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       await sendOtpApi(contact.trim(), method);
-      setOtp(['', '', '', '', '', '']);
-      setCountdown(30);
+      setOtp(['', '', '', '', '', '']); setCountdown(30);
     } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Failed to resend OTP.');
-    } finally {
-      setLoading(false);
-    }
+      const d = err.response?.data?.detail;
+      setError(typeof d === 'string' ? d : 'Failed to resend OTP.');
+    } finally { setLoading(false); }
   };
 
   const handleVerify = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     const otpString = otp.join('');
-    if (otpString.length < 6) {
-      setError('Please enter the full 6-digit OTP.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
+    if (otpString.length < 6) { setError('Please enter the full 6-digit OTP.'); return; }
+    setLoading(true); setError(null);
     try {
       const session = await verifyOtpApi(contact.trim(), otpString);
       login(session, false);
       navigate(from, { replace: true });
     } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Invalid OTP. Please try again.');
+      const d = err.response?.data?.detail;
+      setError(typeof d === 'string' ? d : 'Invalid OTP. Please try again.');
       setOtp(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
+  const handleOtpChange = (i: number, val: string) => {
+    if (!/^\d*$/.test(val)) return;
     const next = [...otp];
-    next[index] = value.slice(-1);
+    next[i] = val.slice(-1);
     setOtp(next);
-    if (value && index < 5) inputRefs.current[index + 1]?.focus();
-    // Auto-submit when last digit entered
-    if (value && index === 5) {
-      const full = next.join('');
-      if (full.length === 6) {
-        // Small delay so state settles before submit
-        setTimeout(() => document.getElementById('verify-btn')?.click(), 50);
-      }
-    }
+    if (val && i < 5) inputRefs.current[i + 1]?.focus();
+    if (val && i === 5 && next.join('').length === 6)
+      setTimeout(() => document.getElementById('verify-btn')?.click(), 50);
   };
 
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
+  const handleOtpKeyDown = (i: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otp[i] && i > 0) inputRefs.current[i - 1]?.focus();
   };
 
   const handleOtpPaste = (e: React.ClipboardEvent) => {
@@ -138,13 +103,12 @@ const LoginPage: React.FC = () => {
     : `${contact.slice(0, 3)}•••${contact.slice(contact.indexOf('@'))}`;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface relative overflow-hidden px-6">
+    <div className="auth-page py-0">
       <div className="absolute inset-0 bg-noise opacity-20 pointer-events-none" />
 
       <div className="relative z-20 w-full max-w-md">
-        <div className="bg-[#0a0a0a]/80 backdrop-blur-3xl p-10 rounded-2xl border border-white/10 shadow-2xl">
+        <div className="auth-card">
 
-          {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="font-display font-bold text-3xl text-white mb-2 uppercase tracking-tight">
               LETA <span className="text-primary">TITAN</span>
@@ -163,44 +127,30 @@ const LoginPage: React.FC = () => {
           {/* ── Step 1: Contact entry ── */}
           {step === 'contact' && (
             <form onSubmit={handleSendOtp} className="space-y-6">
-
               {/* Method toggle */}
               <div className="flex rounded-lg border border-white/10 overflow-hidden">
                 {(['phone', 'email'] as Method[]).map(m => (
-                  <button
-                    key={m} type="button"
-                    onClick={() => handleMethodSwitch(m)}
-                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] transition-all ${
-                      method === m
-                        ? 'bg-primary text-surface'
-                        : 'text-white/40 hover:text-white/70'
-                    }`}
-                  >
+                  <button key={m} type="button" onClick={() => switchMethod(m)}
+                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${
+                      method === m ? 'bg-primary text-surface' : 'text-white/40 hover:text-white/70'
+                    }`}>
                     {m === 'phone' ? 'Mobile' : 'Email'}
                   </button>
                 ))}
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="contact" className={labelCls}>
+                <label htmlFor="contact" className="label-auth">
                   {method === 'phone' ? 'Mobile Number' : 'Email Address'}
                 </label>
-                <input
-                  id="contact"
-                  type={method === 'phone' ? 'tel' : 'email'}
-                  value={contact}
-                  onChange={e => setContact(e.target.value)}
-                  required
-                  className={inputCls}
+                <input id="contact" type={method === 'phone' ? 'tel' : 'email'}
+                  value={contact} onChange={e => setContact(e.target.value)}
+                  required className="input-auth"
                   placeholder={method === 'phone' ? '10-digit mobile number' : 'you@example.com'}
-                  maxLength={method === 'phone' ? 15 : undefined}
-                />
+                  maxLength={method === 'phone' ? 15 : undefined} />
               </div>
 
-              <button
-                type="submit" disabled={loading || !contact.trim()}
-                className="w-full py-4 bg-primary text-surface font-black uppercase tracking-[0.2em] text-xs rounded-lg hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(78,222,163,0.15)]"
-              >
+              <button type="submit" disabled={loading || !contact.trim()} className="btn-auth-primary">
                 {loading ? 'Sending OTP...' : 'Send OTP'}
               </button>
 
@@ -218,54 +168,38 @@ const LoginPage: React.FC = () => {
           {/* ── Step 2: OTP entry ── */}
           {step === 'otp' && (
             <form onSubmit={handleVerify} className="space-y-6">
-
               <p className="text-center text-xs text-white/50">
-                OTP sent to{' '}
-                <span className="text-primary font-bold">{maskedContact}</span>
+                OTP sent to <span className="text-primary font-bold">{maskedContact}</span>
               </p>
 
               {/* 6-box OTP input */}
               <div className="flex gap-2 justify-center">
                 {otp.map((digit, i) => (
-                  <input
-                    key={i}
-                    ref={el => { inputRefs.current[i] = el; }}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={digit}
+                  <input key={i} ref={el => { inputRefs.current[i] = el; }}
+                    type="text" inputMode="numeric" maxLength={1} value={digit}
                     onChange={e => handleOtpChange(i, e.target.value)}
                     onKeyDown={e => handleOtpKeyDown(i, e)}
                     onPaste={i === 0 ? handleOtpPaste : undefined}
                     disabled={loading}
-                    className="w-11 h-14 text-center text-xl font-bold text-white bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all disabled:opacity-50 caret-transparent"
+                    className="w-11 h-14 text-center text-xl font-bold text-white bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-colors disabled:opacity-50 caret-transparent"
                   />
                 ))}
               </div>
 
-              <button
-                id="verify-btn"
-                type="submit"
-                disabled={loading || otp.join('').length < 6}
-                className="w-full py-4 bg-primary text-surface font-black uppercase tracking-[0.2em] text-xs rounded-lg hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(78,222,163,0.15)]"
-              >
+              <button id="verify-btn" type="submit"
+                disabled={loading || otp.join('').length < 6} className="btn-auth-primary">
                 {loading ? 'Verifying...' : 'Verify & Login'}
               </button>
 
               <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-bold">
-                <button
-                  type="button"
+                <button type="button"
                   onClick={() => { setStep('contact'); setError(null); setOtp(['', '', '', '', '', '']); }}
-                  className="text-white/30 hover:text-white/60 transition-colors"
-                >
+                  className="btn-auth-secondary">
                   ← Change {method === 'phone' ? 'number' : 'email'}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleResend}
+                <button type="button" onClick={handleResend}
                   disabled={countdown > 0 || loading}
-                  className="text-primary disabled:text-white/30 transition-colors disabled:cursor-not-allowed"
-                >
+                  className="text-primary disabled:text-white/30 transition-colors disabled:cursor-not-allowed text-[10px] font-bold uppercase tracking-wider">
                   {countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP'}
                 </button>
               </div>
