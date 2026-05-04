@@ -37,6 +37,10 @@ services:
         sync: false
       - key: ADMIN_MASTER_SECRET
         sync: false
+      - key: FAST2SMS_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
 
       # ── CORS ──────────────────────────────────────────────────────────────────
       - key: ALLOWED_ORIGINS

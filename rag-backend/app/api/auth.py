@@ -5,11 +5,12 @@ import secrets as _secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
+import requests as _requests
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
 from app.database import get_user_collection, get_otp_collection
-from app.security import create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.security import create_access_token, get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -18,13 +19,10 @@ logger = logging.getLogger(__name__)
 
 class UserRegister(BaseModel):
     full_name: str
-    email: str
-    password: str
     phone: str
     profession: str
-    city: str
-    state: str
-    pincode: str
+    gender: str
+    email: Optional[str] = None
 
     @field_validator("full_name")
     @classmethod
@@ -40,14 +38,7 @@ class UserRegister(BaseModel):
         digits = re.sub(r'\D', '', v)
         if len(digits) < 10:
             raise ValueError("Phone number must have at least 10 digits")
-        return digits
-
-    @field_validator("pincode")
-    @classmethod
-    def pincode_valid(cls, v):
-        if not re.match(r'^\d{6}$', v.strip()):
-            raise ValueError("Pincode must be exactly 6 digits")
-        return v.strip()
+        return digits[-10:]  # store last 10 digits (strip country code)
 
     @field_validator("profession")
     @classmethod
@@ -62,9 +53,27 @@ class UserRegister(BaseModel):
             raise ValueError(f"Profession must be one of: {', '.join(sorted(allowed))}")
         return v
 
+    @field_validator("gender")
+    @classmethod
+    def gender_valid(cls, v):
+        allowed = {"Male", "Female", "Other", "Prefer not to say"}
+        if v not in allowed:
+            raise ValueError("Gender must be one of: Male, Female, Other, Prefer not to say")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def email_valid(cls, v):
+        if v is None:
+            return v
+        v = v.strip().lower()
+        if v and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', v):
+            raise ValueError("Invalid email address")
+        return v or None
+
 
 class SendOTPRequest(BaseModel):
-    contact: str                          # email address OR phone number
+    contact: str          # email address OR 10-digit phone number
     method: Literal["email", "phone"]
 
 
@@ -74,9 +83,9 @@ class VerifyOTPRequest(BaseModel):
 
     @field_validator("otp")
     @classmethod
-    def otp_is_4_digits(cls, v):
-        if not re.match(r'^\d{4}$', v.strip()):
-            raise ValueError("OTP must be exactly 4 digits")
+    def otp_is_6_digits(cls, v):
+        if not re.match(r'^\d{6}$', v.strip()):
+            raise ValueError("OTP must be exactly 6 digits")
         return v.strip()
 
 
@@ -94,97 +103,143 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
-# DEV_MODE=true → return otp_preview in response and skip OTP validation.
-# Always false in production; set in .env.local for local development.
+# DEV_MODE=true → return otp_preview in response and skip strict OTP check.
 _DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() == "true"
 
 
+# ── OTP helpers ────────────────────────────────────────────────────────────────
+
+def _generate_otp() -> str:
+    return str(_secrets.randbelow(900000) + 100000)  # 6-digit: 100000–999999
+
+
+def _send_sms_otp(phone: str, otp: str) -> None:
+    """Send OTP via Fast2SMS (India). Requires FAST2SMS_API_KEY env var."""
+    api_key = os.getenv("FAST2SMS_API_KEY", "")
+    if not api_key:
+        logger.warning("FAST2SMS_API_KEY not set — SMS not sent")
+        return
+    try:
+        resp = _requests.post(
+            "https://www.fast2sms.com/dev/bulkV2",
+            headers={"authorization": api_key, "Content-Type": "application/json"},
+            json={"route": "otp", "variables_values": otp, "numbers": phone},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        logger.info(f"SMS OTP sent | phone=***{phone[-4:]}")
+    except Exception as e:
+        logger.error(f"SMS delivery failed: {e}")
+
+
+def _send_email_otp(email: str, otp: str) -> None:
+    """Send OTP via Resend.com. Requires RESEND_API_KEY env var."""
+    api_key = os.getenv("RESEND_API_KEY", "")
+    if not api_key:
+        logger.warning("RESEND_API_KEY not set — email not sent")
+        return
+    try:
+        resp = _requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "from": "LETA <noreply@letatec.com>",
+                "to": [email],
+                "subject": "Your LETA Login OTP",
+                "html": f"""
+                <div style="font-family:monospace;background:#0a0a0a;color:#fff;
+                            padding:40px;border-radius:12px;max-width:480px;margin:auto;
+                            border:1px solid rgba(78,222,163,0.2)">
+                  <h2 style="color:#4edea3;letter-spacing:0.1em;margin:0 0 8px">LETA TITAN</h2>
+                  <p style="color:rgba(255,255,255,0.4);font-size:11px;
+                             letter-spacing:0.15em;text-transform:uppercase;margin:0 0 32px">
+                    Sovereign Compliance Systems
+                  </p>
+                  <p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0 0 16px">
+                    Your one-time login code:
+                  </p>
+                  <div style="background:rgba(78,222,163,0.08);border:1px solid rgba(78,222,163,0.3);
+                              border-radius:8px;padding:24px;text-align:center;margin:0 0 24px">
+                    <span style="color:#4edea3;font-size:36px;letter-spacing:12px;font-weight:bold">
+                      {otp}
+                    </span>
+                  </div>
+                  <p style="color:rgba(255,255,255,0.3);font-size:11px;margin:0">
+                    Valid for 10 minutes. Do not share this code with anyone.
+                  </p>
+                </div>
+                """,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        logger.info(f"Email OTP sent | email={email[:3]}***{email[email.find('@'):]}")
+    except Exception as e:
+        logger.error(f"Email delivery failed: {e}")
+
+
+# ── Password helpers (admin login only) ────────────────────────────────────────
+
 import hashlib
-import os
 
 def _hash_password(password: str) -> str:
-    """Hash a password for storing."""
     salt = _secrets.token_bytes(16).hex()
-    pwd_hash = hashlib.pbkdf2_hmac(
-        'sha256',
-        password.encode('utf-8'),
-        salt.encode('utf-8'),
-        100000
-    )
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
     return f"{salt}${pwd_hash.hex()}"
 
 def _verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a stored password against one provided by user."""
     try:
         salt, hash_hex = stored_hash.split('$')
-        pwd_hash = hashlib.pbkdf2_hmac(
-            'sha256',
-            password.encode('utf-8'),
-            salt.encode('utf-8'),
-            100000
-        )
+        pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
         return pwd_hash.hex() == hash_hex
     except (ValueError, AttributeError):
         return False
-
-def _generate_otp() -> str:
-    return str(_secrets.randbelow(9000) + 1000)
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @router.post("/register", status_code=201)
 async def register_user(user: UserRegister):
-    """
-    Step 1 of sign-up: create the user profile.
-    After this, call /send-otp to verify ownership of email or phone.
-    """
+    """Create a new user account. After this, call /send-otp to verify and login."""
     users_col = get_user_collection()
     if users_col is None:
         raise HTTPException(status_code=500, detail="Database not connected")
 
-    # Uniqueness checks
-    if users_col.find_one({"email": user.email}):
-        raise HTTPException(status_code=400, detail="Email already registered")
     if users_col.find_one({"phone": user.phone}):
         raise HTTPException(status_code=400, detail="Phone number already registered")
+    if user.email and users_col.find_one({"email": user.email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Auto-generate username from email prefix
-    username = re.sub(r'[^a-zA-Z0-9_]', '_', user.email.split('@')[0])[:30]
+    if user.email:
+        username = re.sub(r'[^a-zA-Z0-9_]', '_', user.email.split('@')[0])[:30]
+    else:
+        username = f"user_{user.phone[-6:]}"
 
     users_col.insert_one({
         "username": username,
         "full_name": user.full_name,
-        "email": user.email,
-        "password": _hash_password(user.password),
         "phone": user.phone,
+        "email": user.email,
         "profession": user.profession,
-        "city": user.city,
-        "state": user.state,
-        "pincode": user.pincode,
-        "verified": True,
+        "gender": user.gender,
+        "verified": False,
+        "role": "user",
         "created_at": datetime.now(),
     })
 
     return {
-        "message": "Account created successfully.",
+        "message": "Account created successfully. Please verify your phone to login.",
         "username": username,
     }
 
 
 @router.post("/send-otp")
 async def send_otp(req: SendOTPRequest):
-    """
-    Step 2: Generate and store a 4-digit OTP for the given contact (email or phone).
-    In DEV MODE the OTP is returned in the response so you can test without a
-    real SMS/email provider. Remove `otp_preview` from the response once a
-    real provider (Twilio, SendGrid, etc.) is wired in.
-    """
+    """Generate and send a 6-digit OTP to the given contact (email or phone)."""
     otp_col = get_otp_collection()
     if otp_col is None:
         raise HTTPException(status_code=500, detail="Database not connected")
 
-    # Validate contact exists as a registered user
     users_col = get_user_collection()
     if users_col is not None:
         field = "email" if req.method == "email" else "phone"
@@ -194,10 +249,21 @@ async def send_otp(req: SendOTPRequest):
                 detail=f"No account found with that {req.method}. Please register first."
             )
 
+    # Rate limit: max 3 OTPs per contact per hour
+    one_hour_ago = datetime.now() - timedelta(hours=1)
+    recent_count = otp_col.count_documents({
+        "contact": req.contact,
+        "created_at": {"$gte": one_hour_ago},
+    })
+    if recent_count >= 3:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many OTP requests. Please wait before requesting again."
+        )
+
     otp = _generate_otp()
     expires_at = datetime.now() + timedelta(minutes=10)
 
-    # Upsert — one OTP record per contact at a time
     otp_col.update_one(
         {"contact": req.contact},
         {"$set": {
@@ -206,45 +272,31 @@ async def send_otp(req: SendOTPRequest):
             "otp": otp,
             "expires_at": expires_at,
             "verified": False,
+            "created_at": datetime.now(),
         }},
         upsert=True,
     )
 
-    # TODO: Wire real SMS/email delivery here before going live:
-    #   if req.method == "phone":  send_sms(req.contact, f"Your LETA OTP is {otp}")
-    #   else:                      send_email(req.contact, f"Your LETA OTP is {otp}")
-    # OTP is always logged server-side so admins can verify during onboarding.
-    import logging as _log
-    _log.getLogger("leta.auth").info(
-        "OTP generated",
-        extra={"contact_hash": hash(req.contact), "method": req.method},
-    )
+    if req.method == "phone":
+        _send_sms_otp(req.contact, otp)
+    else:
+        _send_email_otp(req.contact, otp)
 
-    body: dict = {
-        "message": f"OTP sent to your {req.method}.",
-        "expires_in_minutes": 10,
-    }
+    body: dict = {"message": f"OTP sent to your {req.method}.", "expires_in_minutes": 10}
     if _DEV_MODE:
-        body["otp_preview"] = otp   # only visible in local dev
+        body["otp_preview"] = otp
     return body
 
 
 @router.post("/verify-otp", response_model=Token)
 async def verify_otp(req: VerifyOTPRequest):
-    """
-    Step 3: Verify the OTP and receive a JWT access token.
-
-    DEV BEHAVIOUR: Any valid 4-digit number is accepted as long as a pending
-    OTP record exists for this contact. Once a real provider is added, swap
-    the check from `record exists` to `record.otp == req.otp`.
-    """
+    """Verify the 6-digit OTP and receive JWT tokens."""
     otp_col = get_otp_collection()
     users_col = get_user_collection()
 
     if otp_col is None or users_col is None:
         raise HTTPException(status_code=500, detail="Database not connected")
 
-    # Find pending OTP record
     record = otp_col.find_one({"contact": req.contact, "verified": False})
     if not record:
         raise HTTPException(
@@ -252,19 +304,15 @@ async def verify_otp(req: VerifyOTPRequest):
             detail="No pending OTP for this contact. Please request a new OTP."
         )
 
-    # Expiry check
     if datetime.now() > record["expires_at"]:
         otp_col.delete_one({"contact": req.contact})
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
 
-    # Strict OTP check — bypassed only when DEV_MODE=true (local dev only)
     if not _DEV_MODE and record["otp"] != req.otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP")
+        raise HTTPException(status_code=400, detail="Invalid OTP. Please try again.")
 
-    # Mark OTP as used
     otp_col.delete_one({"contact": req.contact})
 
-    # Find user by email or phone
     user = users_col.find_one(
         {"$or": [{"email": req.contact}, {"phone": req.contact}]},
         {"_id": 0}
@@ -272,27 +320,22 @@ async def verify_otp(req: VerifyOTPRequest):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Mark user as verified
     users_col.update_one(
         {"$or": [{"email": req.contact}, {"phone": req.contact}]},
         {"$set": {"verified": True, "last_login": datetime.now()}}
     )
 
-    # Issue JWT — sub is the contact used to log in
-    access_token = create_access_token(
-        data={"sub": req.contact},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
-
-    refresh_token = _secrets.token_urlsafe(32)
-    # Store refresh token if needed, but for now we generate on the fly
-    
+    from app.security import create_refresh_token
+    access_token  = create_access_token({"sub": user.get("username")})
+    refresh_token = create_refresh_token({"sub": user.get("username")})
     now = int(datetime.now(timezone.utc).timestamp() * 1000)
-    
+
     user_info = {
         "id": str(user.get("_id", "unknown")),
         "username": user.get("username"),
         "email": user.get("email"),
+        "phone": user.get("phone"),
+        "full_name": user.get("full_name"),
         "role": user.get("role", "user"),
     }
 
@@ -302,160 +345,109 @@ async def verify_otp(req: VerifyOTPRequest):
             "refreshToken": refresh_token,
             "expiresAt": now + (15 * 60 * 1000),
             "refreshTokenExpiresAt": now + (7 * 24 * 60 * 60 * 1000),
-            "tokenType": "bearer"
+            "tokenType": "bearer",
         },
         "user": user_info,
-        "memberships": [
-            {
-                "organizationId": "org_default",
-                "role": user_info["role"]
-            }
-        ],
-        "organizationId": "org_default"
+        "memberships": [{"organizationId": "org_default", "role": user_info["role"]}],
+        "organizationId": "org_default",
     }
 
 
 @router.get("/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
-    """Returns the currently authenticated user's profile."""
     return {
-        "username": current_user.get("username"),
-        "full_name": current_user.get("full_name"),
-        "email": current_user.get("email"),
-        "phone": current_user.get("phone"),
+        "username":   current_user.get("username"),
+        "full_name":  current_user.get("full_name"),
+        "email":      current_user.get("email"),
+        "phone":      current_user.get("phone"),
         "profession": current_user.get("profession"),
-        "city": current_user.get("city"),
-        "state": current_user.get("state"),
-        "pincode": current_user.get("pincode"),
-        "verified": current_user.get("verified", False),
+        "gender":     current_user.get("gender"),
+        "verified":   current_user.get("verified", False),
+        "role":       current_user.get("role", "user"),
     }
 
 
-# ── Admin Seeding ─────────────────────────────────────────────────────────────
-
-import os as _os
-_ADMIN_SECRET = _os.getenv("ADMIN_MASTER_SECRET", "change-this-secret")
-
-class AdminSeedRequest(BaseModel):
-    master_secret: str
-    contact: str       # email or phone of already-registered user
-
-@router.post("/make-admin", status_code=200)
-async def make_admin(req: AdminSeedRequest):
-    """
-    Elevates an existing registered user to role='admin'.
-    Requires ADMIN_MASTER_SECRET from .env — call this once per admin account.
-    """
-    if req.master_secret != _ADMIN_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid master secret")
-
-    users_col = get_user_collection()
-    if users_col is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
-
-    result = users_col.update_one(
-        {"$or": [{"email": req.contact}, {"phone": req.contact}]},
-        {"$set": {"role": "admin"}}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found — register first, then elevate")
-
-    return {"message": f"User '{req.contact}' is now an admin"}
+# ── Admin-only password login (not shown in UI) ────────────────────────────────
 
 @router.post("/login", response_model=Token)
 async def login(req: LoginRequest):
-    # For demo/MVP, accept any password for admin@example.com
-    # In production, verify against hash in DB.
-    if req.email == "admin@example.com" and req.password == "admin":
-        user_info = {
-            "id": "admin_mock_id",
-            "username": "admin",
-            "email": "admin@example.com",
-            "role": "admin",
-        }
-    elif req.email == "samakshmathur25@gmail.com" and req.password == "123456789":
-        user_info = {
-            "id": "samaksh_custom_id",
-            "username": "samaksh",
-            "email": "samakshmathur25@gmail.com",
-            "role": "admin",
-        }
-    else:
-        # Check against DB
-        users_col = get_user_collection()
-        user = users_col.find_one({"email": req.email}) if users_col is not None else None
-        
-        if not user:
-            logger.warning(f"Login failed: User with email {req.email} not found")
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+    """Admin-only password login. Regular users authenticate via OTP flow."""
+    users_col = get_user_collection()
 
-        # Verify against hash in DB
-        if req.password == "leta123": # Master door for convenience
-             pass
-        elif not _verify_password(req.password, user.get("password", "")):
-            logger.warning(f"Login failed: Password mismatch for {req.email}")
+    _ADMIN_SECRET = os.getenv("ADMIN_MASTER_SECRET", "")
+    if req.email == "admin@letatec.com" and _ADMIN_SECRET and req.password == _ADMIN_SECRET:
+        user_info = {"id": "admin", "username": "admin", "email": req.email, "role": "admin"}
+    else:
+        user = users_col.find_one({"email": req.email}) if users_col else None
+        if not user or user.get("role") != "admin":
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        
+        if not _verify_password(req.password, user.get("password", "")):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
         user_info = {
             "id": str(user["_id"]),
             "username": user["username"],
             "email": user["email"],
-            "role": user.get("role", "user"),
+            "role": user.get("role", "admin"),
         }
 
-    from app.security import create_access_token, create_refresh_token
-    from datetime import datetime, timezone, timedelta
-    
-    access_token = create_access_token({"sub": user_info["username"]})
+    from app.security import create_refresh_token
+    access_token  = create_access_token({"sub": user_info["username"]})
     refresh_token = create_refresh_token({"sub": user_info["username"]})
-    
     now = int(datetime.now(timezone.utc).timestamp() * 1000)
-    
+
     return {
         "tokens": {
             "accessToken": access_token,
             "refreshToken": refresh_token,
             "expiresAt": now + (15 * 60 * 1000),
             "refreshTokenExpiresAt": now + (7 * 24 * 60 * 60 * 1000),
-            "tokenType": "bearer"
+            "tokenType": "bearer",
         },
         "user": user_info,
-        "memberships": [
-            {
-                "organizationId": "org_default",
-                "role": user_info.get("role", "user")
-            }
-        ],
-        "organizationId": "org_default"
+        "memberships": [{"organizationId": "org_default", "role": user_info["role"]}],
+        "organizationId": "org_default",
     }
+
 
 @router.post("/refresh", response_model=Token)
 async def refresh(req: RefreshRequest):
-    from app.security import verify_token, create_access_token, create_refresh_token
-    from datetime import datetime, timezone
-    
+    from app.security import verify_token, create_refresh_token
     payload = verify_token(req.refresh_token, "refresh")
     username = payload.get("sub")
-    
     access_token = create_access_token({"sub": username})
-    new_refresh_token = create_refresh_token({"sub": username})
-    
+    new_refresh  = create_refresh_token({"sub": username})
     now = int(datetime.now(timezone.utc).timestamp() * 1000)
-    
     return {
         "tokens": {
             "accessToken": access_token,
-            "refreshToken": new_refresh_token,
+            "refreshToken": new_refresh,
             "expiresAt": now + (15 * 60 * 1000),
             "refreshTokenExpiresAt": now + (7 * 24 * 60 * 60 * 1000),
-            "tokenType": "bearer"
+            "tokenType": "bearer",
         },
-        "user": { "username": username },
-        "memberships": [
-            {
-                "organizationId": "org_default",
-                "role": "user"
-            }
-        ],
-        "organizationId": "org_default"
+        "user": {"username": username},
+        "memberships": [{"organizationId": "org_default", "role": "user"}],
+        "organizationId": "org_default",
     }
+
+
+# ── Admin elevation ────────────────────────────────────────────────────────────
+
+class AdminSeedRequest(BaseModel):
+    master_secret: str
+    contact: str
+
+@router.post("/make-admin", status_code=200)
+async def make_admin(req: AdminSeedRequest):
+    if req.master_secret != os.getenv("ADMIN_MASTER_SECRET", "change-this-secret"):
+        raise HTTPException(status_code=403, detail="Invalid master secret")
+    users_col = get_user_collection()
+    if users_col is None:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    result = users_col.update_one(
+        {"$or": [{"email": req.contact}, {"phone": req.contact}]},
+        {"$set": {"role": "admin"}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": f"User '{req.contact}' is now an admin"}
