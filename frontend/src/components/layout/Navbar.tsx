@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Landmark, Globe, Briefcase, ChevronDown, Shield } from 'lucide-react';
+import { FileText, Landmark, Globe, Briefcase, ChevronDown, Shield, Settings, LogOut } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ThemeToggle from '../common/ThemeToggle';
+import { useAuth } from '../../context/AuthContext';
+import { ROUTES } from '../../constants/routes';
 
 const DOMAINS = [
   { label: 'GST Intelligence',  path: '/gst',          icon: FileText,  status: 'ACTIVE' },
@@ -16,35 +18,54 @@ const NAV_LINKS = [
   { label: 'Docs',  path: '/docs'  },
 ];
 
+const getInitials = (name: string) => {
+  const parts = name.trim().split(' ').filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return parts[0]?.[0]?.toUpperCase() || '?';
+};
+
 const Navbar = () => {
   const location  = useLocation();
   const navigate  = useNavigate();
+  const { user, isLoggedIn, logout } = useAuth();
 
-  const [scrolled,         setScrolled]         = useState(false);
-  const [domainsOpen,      setDomainsOpen]      = useState(false);
+  const [scrolled,    setScrolled]    = useState(false);
+  const [domainsOpen, setDomainsOpen] = useState(false);
+  const [userOpen,    setUserOpen]    = useState(false);
 
-  const domainsMenuRef = useRef(null);
+  const domainsMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuRef    = useRef<HTMLDivElement>(null);
 
-  const isActive = (path) =>
+  const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + '/');
 
-  /* ── scroll listener ── */
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  /* ── close dropdowns on outside click ── */
   useEffect(() => {
-    const handler = (e) => {
-      if (domainsMenuRef.current && !domainsMenuRef.current.contains(e.target)) setDomainsOpen(false);
+    const handler = (e: MouseEvent) => {
+      if (domainsMenuRef.current && !domainsMenuRef.current.contains(e.target as Node))
+        setDomainsOpen(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node))
+        setUserOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const handleSignOut = () => {
+    setUserOpen(false);
+    logout();
+    navigate(ROUTES.LOGIN);
+  };
+
   const anyDomainActive = DOMAINS.some(d => isActive(d.path));
+  const displayName = user?.full_name || user?.username || 'User';
+  const initials    = getInitials(displayName);
+  const subLabel    = user?.email || (user?.phone ? `+91 ${user.phone}` : '');
 
   return (
     <nav
@@ -57,7 +78,7 @@ const Navbar = () => {
       }}
     >
       <div className="max-w-7xl mx-auto px-6 h-full flex items-center">
-        
+
         {/* ── Column 1: Logo (Left) ─────────────────────────────────── */}
         <div className="flex-1 flex justify-start">
           <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
@@ -104,12 +125,11 @@ const Navbar = () => {
                 style={{
                   backgroundColor: 'rgba(10, 10, 10, 0.95)',
                   backdropFilter: 'blur(32px)',
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.08)',
+                  boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(255,255,255,0.08)',
                 }}
               >
-                {/* dropdown content */}
                 <div className="px-4 py-2 mb-1">
-                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#4edea3]/60">Sovereign Modules</span>
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#4edea3]/60">Sovereign Modules</span>
                 </div>
                 {DOMAINS.map(({ label, path, icon: Icon }) => (
                   <Link
@@ -134,7 +154,7 @@ const Navbar = () => {
                       }
                     }}
                   >
-                    <Icon size={14} className={isActive(path) ? "animate-pulse" : ""} />
+                    <Icon size={14} className={isActive(path) ? 'animate-pulse' : ''} />
                     {label}
                   </Link>
                 ))}
@@ -155,9 +175,9 @@ const Navbar = () => {
                 <motion.span
                   layoutId="activeNav"
                   className="absolute -bottom-2 left-0 right-0 h-[1.5px] rounded-full"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(90deg, transparent, #4edea3, transparent)',
-                    boxShadow: '0 0 5px rgba(78,222,163,0.3)' 
+                    boxShadow: '0 0 5px rgba(78,222,163,0.3)',
                   }}
                 />
               )}
@@ -165,9 +185,95 @@ const Navbar = () => {
           ))}
         </div>
 
-        {/* ── Column 3: Theme Toggle (Right) ────────────────────────── */}
-        <div className="flex-1 flex justify-end">
-           <ThemeToggle />
+        {/* ── Column 3: Right side ────────────────────────────────────── */}
+        <div className="flex-1 flex justify-end items-center gap-4">
+          <ThemeToggle />
+
+          {isLoggedIn && (
+            <div className="relative" ref={userMenuRef}>
+              {/* Avatar button */}
+              <button
+                onClick={() => setUserOpen(v => !v)}
+                className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-lg border border-white/10 hover:border-white/20 hover:bg-white/5 transition-all duration-200 group"
+              >
+                {/* Initials circle */}
+                <div
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-black flex-shrink-0"
+                  style={{
+                    background: 'linear-gradient(135deg, #4edea3 0%, #10b981 100%)',
+                    color: '#0e0e0e',
+                  }}
+                >
+                  {initials}
+                </div>
+                {/* Name */}
+                <span
+                  className="text-[11px] font-bold uppercase tracking-[0.1em] max-w-[100px] truncate hidden sm:block"
+                  style={{ color: '#e5e2e1' }}
+                >
+                  {displayName.split(' ')[0]}
+                </span>
+                <ChevronDown
+                  size={11}
+                  className="transition-transform duration-200 flex-shrink-0"
+                  style={{
+                    color: '#9a9a9a',
+                    transform: userOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  }}
+                />
+              </button>
+
+              {/* Dropdown */}
+              {userOpen && (
+                <div
+                  className="absolute top-full right-0 mt-3 w-56 rounded-xl py-2 z-50 overflow-hidden"
+                  style={{
+                    backgroundColor: 'rgba(10,10,10,0.97)',
+                    backdropFilter: 'blur(32px)',
+                    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(255,255,255,0.08)',
+                  }}
+                >
+                  {/* User info header */}
+                  <div className="px-4 py-3 border-b border-white/5">
+                    <p className="text-[12px] font-bold text-white truncate">{displayName}</p>
+                    {subLabel && (
+                      <p className="text-[10px] text-white/40 truncate mt-0.5">{subLabel}</p>
+                    )}
+                    {user?.role === 'admin' && (
+                      <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
+                        style={{ background: 'rgba(78,222,163,0.15)', color: '#4edea3' }}>
+                        Admin
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Settings */}
+                  <button
+                    onClick={() => { setUserOpen(false); navigate('/settings'); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 hover:bg-white/5 text-left"
+                    style={{ color: '#9a9a9a' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#e5e2e1')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#9a9a9a')}
+                  >
+                    <Settings size={13} />
+                    Settings
+                  </button>
+
+                  {/* Sign out */}
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 hover:bg-red-500/10 text-left"
+                    style={{ color: '#9a9a9a' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#9a9a9a')}
+                  >
+                    <LogOut size={13} />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </nav>
