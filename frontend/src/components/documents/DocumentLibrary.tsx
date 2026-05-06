@@ -40,7 +40,7 @@ const DocCard = ({ doc, onClick, onDownload, accentColor }) => {
   return (
     <motion.div 
       whileHover={{ scale: 1.05, zIndex: 10 }}
-      className="relative flex-shrink-0 w-64 h-36 bg-[#081018] rounded-xl border border-white/5 overflow-hidden group cursor-pointer transition-all duration-300 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:border-white/20"
+      className="relative flex-shrink-0 w-64 h-36 bg-[#081018] rounded-leta border border-leta-gray-100 overflow-hidden group cursor-pointer transition-all duration-300 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:border-leta-gray-300"
       onClick={() => onClick(doc)}
     >
       {/* Background Pattern */}
@@ -50,29 +50,29 @@ const DocCard = ({ doc, onClick, onDownload, accentColor }) => {
 
       <div className="absolute inset-0 p-4 flex flex-col justify-between">
          <div className="flex justify-between items-start">
-            <div className={`p-2 rounded-lg ${accentColor}`}>
-               <FileText size={18} className="text-white" />
+            <div className={`p-2 rounded-leta ${accentColor}`}>
+               <FileText size={18} className="text-leta-gray-900" />
             </div>
             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                <button 
                   onClick={(e) => { e.stopPropagation(); onDownload(doc); }}
-                  className="p-1.5 rounded-full bg-white/10 hover:bg-emerald-500/20 text-white/70 hover:text-emerald-400 transition-all"
+                  className="p-1.5 rounded-full bg-leta-white/10 hover:bg-emerald-500/20 text-leta-gray-900/70 hover:text-emerald-400 transition-all"
                >
                   <Download size={14} />
                </button>
-               <button className="p-1.5 rounded-full bg-white/10 hover:bg-blue-500/20 text-white/70 hover:text-blue-400 transition-all">
+               <button className="p-1.5 rounded-full bg-leta-white/10 hover:bg-blue-500/20 text-leta-gray-900/70 hover:text-blue-400 transition-all">
                   <Bookmark size={14} />
                </button>
             </div>
          </div>
 
          <div>
-            <h4 className="text-xs font-bold text-white line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors uppercase tracking-tight">
+            <h4 className="text-xs font-bold text-leta-gray-900 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors uppercase tracking-tight">
                {doc.title.replace('.pdf', '')}
             </h4>
             <div className="flex items-center gap-2 mt-2">
-               <span className="text-[9px] font-black text-gray-500 px-1.5 py-0.5 rounded-sm bg-white/5 border border-white/5">PDF</span>
-               <span className="text-[9px] text-gray-600 font-mono tracking-tighter uppercase">{doc.size}</span>
+               <span className="text-[9px] font-black text-leta-gray-500 px-1.5 py-0.5 rounded-leta bg-leta-gray-50 border border-leta-gray-100">PDF</span>
+               <span className="text-[9px] text-leta-gray-600 font-mono tracking-tighter uppercase">{doc.size}</span>
             </div>
          </div>
       </div>
@@ -112,16 +112,16 @@ const DocumentRow = ({ category, onDocClick, onDownload }) => {
   return (
     <div className="mb-10 group/row">
       <div className="flex items-center justify-between px-8 mb-4">
-        <h3 className="text-sm font-black tracking-[0.2em] text-gray-400 uppercase flex items-center gap-3">
+        <h3 className="text-sm font-black tracking-[0.2em] text-leta-gray-600 uppercase flex items-center gap-3">
           <category.icon size={16} className={category.color} />
           {category.label}
-          <span className="text-[10px] text-gray-700 font-mono">[{docs.length}]</span>
+          <span className="text-[10px] text-leta-gray-700 font-mono">[{docs.length}]</span>
         </h3>
         <div className="flex gap-2 opacity-0 group-hover/row:opacity-100 transition-opacity">
-           <button onClick={() => scroll('left')} className="p-2 rounded-full bg-white/5 border border-white/5 text-gray-400 hover:text-white hover:border-white/20">
+           <button onClick={() => scroll('left')} className="p-2 rounded-full bg-leta-gray-50 border border-leta-gray-100 text-leta-gray-600 hover:text-leta-gray-900 hover:border-leta-gray-300">
               <ChevronLeft size={16} />
            </button>
-           <button onClick={() => scroll('right')} className="p-2 rounded-full bg-white/5 border border-white/5 text-gray-400 hover:text-white hover:border-white/20">
+           <button onClick={() => scroll('right')} className="p-2 rounded-full bg-leta-gray-50 border border-leta-gray-100 text-leta-gray-600 hover:text-leta-gray-900 hover:border-leta-gray-300">
               <ChevronRight size={16} />
            </button>
         </div>
@@ -133,7 +133,7 @@ const DocumentRow = ({ category, onDocClick, onDownload }) => {
       >
         {loading ? (
           [1, 2, 3, 4].map(i => (
-            <div key={i} className="flex-shrink-0 w-64 h-36 bg-white/5 rounded-xl animate-pulse border border-white/5" />
+            <div key={i} className="flex-shrink-0 w-64 h-36 bg-leta-gray-50 rounded-leta animate-pulse border border-leta-gray-100" />
           ))
         ) : (
           docs.slice(0, 20).map((doc) => (
@@ -186,28 +186,28 @@ const DocumentLibrary = () => {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#020202] rounded-3xl overflow-hidden border border-white/5 mt-12 mb-20 pb-20">
+    <div className="relative min-h-screen bg-[#FFFFFF] rounded-leta-3xl overflow-hidden border border-leta-gray-100 mt-12 mb-20 pb-20">
       {/* Background Glow */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-500/5 blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-500/5 blur-[120px] rounded-full translate-y-1/2 -translate-x-1/2 pointer-events-none" />
 
       {/* HEADER SECTION */}
-      <div className="px-8 py-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-white/5 bg-gradient-to-b from-[#050A10] to-transparent">
+      <div className="px-8 py-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-leta-gray-100 bg-gradient-to-b from-[#F9FAFB] to-transparent">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter flex items-center gap-4">
+          <h2 className="text-3xl font-black text-leta-gray-900 tracking-tighter flex items-center gap-4">
             <BookOpen className="text-emerald-500" size={32} />
             DOC_LIBRARY_V1.0
           </h2>
-          <p className="text-xs text-gray-500 font-mono mt-2 tracking-widest uppercase">
+          <p className="text-xs text-leta-gray-500 font-mono mt-2 tracking-widest uppercase">
             // STATUS: <span className="text-emerald-400">ACTIVE</span> // ENCRYPTION: <span className="text-emerald-400">MIL_SPEC</span>
           </p>
         </div>
         <div className="flex gap-3">
-           <button className="px-5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-white hover:bg-white/10 transition-all flex items-center gap-2">
+           <button className="px-5 py-2.5 bg-leta-gray-50 border border-leta-gray-200 rounded-leta text-xs font-bold text-leta-gray-900 hover:bg-leta-white/10 transition-all flex items-center gap-2">
               <Layers size={14} />
               All Notifications
            </button>
-           <button className="px-5 py-2.5 bg-emerald-500 text-black border border-emerald-400 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-emerald-400 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+           <button className="px-5 py-2.5 bg-emerald-500 text-leta-black border border-emerald-400 rounded-leta text-xs font-black uppercase tracking-widest hover:bg-emerald-400 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
               <Download size={14} />
               Bulk Export
            </button>
@@ -215,7 +215,7 @@ const DocumentLibrary = () => {
       </div>
 
       {/* SEARCH BAR (NETFLIX STYLE) */}
-      <div className="px-8 py-6 sticky top-0 z-40 bg-[#020202]/80 backdrop-blur-xl border-b border-white/5">
+      <div className="px-8 py-6 sticky top-0 z-40 bg-[#FFFFFF]/80 backdrop-blur-xl border-b border-leta-gray-100">
          <div className="flex items-center justify-between gap-4">
             <motion.div 
               ref={searchRef}
@@ -224,7 +224,7 @@ const DocumentLibrary = () => {
               className="relative group flex items-center"
             >
                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Search className={`h-4 w-4 ${isSearching ? 'animate-spin text-emerald-400' : 'text-gray-500'} transition-colors`} />
+                  <Search className={`h-4 w-4 ${isSearching ? 'animate-spin text-emerald-400' : 'text-leta-gray-500'} transition-colors`} />
                </div>
                <input 
                   type="text" 
@@ -233,7 +233,7 @@ const DocumentLibrary = () => {
                   onBlur={() => !searchQuery && setIsSearchFocused(false)}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="SEARCH UNIVERSAL STATUTES, CASE LAWS, AND CIRCULARS..." 
-                  className="block w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-12 text-xs font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  className="block w-full bg-leta-gray-50 border border-leta-gray-200 rounded-leta py-3 pl-12 pr-12 text-xs font-mono text-leta-gray-900 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                />
                <AnimatePresence>
                   {searchQuery && (
@@ -242,7 +242,7 @@ const DocumentLibrary = () => {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-4 p-1 rounded-full bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white"
+                      className="absolute right-4 p-1 rounded-full bg-leta-white/10 hover:bg-leta-white/20 text-leta-gray-600 hover:text-leta-gray-900"
                     >
                       <X size={14} />
                     </motion.button>
@@ -251,7 +251,7 @@ const DocumentLibrary = () => {
             </motion.div>
 
             {!isSearchFocused && !searchQuery && (
-               <div className="hidden md:flex items-center gap-2 text-[10px] font-mono text-gray-600 whitespace-nowrap">
+               <div className="hidden md:flex items-center gap-2 text-[10px] font-mono text-leta-gray-600 whitespace-nowrap">
                   <Brain size={12} className="text-emerald-500" />
                   LETA AI POWERED DISCOVERY MODE 
                </div>
@@ -266,11 +266,11 @@ const DocumentLibrary = () => {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="px-8 py-10 bg-gradient-to-b from-emerald-500/5 to-transparent border-b border-white/5"
+            className="px-8 py-10 bg-gradient-to-b from-emerald-500/5 to-transparent border-b border-leta-gray-100"
           >
             <div className="flex items-center gap-3 mb-6">
                <Sparkles className="text-emerald-400 animate-pulse" size={20} />
-               <h3 className="text-sm font-black tracking-[0.3em] text-white uppercase flex items-center gap-2">
+               <h3 className="text-sm font-black tracking-[0.3em] text-leta-gray-900 uppercase flex items-center gap-2">
                  LETA AI DISCOVERY
                  <span className="text-[10px] text-emerald-500/60 ml-2 font-mono">Found {aiResults.length} statutory insights</span>
                </h3>
@@ -279,7 +279,7 @@ const DocumentLibrary = () => {
             <div className="flex gap-4 overflow-x-auto no-scrollbar scroll-smooth pb-4">
               {isSearching ? (
                  [1, 2, 3, 4].map(i => (
-                    <div key={i} className="flex-shrink-0 w-64 h-36 bg-emerald-500/5 rounded-xl animate-pulse border border-emerald-500/10" />
+                    <div key={i} className="flex-shrink-0 w-64 h-36 bg-emerald-500/5 rounded-leta animate-pulse border border-emerald-500/10" />
                  ))
               ) : (
                 aiResults.map((doc) => (
@@ -302,9 +302,9 @@ const DocumentLibrary = () => {
         {categoryGroups.map((group, idx) => (
           <div key={idx} className="mb-12">
             <div className="px-8 mb-8 flex items-center gap-4">
-               <div className="h-[1px] flex-grow bg-white/5" />
-               <span className="text-[10px] font-black text-gray-500 tracking-[0.5em] uppercase whitespace-nowrap">{group.title}</span>
-               <div className="h-[1px] flex-grow bg-white/5" />
+               <div className="h-[1px] flex-grow bg-leta-gray-50" />
+               <span className="text-[10px] font-black text-leta-gray-500 tracking-[0.5em] uppercase whitespace-nowrap">{group.title}</span>
+               <div className="h-[1px] flex-grow bg-leta-gray-50" />
             </div>
             {group.rows.map((row) => (
               <DocumentRow 

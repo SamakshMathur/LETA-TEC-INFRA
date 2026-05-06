@@ -44,7 +44,7 @@ const HowItWorks = () => {
   const [activeStep, setActiveStep] = useState(steps[0].id);
 
   return (
-    <section className="relative py-24 bg-[#020202] overflow-hidden">
+    <section className="relative py-24 bg-[#FFFFFF] overflow-hidden">
       {/* Background Ambience */}
       <div className="absolute top-0 right-0 w-1/2 h-full bg-sentinel-blue/5 blur-[120px] rounded-full pointer-events-none" />
 
@@ -58,8 +58,8 @@ const HowItWorks = () => {
           <span className="text-[10px] font-mono text-sentinel-green tracking-[0.2em] uppercase mb-4 block">
             // OPERATIONAL_WORKFLOW
           </span>
-          <h2 className="text-4xl md:text-5xl font-bold text-white font-sans tracking-tight">
-            How It <span className="text-gray-500">Works</span>
+          <h2 className="text-4xl md:text-5xl font-bold text-leta-gray-900 font-sans tracking-tight">
+            How It <span className="text-leta-gray-500">Works</span>
           </h2>
         </motion.div>
 
@@ -71,10 +71,10 @@ const HowItWorks = () => {
               <motion.div
                 key={step.id}
                 onMouseEnter={() => setActiveStep(step.id)}
-                className={`group relative p-6 rounded-sm border transition-all duration-300 cursor-default ${
+                className={`group relative p-6 rounded-leta border transition-all duration-300 cursor-default ${
                   activeStep === step.id 
-                    ? 'bg-[#050A10] border-sentinel-blue/40 shadow-[0_0_30px_rgba(0,59,89,0.15)]' 
-                    : 'bg-transparent border-white/5 hover:border-white/10'
+                    ? 'bg-[#F9FAFB] border-sentinel-blue/40 shadow-[0_0_30px_rgba(0,59,89,0.15)]' 
+                    : 'bg-transparent border-leta-gray-100 hover:border-leta-gray-200'
                 }`}
               >
                 {/* Active Indicator Line */}
@@ -84,19 +84,19 @@ const HowItWorks = () => {
 
                 <div className="flex justify-between items-start mb-2">
                   <h3 className={`text-xl font-bold font-sans transition-colors ${
-                    activeStep === step.id ? 'text-white' : 'text-gray-500 group-hover:text-gray-300'
+                    activeStep === step.id ? 'text-leta-gray-900' : 'text-leta-gray-500 group-hover:text-leta-gray-300'
                   }`}>
                     {step.title}
                   </h3>
                   {step.status === 'coming_soon' && (
-                    <span className="px-2 py-1 rounded bg-white/5 border border-white/5 text-[10px] text-gray-500 font-mono uppercase tracking-wider">
+                    <span className="px-2 py-1 rounded-leta bg-leta-gray-50 border border-leta-gray-100 text-[10px] text-leta-gray-500 font-mono uppercase tracking-wider">
                       Coming Soon
                     </span>
                   )}
                 </div>
                 
                 <p className={`text-sm leading-relaxed transition-colors font-light max-w-md ${
-                   activeStep === step.id ? 'text-gray-300' : 'text-gray-600'
+                   activeStep === step.id ? 'text-leta-gray-300' : 'text-leta-gray-600'
                 }`}>
                   {step.desc}
                 </p>
@@ -107,7 +107,7 @@ const HowItWorks = () => {
           {/* Right Column: Visual Preview Area */}
           <div className="hidden lg:block relative h-full min-h-[600px]">
              <div className="sticky top-24">
-                <div className="relative w-full aspect-square md:aspect-[4/3] bg-[#050A10] rounded-sm border border-white/10 overflow-hidden flex items-center justify-center p-8">
+                <div className="relative w-full aspect-square md:aspect-[4/3] bg-[#F9FAFB] rounded-leta border border-leta-gray-200 overflow-hidden flex items-center justify-center p-8">
                    
                    {/* Background Grid */}
                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:24px_24px]" />
@@ -123,13 +123,13 @@ const HowItWorks = () => {
                      >
                         {/* Abstract Representation of the Feature */}
                         <div className="text-center">
-                           <div className="w-24 h-24 mx-auto mb-8 rounded-full bg-sentinel-blue/10 border border-sentinel-blue/30 flex items-center justify-center text-sentinel-blue shadow-[0_0_50px_rgba(0,59,89,0.2)]">
+                           <div className="w-24 h-24 mx-auto mb-8 rounded-full bg-sentinel-blue/10 border border-sentinel-blue/30 flex items-center justify-center text-leta-gray-900 shadow-[0_0_50px_rgba(0,59,89,0.2)]">
                               {(() => {
                                  const Icon = steps.find(s => s.id === activeStep)?.icon || MessageSquare;
                                  return <Icon size={48} strokeWidth={1} />;
                               })()}
                            </div>
-                           <h4 className="text-2xl font-mono text-white mb-2 uppercase tracking-widest">
+                           <h4 className="text-2xl font-mono text-leta-gray-900 mb-2 uppercase tracking-widest">
                              {steps.find(s => s.id === activeStep)?.title}
                            </h4>
                            <div className="mt-8 flex justify-center gap-2">
@@ -139,9 +139,9 @@ const HowItWorks = () => {
                            </div>
                            
                            {/* Decorative Code Snippet */}
-                           <div className="mt-12 text-left p-4 bg-black/50 border border-white/5 rounded font-mono text-[10px] text-gray-600 max-w-xs mx-auto">
+                           <div className="mt-12 text-left p-4 bg-leta-gray-500 border border-leta-gray-100 rounded-leta font-mono text-[10px] text-leta-gray-600 max-w-xs mx-auto">
                               <p opacity="0.5">// EXECUTING PROTOCOL...</p>
-                              <p className="text-sentinel-blue mt-1">&gt; load_module('{activeStep}')</p>
+                              <p className="text-leta-gray-900 mt-1">&gt; load_module('{activeStep}')</p>
                               <p className="text-sentinel-green mt-1">&gt; status: active</p>
                            </div>
                         </div>
@@ -149,8 +149,8 @@ const HowItWorks = () => {
                    </AnimatePresence>
 
                    {/* Floating Nodes */}
-                   <div className="absolute top-10 right-10 w-3 h-3 border border-white/20 rounded-full" />
-                   <div className="absolute bottom-20 left-10 w-2 h-2 bg-white/10 rounded-full" />
+                   <div className="absolute top-10 right-10 w-3 h-3 border border-leta-gray-300 rounded-full" />
+                   <div className="absolute bottom-20 left-10 w-2 h-2 bg-leta-white/10 rounded-full" />
                 </div>
              </div>
           </div>

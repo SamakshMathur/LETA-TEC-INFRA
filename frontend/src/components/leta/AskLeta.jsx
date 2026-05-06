@@ -52,13 +52,13 @@ const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
   };
 
   return (
-    <section className="bg-white rounded-xl shadow-2xl shadow-sentinel-blue/10 border border-gray-100 overflow-hidden relative">
+    <section className="bg-leta-white rounded-leta shadow-2xl shadow-sentinel-blue/10 border border-leta-gray-100 overflow-hidden relative">
       {/* Decorative top bar */}
       <div className="h-1 bg-brand-gradient w-full" />
       
       <div className="p-8">
-        <h2 className="text-2xl font-bold text-sentinel-blue mb-2 font-sans">Statutory Advisory Console</h2>
-        <p className="text-gray-500 mb-6 text-sm">
+        <h2 className="text-2xl font-bold text-leta-gray-900 mb-2 font-sans">Statutory Advisory Console</h2>
+        <p className="text-leta-gray-500 mb-6 text-sm">
           Enter a specific {contextDesc}. LETA will analyze statutory provisions to provide a reasoned opinion.
         </p>
 
@@ -67,7 +67,7 @@ const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Describe the scenario for ${domain.toUpperCase()} (e.g., specific section queries, compliance issues...)`}
-            className="w-full min-h-[120px] p-4 bg-gray-50 border border-gray-200 rounded-lg text-sentinel-blue focus:ring-2 focus:ring-sentinel-green/20 focus:border-sentinel-green transition-all outline-none resize-none font-sans text-base"
+            className="w-full min-h-[120px] p-4 bg-leta-gray-50 border border-leta-gray-200 rounded-leta text-leta-gray-900 focus:ring-2 focus:ring-sentinel-green/20 focus:border-sentinel-green transition-all outline-none resize-none font-sans text-base"
           />
           <div className="absolute top-0 right-0 p-2">
              <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" title="System Ready" />
@@ -92,9 +92,9 @@ const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
       </div>
 
       {/* Response Section */}
-      <div className="bg-gray-50/50 p-8 border-t border-gray-100 min-h-[200px]">
+      <div className="bg-leta-gray-50/50 p-8 border-t border-leta-gray-100 min-h-[200px]">
         {!response && !isLoading && (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
+            <div className="flex flex-col items-center justify-center h-full text-leta-gray-600 py-10">
                 <Search size={48} className="mb-4 opacity-20" />
                 <p className="text-sm font-medium">Awaiting Input Query</p>
                 <p className="text-xs opacity-60 mt-2 text-center max-w-sm">
@@ -104,7 +104,7 @@ const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
         )}
 
         {isLoading && (
-            <div className="rounded-lg overflow-hidden border border-sentinel-blue/10 shadow-inner min-h-[400px]">
+            <div className="rounded-leta overflow-hidden border border-sentinel-blue/10 shadow-inner min-h-[400px]">
                 <NeuralLoader />
             </div>
         )}

@@ -7,7 +7,7 @@ import { ShieldCheck, AlertTriangle, AlertOctagon } from 'lucide-react';
 // < 70% -> Low (Red)
 
 const ConfidenceBadge = ({ score }) => {
-  let colorClass = "bg-gray-100 text-gray-600 border-gray-200";
+  let colorClass = "bg-leta-gray-100 text-leta-gray-600 border-leta-gray-200";
   let icon = ShieldCheck;
   let label = "Unknown Confidence";
 

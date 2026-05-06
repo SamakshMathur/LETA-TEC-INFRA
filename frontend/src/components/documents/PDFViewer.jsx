@@ -38,14 +38,14 @@ const PDFViewer = ({ url, onClose, title = 'Document Viewer', initialPage, keywo
   if (!url) return null;
 
   return (
-    <div className={`flex flex-col bg-[#050A10] border-r border-white/10 relative shadow-2xl z-20 ${isFullscreen ? 'fixed inset-0 z-[10000]' : 'h-full flex-1 w-full'}`}>
+    <div className={`flex flex-col bg-[#F9FAFB] border-r border-leta-gray-200 relative shadow-2xl z-20 ${isFullscreen ? 'fixed inset-0 z-[10000]' : 'h-full flex-1 w-full'}`}>
       {!embedded && (
-        <div className='flex items-center justify-between px-4 py-3 border-b border-white/10 bg-[#020202]'>
+        <div className='flex items-center justify-between px-4 py-3 border-b border-leta-gray-200 bg-[#FFFFFF]'>
            <div className='flex items-center gap-2 overflow-hidden'>
               <span className='text-xs font-mono font-bold text-sentinel-green uppercase tracking-wider whitespace-nowrap'>
                 DOC_VIEWER
               </span>
-              <span className='text-gray-500 text-xs truncate max-w-[200px]' title={title}>
+              <span className='text-leta-gray-500 text-xs truncate max-w-[200px]' title={title}>
                  // {title}
               </span>
            </div>
@@ -54,21 +54,21 @@ const PDFViewer = ({ url, onClose, title = 'Document Viewer', initialPage, keywo
                 href={url} 
                 target='_blank' 
                 rel='noopener noreferrer'
-                className='p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded transition-colors'
+                className='p-1.5 text-leta-gray-500 hover:text-leta-gray-900 hover:bg-leta-gray-50 rounded-leta transition-colors'
                 title='Open in New Tab'
               >
                  <ExternalLink size={14} />
               </a>
               <button 
                 onClick={() => setIsFullscreen(!isFullscreen)}
-                className='p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded transition-colors hidden lg:block'
+                className='p-1.5 text-leta-gray-500 hover:text-leta-gray-900 hover:bg-leta-gray-50 rounded-leta transition-colors hidden lg:block'
                 title='Toggle Fullscreen'
               >
                  {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
               <button 
                 onClick={onClose}
-                className='p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors'
+                className='p-1.5 text-leta-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-leta transition-colors'
                 title='Close Viewer'
               >
                  <X size={16} />
@@ -89,7 +89,7 @@ const PDFViewer = ({ url, onClose, title = 'Document Viewer', initialPage, keywo
       </div>
       
       {!embedded && (
-        <div className='px-4 py-1.5 bg-[#05080B] border-t border-white/10 flex justify-between items-center text-[10px] font-mono text-gray-600 uppercase'>
+        <div className='px-4 py-1.5 bg-[#05080B] border-t border-leta-gray-200 flex justify-between items-center text-[10px] font-mono text-leta-gray-600 uppercase'>
            <span>STATUS: ADVANCED_READING_MODE</span>
            <span>SECURE_CONNECTION</span>
         </div>

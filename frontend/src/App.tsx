@@ -10,10 +10,10 @@ const NotFound: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-screen gap-6"
     style={{ backgroundColor: 'var(--surface)' }}>
     <span className="font-display font-bold text-8xl" style={{ color: '#2a2a2a' }}>404</span>
-    <p className="text-sm font-mono" style={{ color: '#9a9a9a' }}>
+    <p className="text-sm font-mono" style={{ color: '#4B5563' }}>
       This route does not exist in the system.
     </p>
-    <a href="/" className="btn-titan px-8 py-3">Return Home</a>
+    <a href="/" className="btn-primary px-8 py-3">Return Home</a>
   </div>
 );
 
@@ -29,7 +29,7 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.error) {
       return (
-        <div style={{ backgroundColor: '#141313', color: '#ff6b6b', minHeight: '100vh',
+        <div style={{ backgroundColor: '#FFFFFF', color: '#ff6b6b', minHeight: '100vh',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexDirection: 'column', gap: '1rem', fontFamily: 'monospace' }}>
           <h2>Something went wrong</h2>
@@ -37,7 +37,7 @@ class ErrorBoundary extends React.Component<
             {this.state.error.message}
           </pre>
           <button onClick={() => window.location.href = '/'}
-            style={{ color: '#4edea3', border: '1px solid #4edea3',
+            style={{ color: '#4F46E5', border: '1px solid #4F46E5',
               padding: '8px 24px', borderRadius: '8px', background: 'none', cursor: 'pointer' }}>
             Go Home
           </button>

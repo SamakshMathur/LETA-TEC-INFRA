@@ -13,7 +13,7 @@ const VideoSection = () => {
   const opacity = useTransform(scrollYProgress, [0, 0.3], [0.5, 1]);
 
   return (
-    <section ref={containerRef} className="py-24 bg-[#020202] relative overflow-hidden text-white border-t border-white/5">
+    <section ref={containerRef} className="py-24 bg-[#FFFFFF] relative overflow-hidden text-leta-gray-900 border-t border-leta-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
@@ -25,16 +25,16 @@ const VideoSection = () => {
                 // EXECUTION_LOG_01
             </span>
             <h2 className="text-3xl md:text-5xl font-bold mb-6 font-sans tracking-tight">
-              See <span className="text-gray-500">LETA</span> in Action
+              See <span className="text-leta-gray-500">LETA</span> in Action
             </h2>
-            <p className="text-gray-400 max-w-2xl mx-auto text-lg font-mono text-sm leading-relaxed border-l border-sentinel-blue/30 pl-4 text-left md:text-center md:border-l-0 md:pl-0">
+            <p className="text-leta-gray-600 max-w-2xl mx-auto text-lg font-mono text-sm leading-relaxed border-l border-sentinel-blue/30 pl-4 text-left md:text-center md:border-l-0 md:pl-0">
                 Observing real-time statutory deconstruction and analysis protocols.
             </p>
         </motion.div>
 
         <motion.div 
           style={{ scale, opacity }}
-          className="relative aspect-video max-w-5xl mx-auto bg-[#050A10] border border-white/10 group shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+          className="relative aspect-video max-w-5xl mx-auto bg-[#F9FAFB] border border-leta-gray-200 group shadow-[0_0_50px_rgba(0,0,0,0.8)]"
         >
             {/* Corner Indicators */}
             <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-sentinel-green/50 z-20" />
@@ -45,11 +45,11 @@ const VideoSection = () => {
             {/* Placeholder for actual video source */}
             <div className="absolute inset-0 flex items-center justify-center bg-transparent">
                 <div className="absolute inset-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80')] bg-cover bg-center grayscale mix-blend-luminosity" />
-                <div className="absolute inset-0 bg-[#050A10]/60" />
+                <div className="absolute inset-0 bg-[#F9FAFB]/60" />
                 
                 <motion.button 
                     whileTap={{ opacity: 0.8 }}
-                    className="relative z-10 w-24 h-24 flex items-center justify-center text-sentinel-green group-hover:text-white transition-colors duration-200"
+                    className="relative z-10 w-24 h-24 flex items-center justify-center text-sentinel-green group-hover:text-leta-gray-900 transition-colors duration-200"
                 >
                     <div className="absolute inset-0 border border-sentinel-green/30 rounded-full animate-[spin_10s_linear_infinite]" />
                     <div className="absolute inset-2 border border-sentinel-green/10 rounded-full animate-[spin_5s_linear_infinite_reverse]" />
@@ -58,12 +58,12 @@ const VideoSection = () => {
             </div>
             
             {/* Overlay UI elements to make it look technical */}
-            <div className="absolute top-4 left-4 flex items-center gap-3 font-mono text-[10px] text-sentinel-green tracking-widest bg-black/50 px-2 py-1 border border-sentinel-green/20">
+            <div className="absolute top-4 left-4 flex items-center gap-3 font-mono text-[10px] text-sentinel-green tracking-widest bg-leta-gray-500 px-2 py-1 border border-sentinel-green/20">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
                 <span>REC_001 // LIVE_FEED</span>
             </div>
             
-            <div className="absolute bottom-4 right-4 font-mono text-[10px] text-gray-500 tracking-widest">
+            <div className="absolute bottom-4 right-4 font-mono text-[10px] text-leta-gray-500 tracking-widest">
                 [ 1080p | 60FPS | ENCRYPTED ]
             </div>
         </motion.div>

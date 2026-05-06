@@ -8,7 +8,7 @@ import { DynamicBackground } from '../components/effects';
 const Home: React.FC = () => {
   return (
     <div className="relative">
-      <div className="film-grain" />
+      <div className="" />
       <DynamicBackground />
       <Hero />
       <LetaIntro />

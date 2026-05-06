@@ -13,24 +13,24 @@ const SourceCard = ({ source, onClick, index = 0 }) => {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      whileHover={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
+      whileHover={{ backgroundColor: 'rgba(0, 0, 0, 0.05)' }}
       whileTap={{ opacity: 0.8 }}
       onClick={() => onClick({ url, page, title: cleanTitle })}
-      className="flex flex-col p-3 bg-[#0A1622] border border-white/10 rounded-lg cursor-pointer group transition-all duration-150 hover:border-sentinel-green/40 shadow-sm"
+      className="flex flex-col p-3 bg-[#0A1622] border border-leta-gray-200 rounded-leta cursor-pointer group transition-all duration-150 hover:border-sentinel-green/40 shadow-sm"
     >
       <div className="flex items-start justify-between mb-2">
-        <div className="p-1.5 bg-sentinel-green/10 rounded text-sentinel-green group-hover:bg-sentinel-green/20 transition-colors">
+        <div className="p-1.5 bg-sentinel-green/10 rounded-leta text-sentinel-green group-hover:bg-sentinel-green/20 transition-colors">
           <FileText size={14} />
         </div>
-        <ExternalLink size={12} className="text-gray-600 group-hover:text-sentinel-green opacity-0 group-hover:opacity-100 transition-all" />
+        <ExternalLink size={12} className="text-leta-gray-600 group-hover:text-sentinel-green opacity-0 group-hover:opacity-100 transition-all" />
       </div>
       
       <div className="flex-1 min-w-0">
-        <h4 className="text-[11px] font-bold text-gray-200 truncate leading-tight mb-1 group-hover:text-sentinel-green transition-colors">
+        <h4 className="text-[11px] font-bold text-leta-gray-200 truncate leading-tight mb-1 group-hover:text-sentinel-green transition-colors">
           {cleanTitle}
         </h4>
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-mono text-gray-500 uppercase tracking-tighter">
+          <span className="text-[9px] font-mono text-leta-gray-500 uppercase tracking-tighter">
             PROVISION AT PAGE {page}
           </span>
         </div>

@@ -30,7 +30,7 @@ const statusStyleMap = {
   error:      { dot: 'bg-red-400',          text: 'text-red-400',          card: 'border-red-400/20 bg-red-500/5' },
 };
 
-const statusStyle = (s: string) => (statusStyleMap[s as keyof typeof statusStyleMap] || { dot: 'bg-gray-500', text: 'text-gray-400', card: 'border-white/10 bg-white/5' });
+const statusStyle = (s: string) => (statusStyleMap[s as keyof typeof statusStyleMap] || { dot: 'bg-leta-gray-500', text: 'text-leta-gray-600', card: 'border-leta-gray-200 bg-leta-gray-50' });
 
 interface StatCardProps {
   label: string;
@@ -39,10 +39,10 @@ interface StatCardProps {
 }
 
 const StatCard: React.FC<StatCardProps> = ({ label, value, sub }) => (
-  <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/[0.07] transition-colors">
-    <p className="text-[11px] text-gray-500 uppercase tracking-wider">{label}</p>
-    <p className="text-2xl font-bold text-white mt-1">{value ?? '—'}</p>
-    {sub && <p className="text-xs text-gray-600 mt-0.5">{sub}</p>}
+  <div className="bg-leta-gray-50 border border-leta-gray-200 rounded-leta p-4 hover:bg-leta-white/[0.07] transition-colors">
+    <p className="text-[11px] text-leta-gray-500 uppercase tracking-wider">{label}</p>
+    <p className="text-2xl font-bold text-leta-gray-900 mt-1">{value ?? '—'}</p>
+    {sub && <p className="text-xs text-leta-gray-600 mt-0.5">{sub}</p>}
   </div>
 );
 
@@ -166,16 +166,16 @@ const AdminUploadPortal: React.FC = () => {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <div className="w-8 h-8 rounded-lg bg-sentinel-green/15 border border-sentinel-green/30 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-leta bg-sentinel-green/15 border border-sentinel-green/30 flex items-center justify-center">
                 <span className="text-sentinel-green text-sm">⬆</span>
               </div>
-              <h1 className="text-xl font-bold text-white tracking-tight">Admin Upload Portal</h1>
+              <h1 className="text-xl font-bold text-leta-gray-900 tracking-tight">Admin Upload Portal</h1>
               <span className="text-[10px] font-black tracking-[0.2em] uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">TITAN</span>
             </div>
-            <p className="text-sm text-gray-500 ml-11">Upload documents → auto-chunk → embed → FAISS index update</p>
+            <p className="text-sm text-leta-gray-500 ml-11">Upload documents → auto-chunk → embed → FAISS index update</p>
           </div>
           <button onClick={fetchStatus}
-            className="shrink-0 text-xs text-gray-500 hover:text-sentinel-green border border-white/10 hover:border-sentinel-green/30 rounded-lg px-3 py-2 transition-all">
+            className="shrink-0 text-xs text-leta-gray-500 hover:text-sentinel-green border border-leta-gray-200 hover:border-sentinel-green/30 rounded-leta px-3 py-2 transition-all">
             ↻ Refresh
           </button>
         </div>
@@ -198,15 +198,15 @@ const AdminUploadPortal: React.FC = () => {
           <div className="lg:col-span-2 space-y-4">
 
             {/* Category selector */}
-            <div className="bg-white/5 rounded-2xl border border-white/10 p-5">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Target Category</p>
+            <div className="bg-leta-gray-50 rounded-2xl border border-leta-gray-200 p-5">
+              <p className="text-xs font-semibold text-leta-gray-600 uppercase tracking-wider mb-3">Target Category</p>
               <div className="grid grid-cols-4 gap-2">
                 {CATEGORIES.map(({ key, label }) => (
                   <button key={key} onClick={() => setSelectedCategory(key)}
-                    className={`py-2 px-2 rounded-lg text-xs font-medium transition-all text-center ${
+                    className={`py-2 px-2 rounded-leta text-xs font-medium transition-all text-center ${
                       selectedCategory === key
-                        ? 'bg-sentinel-green text-white shadow-lg shadow-sentinel-green/20 scale-[1.02]'
-                        : 'bg-black/30 text-gray-500 hover:text-gray-200 border border-white/5 hover:border-white/15'
+                        ? 'bg-sentinel-green text-leta-gray-900 shadow-lg shadow-sentinel-green/20 scale-[1.02]'
+                        : 'bg-leta-black/30 text-leta-gray-500 hover:text-leta-gray-200 border border-leta-gray-100 hover:border-leta-white/15'
                     }`}>
                     {label}
                   </button>
@@ -221,39 +221,39 @@ const AdminUploadPortal: React.FC = () => {
               className={`relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all select-none ${
                 dragging
                   ? 'border-sentinel-green bg-sentinel-green/5 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.1)]'
-                  : 'border-white/10 hover:border-white/25 bg-black/20 hover:bg-black/30'
+                  : 'border-leta-gray-200 hover:border-leta-white/25 bg-leta-black/20 hover:bg-leta-black/30'
               }`}>
               <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.xls,.txt"
                 className="hidden" onChange={(e) => addFiles(Array.from(e.target.files || []))} />
               <div className="text-5xl mb-3 transition-transform">{dragging ? '📂' : '📄'}</div>
-              <p className="text-white font-semibold text-sm">
+              <p className="text-leta-gray-900 font-semibold text-sm">
                 {dragging ? 'Drop files here' : 'Drag & drop files, or click to browse'}
               </p>
-              <p className="text-gray-600 text-xs mt-1.5">PDF · DOCX · XLSX · XLS · TXT</p>
+              <p className="text-leta-gray-600 text-xs mt-1.5">PDF · DOCX · XLSX · XLS · TXT</p>
             </div>
 
             {/* File queue */}
             {fileQueue.length > 0 && (
-              <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
-                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                  <span className="text-sm font-medium text-white">
+              <div className="bg-leta-gray-50 rounded-2xl border border-leta-gray-200 overflow-hidden">
+                <div className="px-4 py-3 border-b border-leta-gray-200 flex items-center justify-between">
+                  <span className="text-sm font-medium text-leta-gray-900">
                     {fileQueue.length} file{fileQueue.length > 1 ? 's' : ''} ready
                   </span>
                   <button onClick={() => setFileQueue([])}
-                    className="text-xs text-gray-600 hover:text-red-400 transition-colors">
+                    className="text-xs text-leta-gray-600 hover:text-red-400 transition-colors">
                     Clear all
                   </button>
                 </div>
                 <div className="max-h-52 overflow-y-auto divide-y divide-white/5">
                   {fileQueue.map(({ id, file }) => (
-                    <div key={id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03]">
+                    <div key={id} className="flex items-center gap-3 px-4 py-3 hover:bg-leta-white/[0.03]">
                       <span className="text-xl shrink-0">{fileIcon(file.name)}</span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm text-white truncate">{file.name}</p>
-                        <p className="text-xs text-gray-600">{formatBytes(file.size)}</p>
+                        <p className="text-sm text-leta-gray-900 truncate">{file.name}</p>
+                        <p className="text-xs text-leta-gray-600">{formatBytes(file.size)}</p>
                       </div>
                       <button onClick={() => removeFile(id)}
-                        className="text-gray-600 hover:text-red-400 transition-colors text-sm shrink-0 ml-2">
+                        className="text-leta-gray-600 hover:text-red-400 transition-colors text-sm shrink-0 ml-2">
                         ✕
                       </button>
                     </div>
@@ -264,19 +264,19 @@ const AdminUploadPortal: React.FC = () => {
 
             {/* Error */}
             {error && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
+              <div className="p-3 rounded-leta bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
             )}
 
             {/* Upload button */}
             <button onClick={handleUpload} disabled={uploading || !fileQueue.length}
-              className={`w-full py-3.5 rounded-xl text-sm font-semibold text-white transition-all ${
+              className={`w-full py-3.5 rounded-leta text-sm font-semibold text-leta-gray-900 transition-all ${
                 uploading || !fileQueue.length
-                  ? 'bg-gray-700/60 cursor-not-allowed opacity-50'
+                  ? 'bg-leta-gray-700/60 cursor-not-allowed opacity-50'
                   : 'bg-sentinel-green hover:bg-[#096646] shadow-lg shadow-sentinel-green/20 hover:shadow-sentinel-green/30 hover:scale-[1.01]'
               }`}>
               {uploading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-leta-white/30 border-t-white rounded-full animate-spin" />
                   Ingesting documents...
                 </span>
               ) : `Upload to ${catLabel(selectedCategory)} →`}
@@ -285,26 +285,26 @@ const AdminUploadPortal: React.FC = () => {
 
           {/* ── Jobs Panel ───────────────────────────────────────────────── */}
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Ingestion Jobs</p>
+            <p className="text-xs font-semibold text-leta-gray-600 uppercase tracking-wider mb-3">Ingestion Jobs</p>
             {jobs.length === 0 ? (
-              <div className="bg-white/5 rounded-2xl border border-white/10 p-8 text-center">
+              <div className="bg-leta-gray-50 rounded-2xl border border-leta-gray-200 p-8 text-center">
                 <p className="text-3xl mb-2">🗂</p>
-                <p className="text-gray-600 text-sm">No jobs yet</p>
-                <p className="text-gray-700 text-xs mt-1">Upload files to start</p>
+                <p className="text-leta-gray-600 text-sm">No jobs yet</p>
+                <p className="text-leta-gray-700 text-xs mt-1">Upload files to start</p>
               </div>
             ) : (
               <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
                 {jobs.map(job => {
                   const st = statusStyle(job.status);
                   return (
-                    <div key={job.job_id} className={`rounded-xl border p-4 transition-all ${st.card}`}>
+                    <div key={job.job_id} className={`rounded-leta border p-4 transition-all ${st.card}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-[10px] font-mono text-gray-600 truncate">#{job.job_id}</p>
-                          <p className="text-xs text-gray-300 font-medium mt-0.5">
+                          <p className="text-[10px] font-mono text-leta-gray-600 truncate">#{job.job_id}</p>
+                          <p className="text-xs text-leta-gray-300 font-medium mt-0.5">
                             {catLabel(job.category)}
                           </p>
-                          <p className="text-[11px] text-gray-600 mt-0.5">
+                          <p className="text-[11px] text-leta-gray-600 mt-0.5">
                             {job.files?.length} file{job.files?.length > 1 ? 's' : ''}
                           </p>
                         </div>
@@ -319,22 +319,22 @@ const AdminUploadPortal: React.FC = () => {
                       {/* File list */}
                       <div className="mt-2 space-y-1">
                         {job.files?.slice(0, 3).map((f: string, i: number) => (
-                          <p key={i} className="text-[11px] text-gray-600 truncate flex items-center gap-1">
+                          <p key={i} className="text-[11px] text-leta-gray-600 truncate flex items-center gap-1">
                             <span>{fileIcon(f)}</span> {f}
                           </p>
                         ))}
                         {job.files?.length > 3 && (
-                          <p className="text-[11px] text-gray-700">+{job.files.length - 3} more</p>
+                          <p className="text-[11px] text-leta-gray-700">+{job.files.length - 3} more</p>
                         )}
                       </div>
 
                       {/* Result stats */}
                       {job.result && job.status === 'done' && (
-                        <div className="mt-2 pt-2 border-t border-white/10 flex gap-4">
-                          <span className="text-[11px] text-gray-500">
+                        <div className="mt-2 pt-2 border-t border-leta-gray-200 flex gap-4">
+                          <span className="text-[11px] text-leta-gray-500">
                             <span className="text-sentinel-green font-semibold">{job.result.chunks_added ?? 0}</span> chunks
                           </span>
-                          <span className="text-[11px] text-gray-500">
+                          <span className="text-[11px] text-leta-gray-500">
                             <span className="text-sentinel-green font-semibold">{job.result.vectors_added ?? 0}</span> vectors
                           </span>
                         </div>

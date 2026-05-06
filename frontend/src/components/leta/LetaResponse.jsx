@@ -160,15 +160,15 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`rounded-sm border overflow-hidden transition-all duration-300 ${
+        className={`rounded-leta border overflow-hidden transition-all duration-300 ${
           isDark 
-            ? 'bg-[#050A10] border-white/10 shadow-none' 
-            : 'bg-white shadow-sentinel-blue/5 border-gray-100'
+            ? 'bg-[#F9FAFB] border-leta-gray-200 shadow-none' 
+            : 'bg-leta-white shadow-sentinel-blue/5 border-leta-gray-100'
         }`}
       >
         {/* Header Bar */}
         <div className={`px-6 py-3 border-b flex items-center justify-between ${
-           isDark ? 'bg-[#020202] border-white/10' : 'bg-gray-50 border-gray-100'
+           isDark ? 'bg-[#FFFFFF] border-leta-gray-200' : 'bg-leta-gray-50 border-leta-gray-100'
         }`}>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sentinel-green">
@@ -180,7 +180,7 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
           <div className="flex items-center gap-2">
             <button 
                 onClick={handleCopy}
-                className="p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded transition-colors relative group"
+                className="p-1.5 text-leta-gray-500 hover:text-leta-gray-900 hover:bg-leta-white/10 rounded-leta transition-colors relative group"
                 title="Copy Answer"
             >
                 {hasCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
@@ -189,7 +189,7 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
             {onRegenerate && (
                 <button 
                     onClick={onRegenerate}
-                    className="p-1.5 text-gray-500 hover:text-sentinel-blue hover:bg-sentinel-blue/10 rounded transition-colors"
+                    className="p-1.5 text-leta-gray-500 hover:text-leta-gray-900 hover:bg-sentinel-blue/10 rounded-leta transition-colors"
                     title="Regenerate Answer"
                 >
                     <RefreshCw size={14} />
@@ -199,7 +199,7 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
         </div>
   
         {/* Content Area */}
-        <div className="p-6 md:p-8 bg-[#050A10]">
+        <div className="p-6 md:p-8 bg-[#F9FAFB]">
           {(data.consulted_sources?.length > 0 || data.status) && (
             <ThinkingSources 
               sources={data.consulted_sources} 
@@ -211,7 +211,7 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
           {!citationMode ? (
             <>
               <div className={`prose prose-sm md:prose-base max-w-none font-sans leading-relaxed ${
-                 isDark ? 'text-gray-300 prose-invert prose-headings:font-mono prose-headings:uppercase prose-strong:text-white prose-a:text-sentinel-green prose-table:border-white/10 prose-th:bg-[#020202] prose-td:border-white/10' : 'text-gray-700'
+                 isDark ? 'text-leta-gray-300 prose-invert prose-headings:font-mono prose-headings:uppercase prose-strong:text-leta-gray-900 prose-a:text-sentinel-green prose-table:border-leta-gray-200 prose-th:bg-[#FFFFFF] prose-td:border-leta-gray-200' : 'text-leta-gray-700'
               }`}>
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
@@ -224,10 +224,10 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
                     li: (props) => <li className="pl-1" {...props} />,
                     p: (props) => <p className="mb-4" {...props} />,
                     strong: (props) => <strong className="font-bold text-sentinel-green dark:text-sentinel-green" {...props} />,
-                    table: (props) => <div className="overflow-x-auto my-6"><table className="min-w-full text-sm font-mono border border-white/10 rounded-sm" {...props} /></div>,
-                    thead: (props) => <thead className="bg-[#020202] border-b border-white/10 text-white" {...props} />,
+                    table: (props) => <div className="overflow-x-auto my-6"><table className="min-w-full text-sm font-mono border border-leta-gray-200 rounded-leta" {...props} /></div>,
+                    thead: (props) => <thead className="bg-[#FFFFFF] border-b border-leta-gray-200 text-leta-gray-900" {...props} />,
                     th: (props) => <th className="px-4 py-3 text-left font-bold" {...props} />,
-                    td: (props) => <td className="px-4 py-3 border-b border-white/5 bg-[#050A10]" {...props} />,
+                    td: (props) => <td className="px-4 py-3 border-b border-leta-gray-100 bg-[#F9FAFB]" {...props} />,
                     a: (props) => {
                       const isDocLink = props.href && props.href.includes('/api/documents/view');
 
@@ -256,7 +256,7 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
                           {...props}
                           target={isDocLink ? undefined : "_blank"}
                           rel="noopener noreferrer"
-                          className="text-sentinel-green hover:text-white font-mono font-bold underline cursor-pointer transition-colors"
+                          className="text-sentinel-green hover:text-leta-gray-900 font-mono font-bold underline cursor-pointer transition-colors"
                           onClick={(e) => {
                             e.stopPropagation();
                             const linkText = props.children?.toString?.() || '';
@@ -286,10 +286,10 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
               </div>
               
               {/* ADVISORY CTA */}
-              <div className="mt-8 pt-6 border-t border-white/10 flex justify-end">
+              <div className="mt-8 pt-6 border-t border-leta-gray-200 flex justify-end">
                   <button 
                     onClick={() => setIsAdvisoryOpen(true)}
-                    className="group flex items-center gap-3 px-5 py-2.5 bg-sentinel-blue/10 border border-sentinel-blue/30 text-sentinel-blue hover:bg-sentinel-blue hover:text-white transition-all rounded-sm"
+                    className="group flex items-center gap-3 px-5 py-2.5 bg-sentinel-blue/10 border border-sentinel-blue/30 text-leta-gray-900 hover:bg-sentinel-blue hover:text-leta-gray-900 transition-all rounded-leta"
                   >
                      <FileText size={16} className="group-hover:scale-110 transition-transform" />
                      <span className="font-mono text-xs font-bold uppercase tracking-widest">Generate Legal Advisory</span>
@@ -307,8 +307,8 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
         {/* Footer */}
         <div className={`px-6 py-2 border-t flex justify-between items-center text-[10px] font-mono uppercase tracking-widest ${
            isDark 
-             ? 'bg-[#020202] border-white/10 text-gray-600' 
-             : 'bg-sentinel-blue/5 border-sentinel-blue/10 text-sentinel-blue/60'
+             ? 'bg-[#FFFFFF] border-leta-gray-200 text-leta-gray-600' 
+             : 'bg-sentinel-blue/5 border-sentinel-blue/10 text-leta-gray-900/60'
         }`}>
           <span>GENERATED_BY_SENTINEL.AI_ENGINE</span>
           <span>ID: {data && responseId}</span>

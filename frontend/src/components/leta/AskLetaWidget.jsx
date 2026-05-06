@@ -333,22 +333,22 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
     <>
       {/* Sidebar Trigger Card - Console Module */}
       <div 
-        className="group relative bg-[#050A10]/60 backdrop-blur-md rounded-sm border border-sentinel-blue/30 overflow-hidden cursor-pointer hover:border-sentinel-green/80 transition-all duration-500 hover:shadow-[0_0_30px_rgba(11,115,80,0.3)]"
+        className="group relative bg-[#F9FAFB]/60 backdrop-blur-md rounded-leta border border-sentinel-blue/30 overflow-hidden cursor-pointer hover:border-sentinel-green/80 transition-all duration-500 hover:shadow-[0_0_30px_rgba(11,115,80,0.3)]"
         onClick={handleOpenWidget}
       >
         <div className="absolute top-0 left-0 w-1 h-full bg-sentinel-blue group-hover:bg-sentinel-green transition-colors duration-300 shadow-[0_0_10px_#003B59]" />
         <div className="p-6 relative z-10">
            <div className="flex items-center justify-between mb-4">
-              <div className="p-0 text-sentinel-blue group-hover:text-sentinel-green transition-colors duration-300 drop-shadow-[0_0_5px_rgba(0,0,0,0.5)]">
+              <div className="p-0 text-leta-gray-900 group-hover:text-sentinel-green transition-colors duration-300 drop-shadow-[0_0_5px_rgba(0,0,0,0.5)]">
                 <Terminal size={24} />
               </div>
-              <ChevronRight className="text-gray-600 group-hover:text-sentinel-green group-hover:translate-x-1 transition-all" />
+              <ChevronRight className="text-leta-gray-600 group-hover:text-sentinel-green group-hover:translate-x-1 transition-all" />
            </div>
-           <h3 className="text-xl font-bold text-white mb-2 font-mono uppercase tracking-tight group-hover:text-shadow-[0_0_10px_rgba(255,255,255,0.3)]">Access LETA Console</h3>
-           <p className="text-xs text-gray-500 mb-0 font-mono tracking-wide">
+           <h3 className="text-xl font-bold text-leta-gray-900 mb-2 font-mono uppercase tracking-tight group-hover:text-shadow-[0_0_10px_rgba(0, 0, 0, 0.05)]">Access LETA Console</h3>
+           <p className="text-xs text-leta-gray-500 mb-0 font-mono tracking-wide">
              // INITIALIZE ADVISORY PROTOCOL FOR {domain.toUpperCase()}
            </p>
-           <button className="mt-6 w-full py-3 bg-[#081018]/50 border border-white/10 text-gray-400 text-xs font-mono font-bold uppercase tracking-[0.2em] hover:text-white hover:border-sentinel-green hover:bg-sentinel-green/10 transition-colors backdrop-blur-sm">
+           <button className="mt-6 w-full py-3 bg-[#081018]/50 border border-leta-gray-200 text-leta-gray-600 text-xs font-mono font-bold uppercase tracking-[0.2em] hover:text-leta-gray-900 hover:border-sentinel-green hover:bg-sentinel-green/10 transition-colors backdrop-blur-sm">
              [ LAUNCH_TERMINAL ]
            </button>
         </div>
@@ -364,7 +364,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                  initial={{ opacity: 0 }}
                  animate={{ opacity: 1 }}
                  exit={{ opacity: 0 }}
-                 className="absolute inset-0 bg-black/60 backdrop-blur-md pointer-events-auto"
+                 className="absolute inset-0 bg-leta-black/60 backdrop-blur-md pointer-events-auto"
                  onClick={() => setIsOpen(false)}
                />
 
@@ -374,27 +374,27 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                  animate={{ x: 0 }}
                  exit={{ x: '100%' }}
                  transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                 className={`relative h-full bg-[#020202] border-l border-white/20 shadow-none pointer-events-auto flex flex-row font-sans ${
+                 className={`relative h-full bg-[#FFFFFF] border-l border-leta-gray-300 shadow-none pointer-events-auto flex flex-row font-sans ${
                     openDocuments.length > 0 ? 'w-full' : 'w-full lg:w-3/4'
                  }`}
                >
                   {/* LEFT SPLIT: PDF VIEWER TABS */}
                   {openDocuments.length > 0 && (
-                    <div className="hidden lg:flex flex-col border-r border-white/10 animate-in slide-in-from-left duration-300 bg-[#050A10]" style={{ width: '40%', minWidth: '500px' }}>
+                    <div className="hidden lg:flex flex-col border-r border-leta-gray-200 animate-in slide-in-from-left duration-300 bg-[#F9FAFB]" style={{ width: '40%', minWidth: '500px' }}>
                         {/* Tabs Area */}
-                        <div className="flex bg-[#050A10] border-b border-white/10 overflow-x-auto custom-scrollbar">
+                        <div className="flex bg-[#F9FAFB] border-b border-leta-gray-200 overflow-x-auto custom-scrollbar">
                             {openDocuments.map((doc) => (
                                 <div 
                                     key={doc.id}
                                     onClick={() => setActiveDocId(doc.id)}
-                                    className={`flex items-center gap-2 px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer border-r border-white/10 transition-colors whitespace-nowrap ${
-                                        activeDocId === doc.id ? 'bg-[#020202] text-sentinel-green border-b-2 border-b-sentinel-green' : 'text-gray-500 hover:text-gray-300 hover:bg-[#1A1A1A]'
+                                    className={`flex items-center gap-2 px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer border-r border-leta-gray-200 transition-colors whitespace-nowrap ${
+                                        activeDocId === doc.id ? 'bg-[#FFFFFF] text-sentinel-green border-b-2 border-b-sentinel-green' : 'text-leta-gray-500 hover:text-leta-gray-300 hover:bg-[#1A1A1A]'
                                     }`}
                                 >
                                     <span className="truncate max-w-[200px]">{doc.title}</span>
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); closeDocument(doc.id); }}
-                                        className="ml-3 text-gray-600 hover:text-red-400"
+                                        className="ml-3 text-leta-gray-600 hover:text-red-400"
                                     >
                                         <X size={14} />
                                     </button>
@@ -423,19 +423,19 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                   <div className="flex-1 flex flex-col h-full overflow-hidden relative">
                   
                   {/* Chat Header */}
-                  <div className="flex items-center justify-between p-4 border-b border-white/10 bg-[#050A10]">
+                  <div className="flex items-center justify-between p-4 border-b border-leta-gray-200 bg-[#F9FAFB]">
                      <div className="flex items-center gap-4">
                         <button 
                             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                            className="p-2 text-gray-400 hover:text-white border border-transparent hover:bg-white/5 rounded transition-colors"
+                            className="p-2 text-leta-gray-600 hover:text-leta-gray-900 border border-transparent hover:bg-leta-gray-50 rounded-leta transition-colors"
                         >
                             <Menu size={20} />
                         </button>
                         <div>
-                          <h2 className="text-lg font-bold text-white font-mono tracking-wide uppercase">LETA Console</h2>
+                          <h2 className="text-lg font-bold text-leta-gray-900 font-mono tracking-wide uppercase">LETA Console</h2>
                           <div className="flex items-center gap-2">
                              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/>
-                             <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">
+                             <span className="text-[10px] font-mono text-leta-gray-600 uppercase tracking-wider">
                                 SYSTEM ONLINE {currentSessionId ? `:: SESSION ${currentSessionId.substring(0,4)}` : ''}
                              </span>
                           </div>
@@ -443,7 +443,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                      </div>
                      <button 
                        onClick={() => setIsOpen(false)}
-                       className="p-2 text-gray-500 hover:text-white border border-transparent hover:border-white/10 rounded-sm transition-colors"
+                       className="p-2 text-leta-gray-500 hover:text-leta-gray-900 border border-transparent hover:border-leta-gray-200 rounded-leta transition-colors"
                      >
                        <X size={24} />
                      </button>
@@ -461,32 +461,32 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                       />
 
                       {/* Chat Area */}
-                      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#020202] relative">
+                      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FFFFFF] relative">
                          <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
                             {messages.length === 0 ? (
                                <div className="max-w-4xl mx-auto mt-10">
                                   <div className="text-center mb-12">
-                                    <h1 className="text-2xl md:text-3xl font-bold text-white mb-4 font-mono uppercase tracking-tight">
+                                    <h1 className="text-2xl md:text-3xl font-bold text-leta-gray-900 mb-4 font-mono uppercase tracking-tight">
                                       Awaiting Query Input
                                     </h1>
-                                    <p className="text-gray-500 font-mono text-sm max-w-xl mx-auto border-l-2 border-sentinel-blue pl-4 text-left">
+                                    <p className="text-leta-gray-500 font-mono text-sm max-w-xl mx-auto border-l-2 border-sentinel-blue pl-4 text-left">
                                       System Ready. Enter a query to begin a new session.
                                     </p>
                                   </div>
                                   
                                   {/* Quick Starters */}
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
-                                     <div className="p-4 bg-[#050A10] border border-white/10 hover:border-sentinel-green/50 cursor-pointer transition-colors group" onClick={() => setQuery("What is the penalty for delayed filing of GSTR-3B under Section 47?")}>
-                                        <div className="flex items-center gap-2 mb-2 text-gray-500 group-hover:text-sentinel-green text-xs font-mono font-bold uppercase transition-colors">
+                                     <div className="p-4 bg-[#F9FAFB] border border-leta-gray-200 hover:border-sentinel-green/50 cursor-pointer transition-colors group" onClick={() => setQuery("What is the penalty for delayed filing of GSTR-3B under Section 47?")}>
+                                        <div className="flex items-center gap-2 mb-2 text-leta-gray-500 group-hover:text-sentinel-green text-xs font-mono font-bold uppercase transition-colors">
                                            <FileText size={14} /> &gt; Load_Sample_01
                                         </div>
-                                        <p className="text-gray-400 text-sm font-mono leading-tight group-hover:text-gray-200">Penalty for delayed filing under Section 47?</p>
+                                        <p className="text-leta-gray-600 text-sm font-mono leading-tight group-hover:text-leta-gray-200">Penalty for delayed filing under Section 47?</p>
                                      </div>
-                                     <div className="p-4 bg-[#050A10] border border-white/10 hover:border-sentinel-blue/50 cursor-pointer transition-colors group" onClick={() => setQuery("Explain the applicability of RCM on legal services provided by an advocate.")}>
-                                        <div className="flex items-center gap-2 mb-2 text-gray-500 group-hover:text-sentinel-blue text-xs font-mono font-bold uppercase transition-colors">
+                                     <div className="p-4 bg-[#F9FAFB] border border-leta-gray-200 hover:border-sentinel-blue/50 cursor-pointer transition-colors group" onClick={() => setQuery("Explain the applicability of RCM on legal services provided by an advocate.")}>
+                                        <div className="flex items-center gap-2 mb-2 text-leta-gray-500 group-hover:text-leta-gray-900 text-xs font-mono font-bold uppercase transition-colors">
                                            <FileText size={14} /> &gt; Load_Sample_02
                                         </div>
-                                        <p className="text-gray-400 text-sm font-mono leading-tight group-hover:text-gray-200">Applicability of RCM on legal services?</p>
+                                        <p className="text-leta-gray-600 text-sm font-mono leading-tight group-hover:text-leta-gray-200">Applicability of RCM on legal services?</p>
                                      </div>
                                   </div>
                                </div>
@@ -496,8 +496,8 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                                     <div key={idx} className={`animate-in fade-in slide-in-from-bottom-2 duration-500`}>
                                         {msg.role === 'user' ? (
                                             <div className="flex justify-end mb-6">
-                                                <div className="bg-[#0A1622] rounded-2xl rounded-tr-sm p-4 text-white max-w-[80%] border border-white/10 shadow-[0_4px_10px_rgba(0,0,0,0.3)]">
-                                                    <div className="text-[10px] text-sentinel-blue font-mono mb-1 uppercase tracking-wider">User Query</div>
+                                                <div className="bg-[#0A1622] rounded-2xl rounded-leta-tr-sm p-4 text-leta-gray-900 max-w-[80%] border border-leta-gray-200 shadow-[0_4px_10px_rgba(0,0,0,0.3)]">
+                                                    <div className="text-[10px] text-leta-gray-900 font-mono mb-1 uppercase tracking-wider">User Query</div>
                                                     <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.content}</p>
                                                 </div>
                                             </div>
@@ -546,9 +546,9 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                          </div>
 
                          {/* Sticky Input Area */}
-                         <div className="p-4 bg-[#020202] border-t border-white/10 z-20">
+                         <div className="p-4 bg-[#FFFFFF] border-t border-leta-gray-200 z-20">
                             <div className="max-w-4xl mx-auto relative group">
-                               <div className="absolute -top-3 left-4 px-2 bg-[#020202] text-xs font-mono text-sentinel-green border border-sentinel-green/20">
+                               <div className="absolute -top-3 left-4 px-2 bg-[#FFFFFF] text-xs font-mono text-sentinel-green border border-sentinel-green/20">
                                   INPUT_TERMINAL
                                </div>
                                {/* File Preview Badge */}
@@ -558,13 +558,13 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, scale: 0.9 }}
-                                        className="absolute -top-3 right-4 flex items-center gap-2 bg-[#081018] border border-sentinel-green/30 px-3 py-1 rounded-sm z-30"
+                                        className="absolute -top-3 right-4 flex items-center gap-2 bg-[#081018] border border-sentinel-green/30 px-3 py-1 rounded-leta z-30"
                                      >
                                          <Paperclip size={12} className="text-sentinel-green" />
-                                         <span className="text-xs font-mono text-gray-300 max-w-[150px] truncate">
+                                         <span className="text-xs font-mono text-leta-gray-300 max-w-[150px] truncate">
                                              {selectedFile.name}
                                          </span>
-                                         <button onClick={clearFile} className="text-gray-500 hover:text-red-400 ml-2">
+                                         <button onClick={clearFile} className="text-leta-gray-500 hover:text-red-400 ml-2">
                                              <X size={14} />
                                          </button>
                                      </motion.div>
@@ -575,7 +575,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                                   value={query}
                                   onChange={(e) => setQuery(e.target.value)}
                                   placeholder={currentSessionId ? "Continue this session..." : "Start a new analysis..."}
-                                  className="w-full min-h-[80px] p-4 bg-[#050A10] border border-white/10 text-gray-300 placeholder-gray-600 focus:border-sentinel-green focus:bg-[#081018] transition-all outline-none resize-none text-sm font-mono leading-relaxed rounded-sm shadow-inner custom-scrollbar"
+                                  className="w-full min-h-[80px] p-4 bg-[#F9FAFB] border border-leta-gray-200 text-leta-gray-300 placeholder-gray-600 focus:border-sentinel-green focus:bg-[#081018] transition-all outline-none resize-none text-sm font-mono leading-relaxed rounded-leta shadow-inner custom-scrollbar"
                                   onKeyDown={(e) => {
                                     if(e.key === 'Enter' && !e.shiftKey) {
                                         e.preventDefault();
@@ -595,7 +595,7 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                                   <button
                                      onClick={() => fileInputRef.current?.click()}
                                      disabled={isLoading}
-                                     className={`p-2 transition-colors disabled:opacity-50 ${selectedFile ? 'text-sentinel-green' : 'text-gray-500 hover:text-sentinel-green'}`}
+                                     className={`p-2 transition-colors disabled:opacity-50 ${selectedFile ? 'text-sentinel-green' : 'text-leta-gray-500 hover:text-sentinel-green'}`}
                                      title="Attach Document"
                                   >
                                       <Paperclip size={18} />
@@ -606,8 +606,8 @@ const AskLetaWidget = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
                                      disabled={(!query.trim() && !selectedFile) || isLoading}
                                      className={`flex items-center gap-2 px-4 py-2 font-mono font-bold text-xs uppercase tracking-widest border transition-all ${
                                        (!query.trim() && !selectedFile) || isLoading
-                                         ? 'bg-gray-900 border-gray-800 text-gray-600 cursor-not-allowed'
-                                         : 'bg-sentinel-green/10 border-sentinel-green text-sentinel-green hover:bg-sentinel-green hover:text-white'
+                                         ? 'bg-leta-gray-900 border-leta-gray-800 text-leta-gray-600 cursor-not-allowed'
+                                         : 'bg-sentinel-green/10 border-sentinel-green text-sentinel-green hover:bg-sentinel-green hover:text-leta-gray-900'
                                      }`}
                                    >
                                        <Send size={14} />

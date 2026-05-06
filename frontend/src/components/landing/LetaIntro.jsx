@@ -62,12 +62,12 @@ const features = [
 
 const LetaIntro = () => {
   return (
-    <section className="relative py-32 bg-[#020202] text-white overflow-hidden border-t border-white/5">
+    <section className="relative py-32 bg-[#FFFFFF] text-leta-gray-900 overflow-hidden border-t border-leta-gray-100">
       {/* Neural Background Layer */}
       <NeuralBackground />
       
       {/* Gradient Vignette for seamless blending - STRICT DARK */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#020202] via-transparent to-[#020202] z-10 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#FFFFFF] via-transparent to-[#FFFFFF] z-10 pointer-events-none" />
 
       <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-20 text-center md:text-left">
@@ -75,7 +75,7 @@ const LetaIntro = () => {
              initial={{ opacity: 0, y: 10 }}
              whileInView={{ opacity: 1, y: 0 }}
              viewport={{ once: false }}
-             className="inline-flex items-center gap-2 py-1 px-3 mb-6 border border-sentinel-green/30 rounded bg-sentinel-green/5 backdrop-blur-md"
+             className="inline-flex items-center gap-2 py-1 px-3 mb-6 border border-sentinel-green/30 rounded-leta bg-sentinel-green/5 backdrop-blur-md"
            >
               <div className="w-2 h-2 bg-sentinel-green rounded-full animate-ping" />
               <span className="text-[10px] font-mono text-sentinel-green tracking-[0.2em] font-bold uppercase">
@@ -88,7 +88,7 @@ const LetaIntro = () => {
              whileInView={{ opacity: 1, x: 0 }}
              viewport={{ once: false }}
              transition={{ duration: 0.8 }}
-             className="text-5xl md:text-7xl font-bold mb-4 tracking-tighter font-sans text-white uppercase"
+             className="text-5xl md:text-7xl font-bold mb-4 tracking-tighter font-sans text-leta-gray-900 uppercase"
            >
              <ScifiText text="INTRODUCING LETA" className="" />
            </motion.h2>
@@ -107,7 +107,7 @@ const LetaIntro = () => {
              whileInView={{ opacity: 1 }}
              viewport={{ once: false }}
              transition={{ delay: 1 }}
-             className="text-2xl md:text-3xl font-mono text-sentinel-blue mb-8 tracking-widest uppercase"
+             className="text-2xl md:text-3xl font-mono text-leta-gray-900 mb-8 tracking-widest uppercase"
            >
               [ LEGAL TAXATION INTELLIGENCE ]
            </motion.h3>
@@ -117,10 +117,10 @@ const LetaIntro = () => {
              whileInView={{ opacity: 1 }}
              viewport={{ once: false }}
              transition={{ delay: 1.2 }}
-             className="text-xl md:text-2xl text-gray-400 max-w-3xl font-light leading-relaxed border-l-2 border-white/10 pl-6"
+             className="text-xl md:text-2xl text-leta-gray-600 max-w-3xl font-light leading-relaxed border-l-2 border-leta-gray-200 pl-6"
            >
              LETA is not a chatbot. <br className="hidden md:block" />
-             It is a <span className="text-white font-medium">statutory intelligence system</span>, <br className="hidden md:block" />
+             It is a <span className="text-leta-gray-900 font-medium">statutory intelligence system</span>, <br className="hidden md:block" />
              embedded directly into professional GST workflows.
            </motion.p>
         </div>
@@ -133,19 +133,19 @@ const LetaIntro = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: false }}
               transition={{ duration: 0.5, delay: idx * 0.15 + 0.5 }} // Reduced delay for smoother re-entry
-              className="p-8 border border-white/10 bg-[#050A10] hover:bg-white/5 hover:border-sentinel-green/50 transition-all duration-300 rounded-sm group relative overflow-hidden"
+              className="p-8 border border-leta-gray-200 bg-[#F9FAFB] hover:bg-leta-gray-50 hover:border-sentinel-green/50 transition-all duration-300 rounded-leta group relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-100 transition-opacity">
-                 <feature.icon size={48} strokeWidth={0.5} className="text-white" />
+                 <feature.icon size={48} strokeWidth={0.5} className="text-leta-gray-900" />
               </div>
 
-              <div className="w-12 h-12 mb-6 flex items-center justify-center text-sentinel-green border border-sentinel-green/20 rounded-sm bg-sentinel-green/5 group-hover:scale-110 transition-transform duration-300">
+              <div className="w-12 h-12 mb-6 flex items-center justify-center text-sentinel-green border border-sentinel-green/20 rounded-leta bg-sentinel-green/5 group-hover:scale-110 transition-transform duration-300">
                 <feature.icon size={24} strokeWidth={1.5} />
               </div>
-              <h3 className="text-lg font-bold text-white mb-3 font-mono tracking-wide uppercase border-b border-white/10 pb-2 inline-block">
+              <h3 className="text-lg font-bold text-leta-gray-900 mb-3 font-mono tracking-wide uppercase border-b border-leta-gray-200 pb-2 inline-block">
                 {feature.title}
               </h3>
-              <p className="text-gray-400 leading-relaxed text-sm font-mono mt-2">
+              <p className="text-leta-gray-600 leading-relaxed text-sm font-mono mt-2">
                 {feature.desc}
               </p>
             </motion.div>

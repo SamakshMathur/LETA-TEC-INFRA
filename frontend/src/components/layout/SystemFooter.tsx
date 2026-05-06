@@ -36,7 +36,7 @@ const SystemFooter = () => {
       <div
         className="absolute top-0 left-0 w-full h-px pointer-events-none"
         style={{
-          background: 'linear-gradient(to right, transparent, rgba(78,222,163,0.40), transparent)',
+          background: 'linear-gradient(to right, transparent, rgba(79, 70, 229, 0.1), transparent)',
         }}
       />
 
@@ -47,19 +47,18 @@ const SystemFooter = () => {
           <div className="col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-6 group">
               <div
-                className="w-8 h-8 rounded flex items-center justify-center transition-all duration-300"
+                className="w-8 h-8 rounded-leta flex items-center justify-center transition-all duration-300"
                 style={{
-                  backgroundColor: 'rgba(78,222,163,0.08)',
-                  boxShadow: 'inset 0 0 0 1px rgba(78,222,163,0.20)',
+                  backgroundColor: 'rgba(79, 70, 229, 0.1)'
                 }}
               >
-                <Shield size={15} style={{ color: '#4edea3' }} />
+                <Shield size={15} style={{ color: '#4F46E5' }} />
               </div>
-              <span className="font-display font-bold text-lg tracking-tight" style={{ color: '#e5e2e1' }}>
-                LETA <span style={{ color: '#4edea3' }}>TITAN</span>
+              <span className="font-display font-bold text-lg tracking-tight" style={{ color: '#111827' }}>
+                LETA <span style={{ color: '#4F46E5' }}>TITAN</span>
               </span>
             </Link>
-            <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#9a9a9a' }}>
+            <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#4B5563' }}>
               Advanced statutory intelligence for the modern Chartered Accountant.
               Autonomous deconstruction of complex legal frameworks.
             </p>
@@ -69,9 +68,9 @@ const SystemFooter = () => {
                   key={i}
                   href="#"
                   className="transition-colors duration-200"
-                  style={{ color: '#9a9a9a' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#e5e2e1'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#9a9a9a'; }}
+                  style={{ color: '#4B5563' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#111827'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#4B5563'; }}
                 >
                   <Icon size={17} />
                 </a>
@@ -83,7 +82,7 @@ const SystemFooter = () => {
           <div>
             <h4
               className="text-xs font-bold uppercase tracking-[0.12em] mb-6 font-mono"
-              style={{ color: '#e5e2e1' }}
+              style={{ color: '#111827' }}
             >
               Platform
             </h4>
@@ -98,9 +97,9 @@ const SystemFooter = () => {
                   <Link
                     to={to}
                     className="transition-colors duration-200"
-                    style={{ color: '#9a9a9a' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#4edea3'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#9a9a9a'; }}
+                    style={{ color: '#4B5563' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#4F46E5'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#4B5563'; }}
                   >
                     {label}
                   </Link>
@@ -113,7 +112,7 @@ const SystemFooter = () => {
           <div>
             <h4
               className="text-xs font-bold uppercase tracking-[0.12em] mb-6 font-mono"
-              style={{ color: '#e5e2e1' }}
+              style={{ color: '#111827' }}
             >
               Resources
             </h4>
@@ -128,9 +127,9 @@ const SystemFooter = () => {
                   <Link
                     to={to}
                     className="transition-colors duration-200"
-                    style={{ color: '#9a9a9a' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#4edea3'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#9a9a9a'; }}
+                    style={{ color: '#4B5563' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#4F46E5'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#4B5563'; }}
                   >
                     {label}
                   </Link>
@@ -141,24 +140,23 @@ const SystemFooter = () => {
 
           {/* Live network terminal — Level 2 surface inset */}
           <div
-            className="rounded font-mono text-xs overflow-hidden relative min-h-[160px] p-4"
+            className="rounded-leta font-mono text-xs overflow-hidden relative min-h-[160px] p-4"
             style={{
-              backgroundColor: 'var(--surface-container-lowest)',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.40)',
+              backgroundColor: 'var(--surface-container-lowest)'
             }}
           >
             <div className="flex items-center gap-2 mb-3 pb-2" style={{ borderBottom: '1px solid rgba(229,226,225,0.06)' }}>
-              <Activity size={11} style={{ color: '#4edea3' }} className="animate-pulse" />
-              <span className="uppercase tracking-widest text-[10px]" style={{ color: '#9a9a9a' }}>
+              <Activity size={11} style={{ color: '#4F46E5' }} className="animate-pulse" />
+              <span className="uppercase tracking-widest text-[10px]" style={{ color: '#4B5563' }}>
                 Network Activity
               </span>
             </div>
 
             <div className="flex flex-col gap-2">
-              <div style={{ color: 'rgba(78,222,163,0.25)' }}>
+              <div style={{ color: 'rgba(79, 70, 229, 0.1)' }}>
                 &gt; {logMessages[(currentLog - 2 + logMessages.length) % logMessages.length]}
               </div>
-              <div style={{ color: 'rgba(78,222,163,0.50)' }}>
+              <div style={{ color: 'rgba(79, 70, 229, 0.1)' }}>
                 &gt; {logMessages[(currentLog - 1 + logMessages.length) % logMessages.length]}
               </div>
               <motion.div
@@ -166,7 +164,7 @@ const SystemFooter = () => {
                 initial={{ opacity: 0, x: 8 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="font-bold"
-                style={{ color: '#4edea3' }}
+                style={{ color: '#4F46E5' }}
               >
                 &gt; {logMessages[currentLog]}
                 <span className="animate-pulse ml-1">_</span>
@@ -178,7 +176,7 @@ const SystemFooter = () => {
               className="absolute inset-0 pointer-events-none opacity-10"
               style={{
                 backgroundImage:
-                  'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(78,222,163,0.03) 2px, rgba(78,222,163,0.03) 4px)',
+                  'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(79, 70, 229, 0.1) 2px, rgba(79, 70, 229, 0.1) 4px)',
               }}
             />
           </div>
@@ -189,15 +187,15 @@ const SystemFooter = () => {
           className="pt-8 flex flex-col md:flex-row justify-between items-center gap-4"
           style={{ borderTop: '1px solid rgba(229,226,225,0.06)' }}
         >
-          <p className="text-xs font-mono" style={{ color: '#9a9a9a' }}>
+          <p className="text-xs font-mono" style={{ color: '#4B5563' }}>
             &copy; {new Date().getFullYear()} LETA TITAN — All Rights Reserved.
           </p>
           <div className="flex items-center gap-2">
             <div
               className="w-2 h-2 rounded-full animate-pulse"
-              style={{ backgroundColor: '#4edea3', boxShadow: '0 0 6px rgba(78,222,163,0.6)' }}
+              style={{ backgroundColor: '#4F46E5',  }}
             />
-            <span className="text-xs font-mono uppercase tracking-widest" style={{ color: '#9a9a9a' }}>
+            <span className="text-xs font-mono uppercase tracking-widest" style={{ color: '#4B5563' }}>
               System Operational
             </span>
           </div>

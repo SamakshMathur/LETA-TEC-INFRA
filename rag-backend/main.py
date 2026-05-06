@@ -38,7 +38,8 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     logger.info(f"Starting uvicorn server on 0.0.0.0:{port}")
     try:
-        uvicorn.run(app, host="0.0.0.0", port=port)
+        # Using import string "app.api.app:app" is required for reload=True to work
+        uvicorn.run("app.api.app:app", host="0.0.0.0", port=port, reload=True)
     except Exception as e:
         logger.critical(f"Uvicorn crashed: {e}", exc_info=True)
         sys.exit(1)

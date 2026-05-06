@@ -22,10 +22,10 @@ const SelectField = ({
   <div className="relative">
     <select id={id} value={value} onChange={onChange} required disabled={disabled}
       className="select-auth">
-      <option value="" disabled className="bg-[#0a0a0a] text-white/40">{placeholder}</option>
+      <option value="" disabled className="bg-[#0a0a0a] text-leta-gray-500">{placeholder}</option>
       {children}
     </select>
-    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-leta-gray-900/30 pointer-events-none" />
   </div>
 );
 
@@ -70,19 +70,19 @@ const SignupPage: React.FC = () => {
         <div className="auth-card">
 
           <div className="mb-8 text-center">
-            <h1 className="font-display font-bold text-3xl text-white mb-2 uppercase tracking-tight">
-              LETA <span className="text-primary">TITAN</span>
+            <h1 className="font-display font-bold text-3xl text-leta-gray-900 mb-2 uppercase tracking-tight">
+              LETA <span className="text-leta-primary">TITAN</span>
             </h1>
-            <p className="text-xs font-mono text-white/40 uppercase tracking-widest">Account Setup</p>
+            <p className="text-xs font-mono text-leta-gray-500 uppercase tracking-widest">Account Setup</p>
           </div>
 
           {error && (
-            <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium text-center">
+            <div className="mb-6 p-3 rounded-leta bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium text-center">
               {error}
             </div>
           )}
           {success && (
-            <div className="mb-6 p-4 rounded-xl bg-primary/10 border border-primary/30 text-primary text-sm font-medium text-center animate-pulse">
+            <div className="mb-6 p-4 rounded-leta bg-leta-primary/10 border border-leta-primary/30 text-leta-primary text-sm font-medium text-center animate-pulse">
               Account created! Redirecting to login...
             </div>
           )}
@@ -106,7 +106,7 @@ const SignupPage: React.FC = () => {
               <SelectField id="profession" value={form.profession} onChange={set('profession')}
                 disabled={success} placeholder="Select your profession">
                 {PROFESSIONS.map(p => (
-                  <option key={p} value={p} className="bg-[#0a0a0a] text-white">{p}</option>
+                  <option key={p} value={p} className="bg-[#0a0a0a] text-leta-gray-900">{p}</option>
                 ))}
               </SelectField>
             </div>
@@ -116,7 +116,7 @@ const SignupPage: React.FC = () => {
               <SelectField id="gender" value={form.gender} onChange={set('gender')}
                 disabled={success} placeholder="Select gender">
                 {GENDERS.map(g => (
-                  <option key={g} value={g} className="bg-[#0a0a0a] text-white">{g}</option>
+                  <option key={g} value={g} className="bg-[#0a0a0a] text-leta-gray-900">{g}</option>
                 ))}
               </SelectField>
             </div>
@@ -129,9 +129,9 @@ const SignupPage: React.FC = () => {
 
             {!success && (
               <div className="text-center pt-1">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/30">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-leta-gray-900/30">
                   Already have an account?{' '}
-                  <Link to={ROUTES.LOGIN} className="text-primary hover:text-primary/80 transition-colors">
+                  <Link to={ROUTES.LOGIN} className="text-leta-primary hover:text-leta-primary/80 transition-colors">
                     Login here
                   </Link>
                 </p>
@@ -140,7 +140,7 @@ const SignupPage: React.FC = () => {
           </form>
         </div>
 
-        <p className="mt-8 text-center text-[10px] font-mono text-white/20 uppercase tracking-[0.1em]">
+        <p className="mt-8 text-center text-[10px] font-mono text-leta-gray-900/20 uppercase tracking-[0.1em]">
           &copy; 2026 LETA / Sovereign Compliance Systems
         </p>
       </div>

@@ -43,13 +43,13 @@ const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, 
     <motion.div 
       initial={{ width: isOpen ? 280 : 0, opacity: isOpen ? 1 : 0 }}
       animate={{ width: isOpen ? 280 : 0, opacity: isOpen ? 1 : 0 }}
-      className={`h-full bg-[#050A10] border-r border-white/10 flex flex-col overflow-hidden transition-all duration-300 ${!isOpen ? 'w-0 p-0' : 'w-72'}`}
+      className={`h-full bg-[#F9FAFB] border-r border-leta-gray-200 flex flex-col overflow-hidden transition-all duration-300 ${!isOpen ? 'w-0 p-0' : 'w-72'}`}
     >
       {/* Header */}
-      <div className="p-4 border-b border-white/10">
+      <div className="p-4 border-b border-leta-gray-200">
         <button 
           onClick={onNewSession}
-          className="w-full flex items-center justify-center gap-2 bg-sentinel-green/10 hover:bg-sentinel-green text-sentinel-green hover:text-white border border-sentinel-green py-2 rounded-sm transition-all font-mono font-bold uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(16,185,129,0.15)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+          className="w-full flex items-center justify-center gap-2 bg-sentinel-green/10 hover:bg-sentinel-green text-sentinel-green hover:text-leta-gray-900 border border-sentinel-green py-2 rounded-leta transition-all font-mono font-bold uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(16,185,129,0.15)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"
         >
           <Plus className="w-4 h-4" />
           New Analysis
@@ -59,7 +59,7 @@ const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, 
       {/* List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
         {sessions.length === 0 ? (
-          <div className="text-center text-gray-500 mt-10 text-xs">
+          <div className="text-center text-leta-gray-500 mt-10 text-xs">
             <Terminal className="w-8 h-8 mx-auto mb-2 opacity-50" />
             No history found
           </div>
@@ -72,10 +72,10 @@ const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, 
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 onClick={() => onSelectSession(session.session_id)}
-                className={`group flex items-center gap-3 p-3 rounded-sm cursor-pointer transition-all relative font-mono
+                className={`group flex items-center gap-3 p-3 rounded-leta cursor-pointer transition-all relative font-mono
                   ${currentSessionId === session.session_id 
-                    ? 'bg-[#020202] text-sentinel-green border-l-2 border-l-sentinel-green shadow-inner' 
-                    : 'text-gray-500 hover:bg-white/5 hover:text-gray-300 border-l-2 border-l-transparent'
+                    ? 'bg-[#FFFFFF] text-sentinel-green border-l-2 border-l-sentinel-green shadow-inner' 
+                    : 'text-leta-gray-500 hover:bg-leta-gray-50 hover:text-leta-gray-300 border-l-2 border-l-transparent'
                   }`}
               >
                 <Terminal className="w-4 h-4 flex-shrink-0" />
@@ -84,7 +84,7 @@ const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, 
                   <h3 className="text-sm font-medium truncate pr-6" title={session.title || "New Chat"}>
                     {session.title || "New Chat"}
                   </h3>
-                  <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                  <span className="text-[10px] text-leta-gray-500 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {new Date(session.updated_at).toLocaleDateString()}
                   </span>
@@ -92,7 +92,7 @@ const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, 
 
                 <button 
                   onClick={(e) => handleDelete(e, session.session_id)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 hover:text-red-500 rounded transition-all"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 hover:text-red-500 rounded-leta transition-all"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -103,7 +103,7 @@ const ChatSidebar = ({ currentSessionId, onSelectSession, onNewSession, isOpen, 
       </div>
       
       {/* Footer / User Info */}
-      <div className="p-4 border-t border-white/10 text-[10px] text-gray-500 text-center font-mono uppercase tracking-widest flex items-center justify-center gap-2">
+      <div className="p-4 border-t border-leta-gray-200 text-[10px] text-leta-gray-500 text-center font-mono uppercase tracking-widest flex items-center justify-center gap-2">
         <span className="w-2 h-2 rounded-full bg-sentinel-green animate-pulse" />
         MEM_CORE_ACTIVE
       </div>

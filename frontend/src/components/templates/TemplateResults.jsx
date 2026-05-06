@@ -7,7 +7,7 @@ const TemplateResults = ({ groups }) => {
 
   if (!groups || groups.length === 0) {
     return (
-      <div className="text-center py-20 text-gray-400">
+      <div className="text-center py-20 text-leta-gray-600">
         No templates found matching your criteria. Try adjusting your search.
       </div>
     );

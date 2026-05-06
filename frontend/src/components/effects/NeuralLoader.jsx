@@ -149,7 +149,7 @@ const NeuralBrainLoader = () => {
       if (Math.random() > 0.95) {
           const activeNode = nodes[Math.floor(Math.random() * nodes.length)];
           if (activeNode.scale > 0.8) {
-             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+             ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
              ctx.beginPath();
              ctx.arc(activeNode.screenX, activeNode.screenY, 4, 0, Math.PI * 2);
              ctx.fill();
@@ -170,15 +170,15 @@ const NeuralBrainLoader = () => {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center w-full h-full min-h-[400px] relative bg-[#020202] border border-white/10 overflow-hidden">
+    <div className="flex flex-col items-center justify-center w-full h-full min-h-[400px] relative bg-[#FFFFFF] border border-leta-gray-200 overflow-hidden">
       <canvas 
         ref={canvasRef} 
         className="absolute inset-0 w-full h-full z-0"
       />
       
       {/* Overlay UI */}
-      <div className="relative z-10 flex flex-col items-center justify-center p-8 bg-black/30 backdrop-blur-sm rounded-full border border-sentinel-green/20 shadow-[0_0_50px_rgba(0,255,148,0.1)]">
-        <h2 className="text-xl font-bold text-white font-mono tracking-widest uppercase mb-1 animate-pulse">
+      <div className="relative z-10 flex flex-col items-center justify-center p-8 bg-leta-black/30 backdrop-blur-sm rounded-full border border-sentinel-green/20 shadow-[0_0_50px_rgba(0,255,148,0.1)]">
+        <h2 className="text-xl font-bold text-leta-gray-900 font-mono tracking-widest uppercase mb-1 animate-pulse">
            LETA Neural Core
         </h2>
         <div className="flex items-center gap-2">

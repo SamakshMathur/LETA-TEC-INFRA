@@ -31,7 +31,7 @@ const GstTemplates: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white selection:bg-emerald-500/30">
+    <div className="min-h-screen bg-[#141414] text-leta-gray-900 selection:bg-emerald-500/30">
       
       {/* 🎬 Netflix-Style Billboard Hero */}
       <div className="relative min-h-[90vh] w-full overflow-hidden flex flex-col">
@@ -49,10 +49,10 @@ const GstTemplates: React.FC = () => {
         {/* Billboard Content */}
         <div className="relative z-20 flex-1 flex flex-col justify-center px-12 md:px-24 max-w-4xl pt-40 pb-24">
            <div className="flex items-center gap-3 mb-6">
-              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-600 rounded text-[10px] font-black tracking-widest uppercase">
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-600 rounded-leta text-[10px] font-black tracking-widest uppercase">
                  <Zap size={12} fill="white" /> Trending
               </div>
-              <span className="text-sm font-bold text-gray-400 tracking-tight">Legal Strategy #127: GSTR-3B vs 2B Mismatch</span>
+              <span className="text-sm font-bold text-leta-gray-600 tracking-tight">Legal Strategy #127: GSTR-3B vs 2B Mismatch</span>
            </div>
 
            <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-6 leading-[0.9] uppercase italic">
@@ -60,7 +60,7 @@ const GstTemplates: React.FC = () => {
               <span className="text-emerald-500 text-shadow-[0_0_30px_rgba(16,185,129,0.5)]">Intelligence.</span>
            </h1>
 
-           <p className="text-lg md:text-xl text-gray-300 font-light max-w-xl mb-10 leading-relaxed">
+           <p className="text-lg md:text-xl text-leta-gray-300 font-light max-w-xl mb-10 leading-relaxed">
               Navigate 1,150+ high-end litigation templates with millisecond-latency semantic matching. 
               Drafted by senior counsels, optimized by TITAN AI for 100% compliance.
            </p>
@@ -68,12 +68,12 @@ const GstTemplates: React.FC = () => {
            <div className="flex flex-wrap gap-4 mb-16">
               <button 
                 onClick={() => fetchTemplates('ITC mismatch')}
-                className="flex items-center gap-3 bg-white text-black px-8 py-4 rounded-md font-bold text-lg hover:bg-white/90 transition-all active:scale-95 shadow-2xl"
+                className="flex items-center gap-3 bg-leta-white text-leta-black px-8 py-4 rounded-leta font-bold text-lg hover:bg-leta-white/90 transition-all active:scale-95 shadow-2xl"
               >
                  <Zap size={24} fill="black" /> Get Started
               </button>
               <button 
-                className="flex items-center gap-3 bg-gray-500/30 backdrop-blur-md text-white px-8 py-4 rounded-md font-bold text-lg border border-white/10 hover:bg-gray-500/40 transition-all"
+                className="flex items-center gap-3 bg-leta-gray-500/30 backdrop-blur-md text-leta-gray-900 px-8 py-4 rounded-leta font-bold text-lg border border-leta-gray-200 hover:bg-leta-gray-500/40 transition-all"
               >
                  <Sparkles size={24} /> More Info
               </button>
@@ -82,9 +82,9 @@ const GstTemplates: React.FC = () => {
            {/* Integrated Search Hub - now part of the flow to prevent overlap */}
            <div className="w-full max-w-2xl group focus-within:max-w-3xl transition-all duration-700">
               <form onSubmit={handleSearch} className="relative">
-                 <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded blur opacity-0 group-hover:opacity-100 transition duration-1000"></div>
-                 <div className="relative flex items-center bg-[#181818]/60 backdrop-blur-xl border border-white/10 rounded overflow-hidden">
-                   <div className="pl-6 text-gray-500">
+                 <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded-leta blur opacity-0 group-hover:opacity-100 transition duration-1000"></div>
+                 <div className="relative flex items-center bg-[#181818]/60 backdrop-blur-xl border border-leta-gray-200 rounded-leta overflow-hidden">
+                   <div className="pl-6 text-leta-gray-500">
                      <Search size={24} />
                    </div>
                    <input
@@ -92,7 +92,7 @@ const GstTemplates: React.FC = () => {
                      placeholder="Ask for specific case facts or sections..."
                      value={query}
                      onChange={(e) => setQuery(e.target.value)}
-                     className="w-full bg-transparent border-none py-6 px-6 text-white focus:outline-none focus:ring-0 text-lg font-light placeholder-gray-600"
+                     className="w-full bg-transparent border-none py-6 px-6 text-leta-gray-900 focus:outline-none focus:ring-0 text-lg font-light placeholder-gray-600"
                    />
                  </div>
               </form>
@@ -105,7 +105,7 @@ const GstTemplates: React.FC = () => {
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-32">
             <Loader2 className="animate-spin text-emerald-500 w-16 h-16 mb-6" />
-            <p className="text-gray-500 font-mono tracking-[0.2em] text-[10px] uppercase animate-pulse">Syncing with legal cloud...</p>
+            <p className="text-leta-gray-500 font-mono tracking-[0.2em] text-[10px] uppercase animate-pulse">Syncing with legal cloud...</p>
           </div>
         ) : (
           <TemplateResults groups={results} />

@@ -23,11 +23,11 @@ const SimpleSearchLoader = () => {
       
       <div className="flex items-center gap-3">
         <Loader2 size={16} className="text-sentinel-green animate-spin" />
-        <h2 className="text-sm font-mono font-bold text-white uppercase tracking-[0.3em]">
+        <h2 className="text-sm font-mono font-bold text-leta-gray-900 uppercase tracking-[0.3em]">
           Querying Advisory Protocol
         </h2>
       </div>
-      <p className="mt-2 text-[10px] font-mono text-gray-500 uppercase tracking-widest">
+      <p className="mt-2 text-[10px] font-mono text-leta-gray-500 uppercase tracking-widest">
         Scanning Statute Database & Recent Circulars
       </p>
     </div>

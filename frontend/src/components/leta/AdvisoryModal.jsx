@@ -25,7 +25,7 @@ class AdvisoryErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-8 text-center text-red-400 border border-red-500/20 bg-red-500/10 rounded-lg m-4">
+        <div className="p-8 text-center text-red-400 border border-red-500/20 bg-red-500/10 rounded-leta m-4">
           <h3 className="text-xl font-bold mb-2 font-mono uppercase">System Error</h3>
           <p className="font-mono text-sm mb-4">
             The advisory generation interface encountered a display error.
@@ -34,7 +34,7 @@ class AdvisoryErrorBoundary extends React.Component {
           </p>
           <button 
             onClick={() => this.setState({ hasError: false })}
-            className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded text-sm uppercase font-mono transition-colors"
+            className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-leta text-sm uppercase font-mono transition-colors"
           >
             [ HOST_RECOVERY ]
           </button>
@@ -94,29 +94,29 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
         {/* Backdrop */}
         <motion.div 
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+          className="absolute inset-0 bg-leta-black/90 backdrop-blur-sm"
           onClick={onClose}
         />
 
         {/* Modal Container */}
         <motion.div 
           initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-          className="relative w-full max-w-4xl bg-[#0F172A] border border-sentinel-green/30 shadow-2xl rounded-none overflow-hidden flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-4xl bg-[#0F172A] border border-sentinel-green/30 shadow-2xl rounded-leta-none overflow-hidden flex flex-col max-h-[90vh]"
         >
           {/* Header */}
-          <div className="p-6 border-b border-white/10 flex justify-between items-center bg-[#020202]">
+          <div className="p-6 border-b border-leta-gray-200 flex justify-between items-center bg-[#FFFFFF]">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-sentinel-green/20 text-sentinel-green rounded-sm">
+              <div className="p-2 bg-sentinel-green/20 text-sentinel-green rounded-leta">
                 <FileText size={20} />
               </div>
               <div>
-                 <h2 className="text-xl font-bold text-white font-mono uppercase tracking-wider">Legal Advisory Generator</h2>
-                 <p className="text-xs text-gray-500 font-mono">
+                 <h2 className="text-xl font-bold text-leta-gray-900 font-mono uppercase tracking-wider">Legal Advisory Generator</h2>
+                 <p className="text-xs text-leta-gray-500 font-mono">
                    // MODE: {step === 'result' ? 'REPORT_VIEW' : 'CONFIGURATION'}
                  </p>
               </div>
             </div>
-            <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+            <button onClick={onClose} className="text-leta-gray-500 hover:text-leta-gray-900 transition-colors">
               <X size={24} />
             </button>
           </div>
@@ -132,13 +132,13 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
                   {/* Option A: Current Context */}
                   <div 
                     onClick={() => handleGenerate(false)}
-                    className="group cursor-pointer p-8 border border-white/10 bg-[#050A10] hover:border-sentinel-green hover:bg-sentinel-green/5 transition-all text-center flex flex-col items-center gap-4"
+                    className="group cursor-pointer p-8 border border-leta-gray-200 bg-[#F9FAFB] hover:border-sentinel-green hover:bg-sentinel-green/5 transition-all text-center flex flex-col items-center gap-4"
                   >
                     <div className="p-4 rounded-full bg-sentinel-green/10 text-sentinel-green group-hover:scale-110 transition-transform">
                       <FileText size={32} />
                     </div>
-                    <h3 className="text-lg font-bold text-white uppercase tracking-wide">On Current Query</h3>
-                    <p className="text-sm text-gray-400">
+                    <h3 className="text-lg font-bold text-leta-gray-900 uppercase tracking-wide">On Current Query</h3>
+                    <p className="text-sm text-leta-gray-600">
                       Generate a formal opinion based on the question you just asked and the retrieved documents.
                     </p>
                     <div className="mt-4 px-4 py-1 border border-sentinel-green/30 text-sentinel-green text-xs font-mono uppercase">
@@ -149,16 +149,16 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
                   {/* Option B: Manual Input */}
                   <div 
                     onClick={() => setStep('manual_input')}
-                    className="group cursor-pointer p-8 border border-white/10 bg-[#050A10] hover:border-sentinel-blue hover:bg-sentinel-blue/5 transition-all text-center flex flex-col items-center gap-4"
+                    className="group cursor-pointer p-8 border border-leta-gray-200 bg-[#F9FAFB] hover:border-sentinel-blue hover:bg-sentinel-blue/5 transition-all text-center flex flex-col items-center gap-4"
                   >
-                     <div className="p-4 rounded-full bg-sentinel-blue/10 text-sentinel-blue group-hover:scale-110 transition-transform">
+                     <div className="p-4 rounded-full bg-sentinel-blue/10 text-leta-gray-900 group-hover:scale-110 transition-transform">
                       <PenTool size={32} />
                     </div>
-                    <h3 className="text-lg font-bold text-white uppercase tracking-wide">Manual Case Study</h3>
-                    <p className="text-sm text-gray-400">
+                    <h3 className="text-lg font-bold text-leta-gray-900 uppercase tracking-wide">Manual Case Study</h3>
+                    <p className="text-sm text-leta-gray-600">
                       Input a specific set of facts or a new scenario. The system will find relevant laws for you.
                     </p>
-                    <div className="mt-4 px-4 py-1 border border-sentinel-blue/30 text-sentinel-blue text-xs font-mono uppercase">
+                    <div className="mt-4 px-4 py-1 border border-sentinel-blue/30 text-leta-gray-900 text-xs font-mono uppercase">
                       [ CONFIGURE_MANUAL ]
                     </div>
                   </div>
@@ -174,20 +174,20 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
               {/* STEP 2: MANUAL INPUT */}
               {step === 'manual_input' && (
                 <div className="max-w-2xl mx-auto">
-                   <button onClick={() => setStep('selection')} className="flex items-center gap-2 text-gray-500 hover:text-white mb-6 text-xs font-mono uppercase">
+                   <button onClick={() => setStep('selection')} className="flex items-center gap-2 text-leta-gray-500 hover:text-leta-gray-900 mb-6 text-xs font-mono uppercase">
                      <ChevronLeft size={14} /> Back
                    </button>
-                   <h3 className="text-lg font-bold text-white mb-4 font-mono uppercase">Enter Case Facts</h3>
+                   <h3 className="text-lg font-bold text-leta-gray-900 mb-4 font-mono uppercase">Enter Case Facts</h3>
                    <textarea
                      value={manualFacts}
                      onChange={(e) => setManualFacts(e.target.value)}
-                     className="w-full h-64 bg-[#020202] border border-white/20 p-4 text-gray-300 font-mono text-sm focus:border-sentinel-blue outline-none resize-none"
+                     className="w-full h-64 bg-[#FFFFFF] border border-leta-gray-300 p-4 text-leta-gray-300 font-mono text-sm focus:border-sentinel-blue outline-none resize-none"
                      placeholder="Describe the facts of the case, the transaction details, and the specific doubt..."
                    />
                    <button
                      onClick={() => handleGenerate(true)}
                      disabled={!manualFacts.trim()}
-                     className="mt-6 w-full py-3 bg-sentinel-blue hover:bg-sentinel-blue/80 text-black font-bold font-mono uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
+                     className="mt-6 w-full py-3 bg-sentinel-blue hover:bg-sentinel-blue/80 text-leta-black font-bold font-mono uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
                    >
                      [ GENERATE_OPINION ]
                    </button>
@@ -196,7 +196,7 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
 
               {/* STEP 3: GENERATING */}
               {step === 'generating' && (
-                 <div className="flex flex-col items-center justify-center h-96 w-full text-center bg-black/50 border border-white/5 rounded-lg overflow-hidden relative">
+                 <div className="flex flex-col items-center justify-center h-96 w-full text-center bg-leta-gray-500 border border-leta-gray-100 rounded-leta overflow-hidden relative">
                     <NeuralBrainLoader />
                  </div>
               )}
@@ -204,7 +204,7 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
               {/* STEP 4: RESULT */}
               {step === 'result' && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="bg-white text-black p-10 font-serif shadow-xl mb-8 min-h-[600px] border-t-8 border-sentinel-green">
+                  <div className="bg-leta-white text-leta-black p-10 font-serif shadow-xl mb-8 min-h-[600px] border-t-8 border-sentinel-green">
                      {/* We render markdown here nicely */}
                      <div className="prose prose-sm max-w-none prose-headings:font-bold prose-headings:uppercase prose-p:leading-relaxed prose-li:my-0">
                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -220,13 +220,13 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
 
           {/* Footer (Only for Result) */}
           {step === 'result' && (
-            <div className="p-4 border-t border-white/10 bg-[#020202] flex justify-between items-center">
-               <button onClick={() => setStep('selection')} className="text-gray-500 hover:text-white text-xs font-mono uppercase">
+            <div className="p-4 border-t border-leta-gray-200 bg-[#FFFFFF] flex justify-between items-center">
+               <button onClick={() => setStep('selection')} className="text-leta-gray-500 hover:text-leta-gray-900 text-xs font-mono uppercase">
                  &lt; New Advisory
                </button>
                <button 
                  onClick={handleDownload}
-                 className="flex items-center gap-2 px-6 py-2 bg-sentinel-green text-black font-bold font-mono uppercase text-xs tracking-wider hover:bg-white transition-colors"
+                 className="flex items-center gap-2 px-6 py-2 bg-sentinel-green text-leta-black font-bold font-mono uppercase text-xs tracking-wider hover:bg-leta-white transition-colors"
                >
                  <Download size={16} /> Download Report
                </button>

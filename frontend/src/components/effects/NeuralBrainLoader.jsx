@@ -175,7 +175,7 @@ export default function NeuralBrainLoader() {
             <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-blue-400 font-mono uppercase tracking-widest animate-pulse drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">
                 Synthesizing TITAN Intelligence
             </h3>
-            <p className="text-xs text-gray-500 mt-2 font-mono tracking-wide">
+            <p className="text-xs text-leta-gray-500 mt-2 font-mono tracking-wide">
                 Optimizing {nodeCount} statutory nodes...
             </p>
         </div>

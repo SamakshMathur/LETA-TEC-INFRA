@@ -19,7 +19,7 @@ const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentC
         <div className="flex items-center gap-3">
           <div className="relative flex items-center justify-center w-5 h-5">
              {isSearching ? (
-               <Search size={14} className="text-sentinel-blue animate-pulse" />
+               <Search size={14} className="text-leta-gray-900 animate-pulse" />
              ) : (
                <div className="relative">
                  <CheckCircle2 size={14} className="text-sentinel-green" />
@@ -37,14 +37,14 @@ const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentC
                className="absolute inset-0 border border-dashed border-sentinel-green/20 rounded-full"
              />
           </div>
-          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-gray-400">
+          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-leta-gray-600">
             {status || (isSearching ? 'Retrieving Statutory Evidence...' : 'Synthesizing Legal Position...')}
           </span>
         </div>
         
         <button 
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="text-gray-600 hover:text-gray-300 transition-colors"
+          className="text-leta-gray-600 hover:text-leta-gray-300 transition-colors"
         >
           {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
         </button>
@@ -62,12 +62,12 @@ const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentC
               {isSearching ? (
                 // SKELETON CARDS while searching
                 [1, 2, 3, 4].map((i) => (
-                  <div key={`skeleton-${i}`} className="flex flex-col p-3 bg-[#0A1622]/40 border border-white/5 rounded-lg">
+                  <div key={`skeleton-${i}`} className="flex flex-col p-3 bg-[#0A1622]/40 border border-leta-gray-100 rounded-leta">
                     <div className="flex items-start justify-between mb-2">
-                       <div className="w-7 h-7 bg-white/5 rounded animate-pulse" />
+                       <div className="w-7 h-7 bg-leta-gray-50 rounded-leta animate-pulse" />
                     </div>
-                    <div className="w-full h-3 bg-white/5 rounded mb-2 animate-pulse" />
-                    <div className="w-2/3 h-2 bg-white/5 rounded animate-pulse" />
+                    <div className="w-full h-3 bg-leta-gray-50 rounded-leta mb-2 animate-pulse" />
+                    <div className="w-2/3 h-2 bg-leta-gray-50 rounded-leta animate-pulse" />
                   </div>
                 ))
               ) : (

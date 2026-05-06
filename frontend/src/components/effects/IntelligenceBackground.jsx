@@ -15,7 +15,7 @@ const IntelligenceBackground = () => {
     const mouse = { x: null, y: null };
 
     // Colors
-    const BG_COLOR = '#020202';
+    const BG_COLOR = '#FFFFFF';
     const NODE_COLOR = 'rgba(0, 59, 89, 0.9)'; // Sentinel Blue
     const LINE_COLOR_BASE = '11, 115, 80'; // Sentinel Green (RGB)
 
@@ -112,7 +112,7 @@ const IntelligenceBackground = () => {
     <canvas 
       ref={canvasRef} 
       className="absolute inset-0 z-0 w-full h-full"
-      style={{ background: '#020202' }}
+      style={{ background: '#FFFFFF' }}
     />
   );
 };

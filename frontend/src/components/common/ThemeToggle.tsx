@@ -49,7 +49,7 @@ const ThemeToggle: React.FC = () => {
     <div className="relative">
       <motion.button
         onClick={toggleWithTransition}
-        className="relative w-10 h-10 flex items-center justify-center rounded-full border border-white/10 bg-white/5 overflow-hidden group"
+        className="relative w-10 h-10 flex items-center justify-center rounded-full border border-leta-gray-200 bg-leta-gray-50 overflow-hidden group"
         whileTap={{ scale: 0.9 }}
         transition={{ type: "spring", stiffness: 400, damping: 17 }}
         aria-label="Toggle Theme"
@@ -61,7 +61,7 @@ const ThemeToggle: React.FC = () => {
             animate={{ y: 0, rotate: 0, opacity: 1 }}
             exit={{ y: -20, rotate: 90, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeInOut" }}
-            className="text-primary"
+            className="text-leta-primary"
           >
             {isDark ? (
               <Moon size={18} strokeWidth={2} />
@@ -71,7 +71,7 @@ const ThemeToggle: React.FC = () => {
           </motion.div>
         </AnimatePresence>
         
-        <div className="absolute inset-0 border border-primary/0 group-hover:border-primary/20 rounded-full transition-colors duration-200" />
+        <div className="absolute inset-0 border border-leta-primary/0 group-hover:border-leta-primary/20 rounded-full transition-colors duration-200" />
       </motion.button>
     </div>
   );

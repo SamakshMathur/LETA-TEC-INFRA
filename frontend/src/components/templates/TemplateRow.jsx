@@ -22,7 +22,7 @@ const TemplateRow = ({ title, templates, isHero, onPreview }) => {
   return (
     <div className="relative group/row py-8 first:pt-0">
       <div className="flex items-end justify-between px-12 mb-4">
-        <h2 className="font-bold tracking-tight text-[#e5e5e5] text-lg md:text-xl transition-colors hover:text-white">
+        <h2 className="font-bold tracking-tight text-[#e5e5e5] text-lg md:text-xl transition-colors hover:text-leta-gray-900">
           {title}
         </h2>
       </div>
@@ -31,7 +31,7 @@ const TemplateRow = ({ title, templates, isHero, onPreview }) => {
         {/* Left Scroll Button - Netflix Glass UI */}
         <button 
           onClick={scrollLeft}
-          className="absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 bg-black/50 z-[110] text-white hover:bg-black/70"
+          className="absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 bg-leta-gray-500 z-[110] text-leta-gray-900 hover:bg-leta-black/70"
           aria-label="Scroll left"
         >
           <ChevronLeft size={40} />
@@ -56,7 +56,7 @@ const TemplateRow = ({ title, templates, isHero, onPreview }) => {
         {/* Right Scroll Button - Netflix Glass UI */}
         <button 
           onClick={scrollRight}
-          className="absolute right-0 top-0 bottom-0 w-12 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 bg-black/50 z-[110] text-white hover:bg-black/70"
+          className="absolute right-0 top-0 bottom-0 w-12 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 bg-leta-gray-500 z-[110] text-leta-gray-900 hover:bg-leta-black/70"
           aria-label="Scroll right"
         >
           <ChevronRight size={40} />

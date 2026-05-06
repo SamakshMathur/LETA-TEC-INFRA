@@ -110,16 +110,16 @@ const LoginPage: React.FC = () => {
         <div className="auth-card">
 
           <div className="mb-8 text-center">
-            <h1 className="font-display font-bold text-3xl text-white mb-2 uppercase tracking-tight">
-              LETA <span className="text-primary">TITAN</span>
+            <h1 className="font-display font-bold text-3xl text-leta-gray-900 mb-2 uppercase tracking-tight">
+              LETA <span className="text-leta-primary">TITAN</span>
             </h1>
-            <p className="text-xs font-mono text-white/40 uppercase tracking-widest">
+            <p className="text-xs font-mono text-leta-gray-500 uppercase tracking-widest">
               {step === 'contact' ? 'Sovereign Access Portal' : 'Verify Identity'}
             </p>
           </div>
 
           {error && (
-            <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium text-center">
+            <div className="mb-6 p-3 rounded-leta bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium text-center">
               {error}
             </div>
           )}
@@ -128,11 +128,11 @@ const LoginPage: React.FC = () => {
           {step === 'contact' && (
             <form onSubmit={handleSendOtp} className="space-y-6">
               {/* Method toggle */}
-              <div className="flex rounded-lg border border-white/10 overflow-hidden">
+              <div className="flex rounded-leta border border-leta-gray-200 overflow-hidden">
                 {(['phone', 'email'] as Method[]).map(m => (
                   <button key={m} type="button" onClick={() => switchMethod(m)}
                     className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${
-                      method === m ? 'bg-primary text-surface' : 'text-white/40 hover:text-white/70'
+                      method === m ? 'bg-leta-primary text-surface' : 'text-leta-gray-500 hover:text-leta-gray-900/70'
                     }`}>
                     {m === 'phone' ? 'Mobile' : 'Email'}
                   </button>
@@ -155,9 +155,9 @@ const LoginPage: React.FC = () => {
               </button>
 
               <div className="text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/30">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-leta-gray-900/30">
                   Don't have an account?{' '}
-                  <Link to={ROUTES.SIGNUP} className="text-primary hover:text-primary/80 transition-colors">
+                  <Link to={ROUTES.SIGNUP} className="text-leta-primary hover:text-leta-primary/80 transition-colors">
                     Set up now
                   </Link>
                 </p>
@@ -168,8 +168,8 @@ const LoginPage: React.FC = () => {
           {/* ── Step 2: OTP entry ── */}
           {step === 'otp' && (
             <form onSubmit={handleVerify} className="space-y-6">
-              <p className="text-center text-xs text-white/50">
-                OTP sent to <span className="text-primary font-bold">{maskedContact}</span>
+              <p className="text-center text-xs text-leta-gray-900/50">
+                OTP sent to <span className="text-leta-primary font-bold">{maskedContact}</span>
               </p>
 
               {/* 6-box OTP input */}
@@ -181,7 +181,7 @@ const LoginPage: React.FC = () => {
                     onKeyDown={e => handleOtpKeyDown(i, e)}
                     onPaste={i === 0 ? handleOtpPaste : undefined}
                     disabled={loading}
-                    className="w-11 h-14 text-center text-xl font-bold text-white bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-colors disabled:opacity-50 caret-transparent"
+                    className="w-11 h-14 text-center text-xl font-bold text-leta-gray-900 bg-leta-gray-50 border border-leta-gray-200 rounded-leta focus:outline-none focus:border-leta-primary/60 focus:ring-1 focus:ring-leta-primary/30 transition-colors disabled:opacity-50 caret-transparent"
                   />
                 ))}
               </div>
@@ -199,7 +199,7 @@ const LoginPage: React.FC = () => {
                 </button>
                 <button type="button" onClick={handleResend}
                   disabled={countdown > 0 || loading}
-                  className="text-primary disabled:text-white/30 transition-colors disabled:cursor-not-allowed text-[10px] font-bold uppercase tracking-wider">
+                  className="text-leta-primary disabled:text-leta-gray-900/30 transition-colors disabled:cursor-not-allowed text-[10px] font-bold uppercase tracking-wider">
                   {countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP'}
                 </button>
               </div>
@@ -207,7 +207,7 @@ const LoginPage: React.FC = () => {
           )}
         </div>
 
-        <p className="mt-8 text-center text-[10px] font-mono text-white/20 uppercase tracking-[0.1em]">
+        <p className="mt-8 text-center text-[10px] font-mono text-leta-gray-900/20 uppercase tracking-[0.1em]">
           &copy; 2026 LETA / Sovereign Compliance Systems
         </p>
       </div>

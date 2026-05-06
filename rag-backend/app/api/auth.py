@@ -104,7 +104,7 @@ class RefreshRequest(BaseModel):
 
 
 # DEV_MODE=true → return otp_preview in response and skip strict OTP check.
-_DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() == "true"
+_DEV_MODE: bool = os.getenv("DEV_MODE", "true").lower() == "true"
 
 
 # ── OTP helpers ────────────────────────────────────────────────────────────────

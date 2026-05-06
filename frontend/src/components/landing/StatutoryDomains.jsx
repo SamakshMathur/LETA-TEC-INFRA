@@ -12,7 +12,7 @@ const domains = [
     icon: FileText,
     path: '/gst',
     status: 'ACTIVE',
-    accentColor: '#4edea3',
+    accentColor: '#4F46E5',
   },
   {
     id: 'income-tax',
@@ -79,17 +79,17 @@ const StatutoryDomains = () => {
           <div>
             <h2
               className="font-display font-bold text-3xl md:text-5xl mb-4 tracking-tight"
-              style={{ color: '#e5e2e1' }}
+              style={{ color: '#111827' }}
             >
               Statutory Intelligence{' '}
               <span style={{ color: '#2a2a2a' }}>Modules</span>
             </h2>
-            <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest" style={{ color: '#4edea3' }}>
+            <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest" style={{ color: '#4F46E5' }}>
               <Activity size={12} className="animate-pulse" />
               <span>System Status: Online</span>
             </div>
           </div>
-          <p className="hidden md:block text-sm font-mono text-right" style={{ color: '#9a9a9a' }}>
+          <p className="hidden md:block text-sm font-mono text-right" style={{ color: '#4B5563' }}>
             // SELECT ACTIVE JURISDICTION_
           </p>
         </div>
@@ -104,7 +104,7 @@ const StatutoryDomains = () => {
                 key={domain.id}
                 layout
                 onClick={() => setActiveIndex(index)}
-                className="relative overflow-hidden cursor-pointer rounded transition-all duration-700 ease-out"
+                className="relative overflow-hidden cursor-pointer rounded-leta transition-all duration-700 ease-out"
                 style={{
                   flex: isActive ? 4 : 1,
                   backgroundColor: isActive
@@ -158,7 +158,7 @@ const StatutoryDomains = () => {
                     <div className="absolute inset-0 flex items-center justify-center lg:-rotate-90">
                       <h3
                         className="font-mono font-bold uppercase tracking-[0.2em] text-xs whitespace-nowrap opacity-50"
-                        style={{ color: '#9a9a9a' }}
+                        style={{ color: '#4B5563' }}
                       >
                         {domain.title}
                       </h3>
@@ -179,7 +179,7 @@ const StatutoryDomains = () => {
                           {/* Icon + status */}
                           <div className="flex items-center justify-between mb-10">
                             <div
-                              className="p-4 rounded"
+                              className="p-4 rounded-leta"
                               style={{ backgroundColor: 'var(--surface-container-lowest)' }}
                             >
                               <domain.icon
@@ -194,7 +194,7 @@ const StatutoryDomains = () => {
                               {domain.status === 'ACTIVE' && (
                                 <span
                                   className="w-1.5 h-1.5 rounded-full animate-pulse"
-                                  style={{ backgroundColor: '#4edea3' }}
+                                  style={{ backgroundColor: '#4F46E5' }}
                                 />
                               )}
                               {domain.status}
@@ -204,7 +204,7 @@ const StatutoryDomains = () => {
                           {/* Title */}
                           <h3
                             className="font-display font-bold text-4xl lg:text-5xl mb-3 tracking-tight"
-                            style={{ color: '#e5e2e1' }}
+                            style={{ color: '#111827' }}
                           >
                             {domain.title}
                           </h3>
@@ -225,7 +225,7 @@ const StatutoryDomains = () => {
 
                           <p
                             className="text-lg leading-relaxed font-light max-w-xl"
-                            style={{ color: '#9a9a9a' }}
+                            style={{ color: '#4B5563' }}
                           >
                             {domain.desc}
                           </p>
@@ -235,7 +235,7 @@ const StatutoryDomains = () => {
                         <div className="mt-8">
                           <Link
                             to={domain.path}
-                            className="group inline-flex items-center gap-4 btn-titan px-8 py-3.5"
+                            className="group inline-flex items-center gap-4 btn-primary px-8 py-3.5"
                           >
                             Initialize Module
                             <ChevronRight
