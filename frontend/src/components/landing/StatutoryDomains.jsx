@@ -79,7 +79,7 @@ const StatutoryDomains = () => {
           <div>
             <h2
               className="font-display font-bold text-3xl md:text-5xl mb-4 tracking-tight"
-              style={{ color: '#111827' }}
+              style={{ color: '#e5e2e1' }}
             >
               Statutory Intelligence{' '}
               <span style={{ color: '#2a2a2a' }}>Modules</span>
@@ -89,7 +89,7 @@ const StatutoryDomains = () => {
               <span>System Status: Online</span>
             </div>
           </div>
-          <p className="hidden md:block text-sm font-mono text-right" style={{ color: '#4B5563' }}>
+          <p className="hidden md:block text-sm font-mono text-right" style={{ color: '#9a9a9a' }}>
             // SELECT ACTIVE JURISDICTION_
           </p>
         </div>
@@ -158,7 +158,7 @@ const StatutoryDomains = () => {
                     <div className="absolute inset-0 flex items-center justify-center lg:-rotate-90">
                       <h3
                         className="font-mono font-bold uppercase tracking-[0.2em] text-xs whitespace-nowrap opacity-50"
-                        style={{ color: '#4B5563' }}
+                        style={{ color: '#9a9a9a' }}
                       >
                         {domain.title}
                       </h3>
@@ -204,7 +204,7 @@ const StatutoryDomains = () => {
                           {/* Title */}
                           <h3
                             className="font-display font-bold text-4xl lg:text-5xl mb-3 tracking-tight"
-                            style={{ color: '#111827' }}
+                            style={{ color: '#e5e2e1' }}
                           >
                             {domain.title}
                           </h3>
@@ -225,7 +225,7 @@ const StatutoryDomains = () => {
 
                           <p
                             className="text-lg leading-relaxed font-light max-w-xl"
-                            style={{ color: '#4B5563' }}
+                            style={{ color: '#9a9a9a' }}
                           >
                             {domain.desc}
                           </p>

@@ -1,120 +1,187 @@
 /* ── Google Fonts ───────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&family=Syne:wght@600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&family=Space+Grotesk:wght@500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── CSS design tokens ───────────────────────────────────────────────────── */
+:root {
+  --bg-main:                  #060816;
+  --bg-secondary:             #0B1020;
+  --bg-tertiary:              #111827;
+  --surface:                  #060816;
+  --surface-bright:           #0B1020;
+  --surface-container-lowest: #060816;
+  --surface-container-low:    #0B1020;
+  --surface-container:        #111827;
+  --surface-container-high:   #1e2235;
+  --on-surface:               #CBD5E1;
+  --primary:                  #7C3AED;
+  --primary-hover:            #8B5CF6;
+  --primary-soft:             #A78BFA;
+  --primary-dark:             #5B21B6;
+  --secondary:                #60A5FA;
+  --text-heading:             #FFFFFF;
+  --text-heading-secondary:   #E9D5FF;
+  --text-body:                #CBD5E1;
+  --text-muted:               #94A3B8;
+  --text-link:                #A78BFA;
+  --border-subtle:            rgba(255,255,255,0.08);
+  --border-purple:            rgba(167,139,250,0.25);
+  --glass-bg:                 rgba(255,255,255,0.05);
+  --glass-elevated:           rgba(255,255,255,0.08);
+}
+
 /* ── Base ────────────────────────────────────────────────────────────────── */
 @layer base {
   body {
-    background-color: #0a0a0a;
-    color: #e5e2e1;
+    background: linear-gradient(180deg, #060816 0%, #0B1020 100%);
+    background-attachment: fixed;
+    color: #CBD5E1;
     @apply font-body antialiased;
   }
 
-  *, *::before, *::after {
-    box-sizing: border-box;
-  }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  h1, h2, h3, h4, h5, h6 { color: #FFFFFF; }
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
-::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-leta-gray-200 rounded-full; }
-::-webkit-scrollbar-thumb:hover { @apply bg-leta-gray-500; }
+::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.3); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #7C3AED; }
 
 /* ── Auth layout ─────────────────────────────────────────────────────────── */
 @layer components {
 
   .auth-page {
     @apply relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden;
-    background-color: #0a0a0a;
+    background: linear-gradient(180deg, #060816 0%, #0B1020 100%);
   }
 
   .auth-card {
     @apply relative w-full rounded-2xl p-10;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(124,58,237,0.2);
     backdrop-filter: blur(40px);
     -webkit-backdrop-filter: blur(40px);
-    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    box-shadow: 0 25px 60px rgba(0,0,0,0.7), 0 0 60px rgba(124,58,237,0.08), inset 0 1px 0 rgba(255,255,255,0.05);
   }
 
   /* ── Form elements ─────────────────────────────────────────────────────── */
 
   .label-auth {
     @apply block text-[10px] font-black uppercase tracking-[0.15em];
-    color: rgba(229, 226, 225, 0.5);
+    color: rgba(203,213,225,0.5);
   }
 
   .input-auth {
     @apply w-full rounded-xl px-4 py-3 text-sm font-medium outline-none transition-all duration-200;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #e5e2e1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #E2E8F0;
   }
-  .input-auth::placeholder {
-    color: rgba(229, 226, 225, 0.25);
-  }
+  .input-auth::placeholder { color: rgba(203,213,225,0.25); }
   .input-auth:focus {
-    background: rgba(255, 255, 255, 0.07);
-    border-color: rgba(78, 222, 163, 0.5);
-    box-shadow: 0 0 0 3px rgba(78, 222, 163, 0.12);
+    background: rgba(124,58,237,0.06);
+    border-color: rgba(124,58,237,0.5);
+    box-shadow: 0 0 15px rgba(124,58,237,0.25);
   }
-  .input-auth:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  .input-auth:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .select-auth {
     @apply w-full rounded-xl px-4 py-3 text-sm font-medium outline-none transition-all duration-200 appearance-none cursor-pointer;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #e5e2e1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #E2E8F0;
   }
   .select-auth:focus {
-    background: rgba(255, 255, 255, 0.07);
-    border-color: rgba(78, 222, 163, 0.5);
-    box-shadow: 0 0 0 3px rgba(78, 222, 163, 0.12);
+    background: rgba(124,58,237,0.06);
+    border-color: rgba(124,58,237,0.5);
+    box-shadow: 0 0 15px rgba(124,58,237,0.25);
   }
-  .select-auth:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .select-auth option {
-    background-color: #0a0a0a;
-    color: #e5e2e1;
-  }
+  .select-auth:disabled { opacity: 0.5; cursor: not-allowed; }
+  .select-auth option { background-color: #0B1020; color: #E2E8F0; }
 
   /* ── Buttons ───────────────────────────────────────────────────────────── */
 
   .btn-auth-primary {
-    @apply w-full rounded-xl py-3.5 text-[11px] font-black uppercase tracking-[0.15em] transition-opacity duration-200;
-    background-color: #4edea3;
-    color: #0a0a0a;
+    @apply w-full rounded-xl py-3.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-200;
+    background: linear-gradient(135deg, #7C3AED, #5B21B6);
+    color: #ffffff;
+    box-shadow: 0 0 20px rgba(124,58,237,0.4);
   }
   .btn-auth-primary:hover:not(:disabled) {
-    opacity: 0.88;
+    box-shadow: 0 0 35px rgba(124,58,237,0.6);
+    transform: translateY(-1px);
   }
-  .btn-auth-primary:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  .btn-auth-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .btn-auth-secondary {
     @apply rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-wider transition-colors duration-200;
-    color: rgba(229, 226, 225, 0.45);
+    color: rgba(203,213,225,0.45);
   }
-  .btn-auth-secondary:hover {
-    color: #e5e2e1;
+  .btn-auth-secondary:hover { color: #CBD5E1; }
+
+  /* ── Glass surfaces ────────────────────────────────────────────────────── */
+  .glass-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 20px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .glass-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(124,58,237,0.2);
   }
 
-  /* ── Noise texture overlay ─────────────────────────────────────────────── */
-  .bg-noise {
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-    background-size: 128px 128px;
+  .glass-card-purple {
+    background: rgba(124,58,237,0.06);
+    border: 1px solid rgba(167,139,250,0.25);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 20px;
   }
 
+  .glass-surface {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  /* ── Gradient text utilities ────────────────────────────────────────────── */
+  .text-gradient-purple {
+    background: linear-gradient(135deg, #7C3AED, #A78BFA);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-blue {
+    background: linear-gradient(135deg, #60A5FA, #7C3AED);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-titan {
+    background: linear-gradient(135deg, #A78BFA 0%, #C4B5FD 50%, #60A5FA 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Titan glow utilities ───────────────────────────────────────────────── */
+  .glow-titan    { box-shadow: 0 0 20px rgba(124,58,237,0.35); }
+  .glow-titan-lg { box-shadow: 0 0 40px rgba(124,58,237,0.25), 0 0 80px rgba(124,58,237,0.1); }
+
+  /* ── Interactive container border ───────────────────────────────────────── */
+  .border-titan {
+    box-shadow: 0 0 0 1px rgba(124,58,237,0.2), 0 0 30px rgba(124,58,237,0.15);
+  }
 }

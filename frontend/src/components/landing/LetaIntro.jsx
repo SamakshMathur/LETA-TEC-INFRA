@@ -62,12 +62,12 @@ const features = [
 
 const LetaIntro = () => {
   return (
-    <section className="relative py-32 bg-[#FFFFFF] text-leta-gray-900 overflow-hidden border-t border-leta-gray-100">
+    <section className="relative py-32 text-white overflow-hidden" style={{ borderTop: '1px solid rgba(124,58,237,0.1)' }}>
       {/* Neural Background Layer */}
       <NeuralBackground />
       
-      {/* Gradient Vignette for seamless blending - STRICT DARK */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#FFFFFF] via-transparent to-[#FFFFFF] z-10 pointer-events-none" />
+      {/* Gradient Vignette */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#060816] via-transparent to-[#060816] z-10 pointer-events-none" />
 
       <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-20 text-center md:text-left">
@@ -133,7 +133,7 @@ const LetaIntro = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: false }}
               transition={{ duration: 0.5, delay: idx * 0.15 + 0.5 }} // Reduced delay for smoother re-entry
-              className="p-8 border border-leta-gray-200 bg-[#F9FAFB] hover:bg-leta-gray-50 hover:border-sentinel-green/50 transition-all duration-300 rounded-leta group relative overflow-hidden"
+              className="p-8 border border-leta-gray-200 bg-leta-gray-50 hover:bg-leta-gray-50 hover:border-sentinel-green/50 transition-all duration-300 rounded-leta group relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-100 transition-opacity">
                  <feature.icon size={48} strokeWidth={0.5} className="text-leta-gray-900" />

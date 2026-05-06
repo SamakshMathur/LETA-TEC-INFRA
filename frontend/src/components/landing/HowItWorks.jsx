@@ -44,7 +44,7 @@ const HowItWorks = () => {
   const [activeStep, setActiveStep] = useState(steps[0].id);
 
   return (
-    <section className="relative py-24 bg-[#FFFFFF] overflow-hidden">
+    <section className="relative py-24 overflow-hidden">
       {/* Background Ambience */}
       <div className="absolute top-0 right-0 w-1/2 h-full bg-sentinel-blue/5 blur-[120px] rounded-full pointer-events-none" />
 
@@ -73,7 +73,7 @@ const HowItWorks = () => {
                 onMouseEnter={() => setActiveStep(step.id)}
                 className={`group relative p-6 rounded-leta border transition-all duration-300 cursor-default ${
                   activeStep === step.id 
-                    ? 'bg-[#F9FAFB] border-sentinel-blue/40 shadow-[0_0_30px_rgba(0,59,89,0.15)]' 
+                    ? 'bg-leta-gray-50 border-sentinel-blue/40 shadow-[0_0_30px_rgba(0,59,89,0.15)]' 
                     : 'bg-transparent border-leta-gray-100 hover:border-leta-gray-200'
                 }`}
               >
@@ -107,7 +107,7 @@ const HowItWorks = () => {
           {/* Right Column: Visual Preview Area */}
           <div className="hidden lg:block relative h-full min-h-[600px]">
              <div className="sticky top-24">
-                <div className="relative w-full aspect-square md:aspect-[4/3] bg-[#F9FAFB] rounded-leta border border-leta-gray-200 overflow-hidden flex items-center justify-center p-8">
+                <div className="relative w-full aspect-square md:aspect-[4/3] bg-leta-gray-50 rounded-leta border border-leta-gray-200 overflow-hidden flex items-center justify-center p-8">
                    
                    {/* Background Grid */}
                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:24px_24px]" />

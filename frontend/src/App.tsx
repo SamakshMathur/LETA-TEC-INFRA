@@ -8,12 +8,15 @@ import { authRoutes, protectedRoutes } from './routes';
 
 const NotFound: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-screen gap-6"
-    style={{ backgroundColor: 'var(--surface)' }}>
-    <span className="font-display font-bold text-8xl" style={{ color: '#2a2a2a' }}>404</span>
-    <p className="text-sm font-mono" style={{ color: '#4B5563' }}>
+    style={{ background: 'linear-gradient(180deg, #060816 0%, #0B1020 100%)' }}>
+    <span className="font-display font-bold text-8xl text-white">404</span>
+    <p className="text-sm font-mono" style={{ color: '#94A3B8' }}>
       This route does not exist in the system.
     </p>
-    <a href="/" className="btn-primary px-8 py-3">Return Home</a>
+    <a href="/" className="px-8 py-3 rounded-xl font-bold text-white text-sm"
+      style={{ background: 'linear-gradient(135deg, #7C3AED, #5B21B6)', boxShadow: '0 0 20px rgba(124,58,237,0.4)' }}>
+      Return Home
+    </a>
   </div>
 );
 
@@ -29,15 +32,15 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.error) {
       return (
-        <div style={{ backgroundColor: '#FFFFFF', color: '#ff6b6b', minHeight: '100vh',
+        <div style={{ background: '#060816', color: '#ff6b6b', minHeight: '100vh',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexDirection: 'column', gap: '1rem', fontFamily: 'monospace' }}>
           <h2>Something went wrong</h2>
-          <pre style={{ color: '#999', fontSize: '0.8rem', maxWidth: '80vw', overflow: 'auto' }}>
+          <pre style={{ color: '#94A3B8', fontSize: '0.8rem', maxWidth: '80vw', overflow: 'auto' }}>
             {this.state.error.message}
           </pre>
           <button onClick={() => window.location.href = '/'}
-            style={{ color: '#4F46E5', border: '1px solid #4F46E5',
+            style={{ color: '#A78BFA', border: '1px solid rgba(124,58,237,0.4)',
               padding: '8px 24px', borderRadius: '8px', background: 'none', cursor: 'pointer' }}>
             Go Home
           </button>
@@ -49,11 +52,10 @@ class ErrorBoundary extends React.Component<
 }
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="min-h-screen flex flex-col relative"
-    style={{ backgroundColor: 'var(--surface)', color: 'var(--on-surface)' }}>
-    <div className="fixed inset-0 bg-noise z-10 pointer-events-none" />
+  <div className="min-h-screen flex flex-col"
+    style={{ background: 'linear-gradient(180deg, #060816 0%, #0B1020 100%)', backgroundAttachment: 'fixed', color: '#CBD5E1' }}>
     <Navbar />
-    <main className="flex-grow relative transition-all duration-500">{children}</main>
+    <main className="flex-grow">{children}</main>
     <SystemFooter />
   </div>
 );
@@ -65,16 +67,12 @@ function App() {
         <ScrollToTop />
         <Layout>
           <Routes>
-            {/* Auth routes — redirect to dashboard if already logged in */}
             {authRoutes.map(({ path, element }) => (
               <Route key={path} path={path} element={<PublicRoute>{element}</PublicRoute>} />
             ))}
-
-            {/* Protected routes — redirect to login if not authenticated */}
             {protectedRoutes.map(({ path, element }) => (
               <Route key={path} path={path} element={<ProtectedRoute>{element}</ProtectedRoute>} />
             ))}
-
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Layout>

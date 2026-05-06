@@ -1,20 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Landmark, Globe, Briefcase, ChevronDown, Shield, Settings, LogOut } from 'lucide-react';
+import { FileText, Landmark, Globe, Briefcase, ChevronDown, Settings, LogOut, LayoutGrid } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { ROUTES } from '../../constants/routes';
 
-const DOMAINS = [
-  { label: 'GST Intelligence',  path: '/gst',          icon: FileText,  status: 'ACTIVE' },
-  { label: 'Income Tax',        path: '/income-tax',    icon: Landmark,  status: 'ACTIVE' },
-  { label: 'FEMA Advisory',     path: '/fema',          icon: Globe,     status: 'ACTIVE' },
-  { label: 'Company Law',       path: '/company-law',   icon: Briefcase, status: 'ACTIVE' },
+const MODULES = [
+  { label: 'GST Intelligence',  path: '/gst',          icon: FileText,  status: 'LIVE' },
+  { label: 'Income Tax',        path: '/income-tax',    icon: Landmark,  status: 'SOON' },
+  { label: 'FEMA Advisory',     path: '/fema',          icon: Globe,     status: 'SOON' },
+  { label: 'Company Law',       path: '/company-law',   icon: Briefcase, status: 'SOON' },
 ];
 
 const NAV_LINKS = [
-  { label: 'About', path: '/about' },
-  { label: 'Docs',  path: '/docs'  },
+  { label: 'Intelligence', path: '/gst'   },
+  { label: 'Compliance',   path: '/docs'  },
+  { label: 'Expert',       path: '/about' },
+  { label: 'Resources',    path: '/docs'  },
 ];
 
 const getInitials = (name: string) => {
@@ -28,12 +30,12 @@ const Navbar = () => {
   const navigate  = useNavigate();
   const { user, isLoggedIn, logout } = useAuth();
 
-  const [scrolled,    setScrolled]    = useState(false);
-  const [domainsOpen, setDomainsOpen] = useState(false);
-  const [userOpen,    setUserOpen]    = useState(false);
+  const [scrolled,     setScrolled]     = useState(false);
+  const [modulesOpen,  setModulesOpen]  = useState(false);
+  const [userOpen,     setUserOpen]     = useState(false);
 
-  const domainsMenuRef = useRef<HTMLDivElement>(null);
-  const userMenuRef    = useRef<HTMLDivElement>(null);
+  const modulesRef = useRef<HTMLDivElement>(null);
+  const userRef    = useRef<HTMLDivElement>(null);
 
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + '/');
@@ -46,9 +48,9 @@ const Navbar = () => {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (domainsMenuRef.current && !domainsMenuRef.current.contains(e.target as Node))
-        setDomainsOpen(false);
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node))
+      if (modulesRef.current && !modulesRef.current.contains(e.target as Node))
+        setModulesOpen(false);
+      if (userRef.current && !userRef.current.contains(e.target as Node))
         setUserOpen(false);
     };
     document.addEventListener('mousedown', handler);
@@ -61,136 +63,193 @@ const Navbar = () => {
     navigate(ROUTES.LOGIN);
   };
 
-  const anyDomainActive = DOMAINS.some(d => isActive(d.path));
   const displayName = user?.full_name || user?.username || 'User';
   const initials    = getInitials(displayName);
   const subLabel    = user?.email || (user?.phone ? `+91 ${user.phone}` : '');
 
   return (
     <nav
-      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 border-b border-transparent ${
-        scrolled ? 'bg-[#0a0a0a]/90 backdrop-blur-md border-leta-gray-100 shadow-sm' : 'bg-transparent'
-      }`}
-      style={{ height: scrolled ? '64px' : '84px' }}
+      className="fixed top-0 left-0 w-full z-50 transition-all duration-300"
+      style={{
+        height: scrolled ? '60px' : '76px',
+        background: scrolled
+          ? 'rgba(6,8,22,0.92)'
+          : 'transparent',
+        backdropFilter: scrolled ? 'blur(24px)' : 'none',
+        WebkitBackdropFilter: scrolled ? 'blur(24px)' : 'none',
+        borderBottom: scrolled ? '1px solid rgba(124,58,237,0.15)' : '1px solid transparent',
+      }}
     >
       <div className="max-w-7xl mx-auto px-6 h-full flex items-center">
 
-        {/* ── Column 1: Logo (Left) ─────────────────────────────────── */}
+        {/* ── Logo ─────────────────────────────────────────────────────────── */}
         <div className="flex-1 flex justify-start">
-          <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
-            <div className="w-9 h-9 rounded-lg bg-leta-primary flex items-center justify-center shadow-sm">
-              <Shield className="w-4 h-4 text-white" />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-heading font-bold text-lg leading-none tracking-tight text-leta-gray-900">
-                LETA <span className="text-leta-primary">TITAN</span>
-              </span>
-              <span className="text-[9px] font-bold uppercase tracking-[0.2em] mt-0.5 text-leta-gray-500">
-                SOVEREIGN AI
-              </span>
-            </div>
+          <Link to="/" className="flex items-center gap-1 group flex-shrink-0">
+            <span className="font-display font-bold text-xl tracking-tight text-white">
+              LETA
+            </span>
+            <span
+              className="font-display font-bold text-xl tracking-tight"
+              style={{ color: '#7C3AED' }}
+            >
+              TITAN
+            </span>
           </Link>
         </div>
 
-        {/* ── Column 2: Nav items (Center) ───────────────────────────── */}
-        <div className="hidden md:flex items-center gap-10">
-          {/* Domains dropdown */}
-          <div className="relative" ref={domainsMenuRef}>
-            <button
-              onClick={() => setDomainsOpen(v => !v)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-leta text-caption font-semibold transition-colors duration-200 ${
-                anyDomainActive ? 'text-leta-primary bg-leta-primary/5' : 'text-leta-gray-700 hover:text-leta-gray-900 hover:bg-leta-gray-50'
-              }`}
+        {/* ── Center Nav ───────────────────────────────────────────────────── */}
+        <div className="hidden md:flex items-center gap-8">
+          {NAV_LINKS.map(({ label, path }) => (
+            <Link
+              key={label}
+              to={path}
+              className="relative text-[13px] font-semibold transition-colors duration-200"
+              style={{ color: isActive(path) ? '#A78BFA' : '#94A3B8' }}
+              onMouseEnter={e => { if (!isActive(path)) e.currentTarget.style.color = '#CBD5E1'; }}
+              onMouseLeave={e => { if (!isActive(path)) e.currentTarget.style.color = '#94A3B8'; }}
             >
+              {label}
+              {isActive(path) && (
+                <motion.span
+                  layoutId="activeNavIndicator"
+                  className="absolute -bottom-1.5 left-0 right-0 h-[2px] rounded-full"
+                  style={{ background: 'linear-gradient(90deg, #7C3AED, #8B5CF6)' }}
+                />
+              )}
+            </Link>
+          ))}
+
+          {/* Modules dropdown */}
+          <div className="relative" ref={modulesRef}>
+            <button
+              onClick={() => setModulesOpen(v => !v)}
+              className="flex items-center gap-1.5 text-[13px] font-semibold transition-colors duration-200"
+              style={{ color: '#94A3B8' }}
+            >
+              <LayoutGrid size={14} />
               Modules
               <ChevronDown
-                size={14}
-                className={`transition-transform duration-200 ${domainsOpen ? 'rotate-180' : 'rotate-0'}`}
+                size={13}
+                className={`transition-transform duration-200 ${modulesOpen ? 'rotate-180' : ''}`}
               />
             </button>
 
-            {domainsOpen && (
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-60 rounded-leta py-2 z-50 bg-leta-gray-50 shadow-elevated border border-leta-gray-100">
+            {modulesOpen && (
+              <div
+                className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 rounded-2xl py-2 z-50"
+                style={{
+                  background: 'rgba(11,16,32,0.97)',
+                  border: '1px solid rgba(124,58,237,0.2)',
+                  backdropFilter: 'blur(24px)',
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.7), 0 0 40px rgba(124,58,237,0.1)',
+                }}
+              >
                 <div className="px-4 py-2 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-leta-gray-500">Sovereign Modules</span>
+                  <span className="text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: 'rgba(124,58,237,0.7)' }}>
+                    Sovereign Modules
+                  </span>
                 </div>
-                {DOMAINS.map(({ label, path, icon: Icon }) => (
+                {MODULES.map(({ label, path, icon: Icon, status }) => (
                   <Link
                     key={path}
                     to={path}
-                    onClick={() => setDomainsOpen(false)}
-                    className={`flex items-center gap-4 px-5 py-3 text-caption font-medium transition-colors duration-200 ${
-                      isActive(path) 
-                        ? 'text-leta-primary bg-leta-primary/5' 
-                        : 'text-leta-gray-700 hover:bg-leta-gray-50 hover:text-leta-gray-900'
-                    }`}
+                    onClick={() => setModulesOpen(false)}
+                    className="flex items-center justify-between px-4 py-3 text-[13px] font-medium transition-colors duration-200"
+                    style={{
+                      color: isActive(path) ? '#A78BFA' : '#94A3B8',
+                      background: isActive(path) ? 'rgba(124,58,237,0.08)' : 'transparent',
+                    }}
+                    onMouseEnter={e => { if (!isActive(path)) { e.currentTarget.style.background = 'rgba(124,58,237,0.06)'; e.currentTarget.style.color = '#CBD5E1'; } }}
+                    onMouseLeave={e => { if (!isActive(path)) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94A3B8'; } }}
                   >
-                    <Icon size={16} className={isActive(path) ? 'animate-pulse' : ''} />
-                    {label}
+                    <div className="flex items-center gap-3">
+                      <Icon size={15} />
+                      {label}
+                    </div>
+                    {status === 'LIVE' ? (
+                      <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider" style={{ color: '#A78BFA' }}>
+                        <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#A78BFA' }} />
+                        Live
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
+                        Soon
+                      </span>
+                    )}
                   </Link>
                 ))}
               </div>
             )}
           </div>
-
-          {/* Static nav links */}
-          {NAV_LINKS.map(({ label, path }) => (
-            <Link
-              key={path}
-              to={path}
-              className={`relative px-2 py-1 text-caption font-semibold transition-colors duration-200 ${
-                isActive(path) ? 'text-leta-primary' : 'text-leta-gray-700 hover:text-leta-gray-900'
-              }`}
-            >
-              {label}
-              {isActive(path) && (
-                <motion.span
-                  layoutId="activeNav"
-                  className="absolute -bottom-2 left-0 right-0 h-[2px] bg-leta-primary rounded-full"
-                />
-              )}
-            </Link>
-          ))}
         </div>
 
-        {/* ── Column 3: Right side ────────────────────────────────────── */}
-        <div className="flex-1 flex justify-end items-center gap-4">
-
+        {/* ── Right Side ───────────────────────────────────────────────────── */}
+        <div className="flex-1 flex justify-end items-center gap-3">
           {isLoggedIn ? (
-            <div className="relative" ref={userMenuRef}>
+            <div className="relative" ref={userRef}>
               <button
                 onClick={() => setUserOpen(v => !v)}
-                className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-leta border border-leta-gray-200 hover:border-leta-gray-300 hover:bg-leta-gray-50 transition-colors duration-200"
+                className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl transition-all duration-200"
+                style={{
+                  border: '1px solid rgba(124,58,237,0.25)',
+                  background: 'rgba(124,58,237,0.06)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(124,58,237,0.5)'; e.currentTarget.style.boxShadow = '0 0 15px rgba(124,58,237,0.2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(124,58,237,0.25)'; e.currentTarget.style.boxShadow = 'none'; }}
               >
-                <div className="w-7 h-7 rounded-md bg-leta-primary text-white flex items-center justify-center text-xs font-bold">
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black text-white"
+                  style={{ background: 'linear-gradient(135deg, #7C3AED, #5B21B6)' }}
+                >
                   {initials}
                 </div>
-                <span className="text-caption font-semibold text-leta-gray-900 hidden sm:block">
+                <span className="text-[13px] font-semibold hidden sm:block" style={{ color: '#CBD5E1' }}>
                   {displayName.split(' ')[0]}
                 </span>
-                <ChevronDown size={14} className={`text-leta-gray-500 transition-transform ${userOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown
+                  size={13}
+                  className={`transition-transform ${userOpen ? 'rotate-180' : ''}`}
+                  style={{ color: '#475569' }}
+                />
               </button>
 
               {userOpen && (
-                <div className="absolute top-full right-0 mt-3 w-56 bg-leta-gray-50 rounded-leta py-2 shadow-elevated border border-leta-gray-100 z-50">
-                  <div className="px-4 py-3 border-b border-leta-gray-100">
-                    <p className="text-caption font-bold text-leta-gray-900 truncate">{displayName}</p>
-                    {subLabel && <p className="text-xs text-leta-gray-500 truncate mt-0.5">{subLabel}</p>}
+                <div
+                  className="absolute top-full right-0 mt-3 w-56 rounded-2xl py-2 z-50"
+                  style={{
+                    background: 'rgba(11,16,32,0.97)',
+                    border: '1px solid rgba(124,58,237,0.2)',
+                    backdropFilter: 'blur(24px)',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.7)',
+                  }}
+                >
+                  <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.1)' }}>
+                    <p className="text-[13px] font-bold truncate" style={{ color: '#E2E8F0' }}>{displayName}</p>
+                    {subLabel && <p className="text-xs truncate mt-0.5" style={{ color: '#475569' }}>{subLabel}</p>}
                     {user?.role === 'admin' && (
-                      <span className="inline-block mt-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-leta-primary/10 text-leta-primary">
+                      <span
+                        className="inline-block mt-1.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
+                        style={{ background: 'rgba(124,58,237,0.15)', color: '#A78BFA' }}
+                      >
                         Admin
                       </span>
                     )}
                   </div>
                   <button
                     onClick={() => { setUserOpen(false); navigate('/settings'); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-caption font-medium text-leta-gray-700 hover:text-leta-gray-900 hover:bg-leta-gray-50 transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[13px] font-medium transition-colors text-left"
+                    style={{ color: '#94A3B8' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(124,58,237,0.06)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent'; }}
                   >
                     <Settings size={14} /> Settings
                   </button>
                   <button
                     onClick={handleSignOut}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-caption font-medium text-leta-gray-700 hover:text-leta-error hover:bg-leta-error/5 transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[13px] font-medium transition-colors text-left"
+                    style={{ color: '#94A3B8' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.06)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent'; }}
                   >
                     <LogOut size={14} /> Sign Out
                   </button>
@@ -199,8 +258,16 @@ const Navbar = () => {
             </div>
           ) : (
             <Link to={ROUTES.LOGIN}>
-              <button className="px-4 py-2 bg-leta-primary text-white rounded-leta text-caption font-semibold hover:opacity-90 transition-opacity shadow-sm">
-                Sign In
+              <button
+                className="px-5 py-2 rounded-xl text-[13px] font-bold text-white transition-all duration-200"
+                style={{
+                  background: 'linear-gradient(135deg, #7C3AED, #5B21B6)',
+                  boxShadow: '0 0 20px rgba(124,58,237,0.4)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 0 35px rgba(124,58,237,0.65)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 0 20px rgba(124,58,237,0.4)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+              >
+                Connect Portal
               </button>
             </Link>
           )}

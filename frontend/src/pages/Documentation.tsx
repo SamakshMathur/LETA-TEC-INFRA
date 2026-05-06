@@ -31,11 +31,11 @@ const Documentation: React.FC = () => (
       <div className="text-center mb-14">
         <h1
           className="font-display font-bold text-4xl mb-3 tracking-tight uppercase"
-          style={{ color: '#111827' }}
+          style={{ color: '#e5e2e1' }}
         >
           LETA TITAN Knowledge Ops
         </h1>
-        <p className="font-mono text-xs tracking-widest uppercase" style={{ color: '#4B5563' }}>
+        <p className="font-mono text-xs tracking-widest uppercase" style={{ color: '#9a9a9a' }}>
           Secure statutory repository &amp; AI-powered legal intelligence network.
         </p>
       </div>
@@ -62,13 +62,13 @@ const Documentation: React.FC = () => (
               className="w-11 h-11 rounded-leta flex items-center justify-center transition-colors"
               style={{ backgroundColor: 'var(--surface-container-lowest)' }}
             >
-              <Icon size={20} style={{ color: '#4B5563' }} />
+              <Icon size={20} style={{ color: '#9a9a9a' }} />
             </div>
             <div>
-              <h3 className="font-semibold text-lg mb-2 transition-colors" style={{ color: '#111827' }}>
+              <h3 className="font-semibold text-lg mb-2 transition-colors" style={{ color: '#e5e2e1' }}>
                 {title}
               </h3>
-              <p className="text-sm font-light leading-relaxed" style={{ color: '#4B5563' }}>
+              <p className="text-sm font-light leading-relaxed" style={{ color: '#9a9a9a' }}>
                 {desc}
               </p>
             </div>

@@ -32,9 +32,9 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
               Secure Access
             </span>
             {implDate && (
-              <span className="text-xs font-mono" style={{ color: '#4B5563' }}>
+              <span className="text-xs font-mono" style={{ color: '#9a9a9a' }}>
                 Effective{' '}
-                <span style={{ color: '#111827', fontWeight: 500 }}>{implDate}</span>
+                <span style={{ color: '#e5e2e1', fontWeight: 500 }}>{implDate}</span>
               </span>
             )}
           </div>
@@ -42,7 +42,7 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
           {/* h1 — Orbitron */}
           <h1
             className="font-display font-bold text-3xl md:text-4xl tracking-tight mb-5"
-            style={{ color: '#111827' }}
+            style={{ color: '#e5e2e1' }}
           >
             {title}
           </h1>
@@ -54,7 +54,7 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
                 className="w-1 flex-shrink-0 rounded-full"
                 style={{ backgroundColor: 'var(--primary-container)' }}
               />
-              <p className="text-base font-light leading-relaxed" style={{ color: '#4B5563' }}>
+              <p className="text-base font-light leading-relaxed" style={{ color: '#9a9a9a' }}>
                 {definition}
               </p>
             </div>
@@ -90,7 +90,7 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
                     <FileText className="w-5 h-5" />
                     Litigation Support
                   </h2>
-                  <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#4B5563' }}>
+                  <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#9a9a9a' }}>
                     Access 500+ litigation templates, notices, refunds, and appeals.
                     Match your scenario instantly.
                   </p>

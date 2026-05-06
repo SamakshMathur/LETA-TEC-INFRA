@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Download, Copy, Loader2, FileText, User, Sparkles, AlertCircle, Trash2, CheckCircle2, Zap, Share2 } from 'lucide-react';
+import { ArrowLeft, Send, Download, Copy, Loader2, FileText, User, Sparkles, CheckCircle2, Zap, Share2 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
 
 const TemplateCustomization: React.FC = () => {
@@ -37,7 +37,7 @@ const TemplateCustomization: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
     if (!inputValue.trim() || isGenerating) return;
 
@@ -244,7 +244,7 @@ const TemplateCustomization: React.FC = () => {
           )}
 
           {/* Real-world Paper Physics Simulation / Document Layer */}
-          <div className="flex-1 max-w-4xl mx-auto w-full overflow-y-auto custom-scrollbar bg-leta-white shadow-[0_40px_100px_rgba(0,0,0,0.6)] rounded-leta p-16 md:p-24 text-leta-gray-900 leading-[1.8] font-serif transition-all duration-700 relative hover:shadow-[0_60px_120px_rgba(0,0,0,0.7)] group/doc">
+          <div className="flex-1 max-w-4xl mx-auto w-full overflow-y-auto custom-scrollbar bg-[#f5f3f0] shadow-[0_40px_100px_rgba(0,0,0,0.6)] rounded-leta p-16 md:p-24 text-[#1a1a1a] leading-[1.8] font-serif transition-all duration-700 relative hover:shadow-[0_60px_120px_rgba(0,0,0,0.7)] group/doc">
             
             {/* Watermark */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-[0.03] rotate-[30deg] select-none text-9xl font-black">
