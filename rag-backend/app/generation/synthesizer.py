@@ -375,7 +375,7 @@ def synthesize_answer_stream(question: str, context: str):
     is_draft_request = any(kw in question.lower() for kw in ["draft", "notice", "reply", "appeal", "submission", "advisory"])
 
     if is_draft_request:
-        response_mode, prompt_template, max_tokens = "draft", DRAFTING_PROMPT, 2000
+        response_mode, prompt_template, max_tokens = "draft", DRAFTING_PROMPT, 4000
     elif LLM_PROVIDER == "anthropic":
         response_mode, prompt_template, max_tokens = _select_response_mode(complexity)
     else:

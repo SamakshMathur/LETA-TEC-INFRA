@@ -18,7 +18,7 @@ services:
       - key: CLAUDE_THINKING_BUDGET
         value: "500"
       - key: CLAUDE_MAX_TOKENS
-        value: "2500"
+        value: "4000"
 
       # ── Embedding ─────────────────────────────────────────────────────────────
       - key: EMBEDDING_PROVIDER
