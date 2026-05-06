@@ -68,7 +68,7 @@ const GstTemplates: React.FC = () => {
            <div className="flex flex-wrap gap-4 mb-16">
               <button 
                 onClick={() => fetchTemplates('ITC mismatch')}
-                className="flex items-center gap-3 bg-leta-white text-leta-black px-8 py-4 rounded-leta font-bold text-lg hover:bg-leta-white/90 transition-all active:scale-95 shadow-2xl"
+                className="flex items-center gap-3 bg-leta-white text-leta-black px-8 py-4 rounded-leta font-bold text-lg hover:opacity-90 transition-opacity shadow-2xl"
               >
                  <Zap size={24} fill="black" /> Get Started
               </button>

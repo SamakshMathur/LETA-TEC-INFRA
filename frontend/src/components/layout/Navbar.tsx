@@ -69,7 +69,7 @@ const Navbar = () => {
   return (
     <nav
       className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 border-b border-transparent ${
-        scrolled ? 'bg-leta-white/90 backdrop-blur-md border-leta-gray-100 shadow-sm' : 'bg-transparent'
+        scrolled ? 'bg-[#0a0a0a]/90 backdrop-blur-md border-leta-gray-100 shadow-sm' : 'bg-transparent'
       }`}
       style={{ height: scrolled ? '64px' : '84px' }}
     >
@@ -110,7 +110,7 @@ const Navbar = () => {
             </button>
 
             {domainsOpen && (
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-60 rounded-leta py-2 z-50 bg-leta-white shadow-elevated border border-leta-gray-100">
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-60 rounded-leta py-2 z-50 bg-leta-gray-50 shadow-elevated border border-leta-gray-100">
                 <div className="px-4 py-2 mb-1">
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-leta-gray-500">Sovereign Modules</span>
                 </div>
@@ -172,7 +172,7 @@ const Navbar = () => {
               </button>
 
               {userOpen && (
-                <div className="absolute top-full right-0 mt-3 w-56 bg-leta-white rounded-leta py-2 shadow-elevated border border-leta-gray-100 z-50">
+                <div className="absolute top-full right-0 mt-3 w-56 bg-leta-gray-50 rounded-leta py-2 shadow-elevated border border-leta-gray-100 z-50">
                   <div className="px-4 py-3 border-b border-leta-gray-100">
                     <p className="text-caption font-bold text-leta-gray-900 truncate">{displayName}</p>
                     {subLabel && <p className="text-xs text-leta-gray-500 truncate mt-0.5">{subLabel}</p>}

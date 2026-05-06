@@ -148,7 +148,7 @@ const AdminTemplateDashboard: React.FC = () => {
                   className={`
                     flex items-center px-8 py-3 border border-transparent text-base font-medium rounded-leta shadow-lg
                     text-leta-black bg-sentinel-green hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sentinel-green focus:ring-offset-black transition-all duration-300
-                    ${isUploading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-105'}
+                    ${isUploading ? 'opacity-70 cursor-not-allowed' : ''}
                   `}
                 >
                   {isUploading ? (

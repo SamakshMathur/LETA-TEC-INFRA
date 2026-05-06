@@ -272,7 +272,7 @@ const AdminUploadPortal: React.FC = () => {
               className={`w-full py-3.5 rounded-leta text-sm font-semibold text-leta-gray-900 transition-all ${
                 uploading || !fileQueue.length
                   ? 'bg-leta-gray-700/60 cursor-not-allowed opacity-50'
-                  : 'bg-sentinel-green hover:bg-[#096646] shadow-lg shadow-sentinel-green/20 hover:shadow-sentinel-green/30 hover:scale-[1.01]'
+                  : 'bg-sentinel-green hover:bg-[#096646] shadow-lg shadow-sentinel-green/20 hover:shadow-sentinel-green/30'
               }`}>
               {uploading ? (
                 <span className="flex items-center justify-center gap-2">

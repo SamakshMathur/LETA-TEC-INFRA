@@ -124,7 +124,7 @@ const TemplateCustomization: React.FC = () => {
           {generatedDraft && (
              <button 
                onClick={handleDownload}
-               className="flex items-center gap-3 bg-leta-white text-leta-black px-6 py-2.5 rounded-leta text-[10px] font-black tracking-widest uppercase hover:bg-emerald-50 transition-all active:scale-95 shadow-[0_4px_20px_rgba(0, 0, 0, 0.05)]"
+               className="flex items-center gap-3 bg-leta-white text-leta-black px-6 py-2.5 rounded-leta text-[10px] font-black tracking-widest uppercase hover:opacity-90 transition-opacity shadow-[0_4px_20px_rgba(0,0,0,0.05)]"
              >
                <Download size={16} /> EXPORT .DOCX
              </button>
@@ -208,7 +208,7 @@ const TemplateCustomization: React.FC = () => {
                 <button 
                   type="submit"
                   disabled={!inputValue.trim() || isGenerating}
-                  className="absolute right-4 bottom-4 w-10 h-10 bg-emerald-600 text-leta-gray-900 rounded-leta hover:bg-emerald-500 transition-all disabled:opacity-30 disabled:grayscale flex items-center justify-center shadow-lg active:scale-90"
+                  className="absolute right-4 bottom-4 w-10 h-10 bg-emerald-600 text-leta-gray-900 rounded-leta hover:bg-emerald-500 transition-colors disabled:opacity-30 disabled:grayscale flex items-center justify-center shadow-lg"
                 >
                   <Send size={18} />
                 </button>
