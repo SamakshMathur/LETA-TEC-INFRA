@@ -4,98 +4,103 @@ import { Lock, Shield, Server, FileKey } from 'lucide-react';
 
 const SecuritySection = () => {
   return (
-    <section className="relative py-32 bg-[#FFFFFF] overflow-hidden border-t border-leta-gray-100">
-      {/* Background Ambience */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(11,115,80,0.03),transparent_70%)] pointer-events-none" />
-      
-      {/* Encryption Hash Scrolling Background */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none overflow-hidden flex flex-col gap-8">
-         {[...Array(5)].map((_, i) => (
-             <motion.div 
-                key={i}
-                initial={{ x: -1000 }}
-                animate={{ x: 1000 }}
-                transition={{ duration: 30 + i * 5, repeat: Infinity, ease: "linear" }}
-                className="text-[10px] font-mono text-sentinel-green whitespace-nowrap"
-             >
-                0x7F4A...3B9C // AES-256 // ENCRYPTED_PACKET // 0x8A1B...4C2D // SECURE_CHANNEL // HANDSHAKE_VERIFIED
-             </motion.div>
-         ))}
+    <section className="relative py-[140px] bg-[#070B11] overflow-hidden border-t border-white/[0.05]">
+
+      {/* Scrolling encryption hash bg */}
+      <div className="absolute inset-0 opacity-[0.015] pointer-events-none overflow-hidden flex flex-col gap-8 justify-center">
+        {[...Array(5)].map((_, i) => (
+          <motion.div
+            key={i}
+            initial={{ x: -1200 }}
+            animate={{ x: 1200 }}
+            transition={{ duration: 30 + i * 5, repeat: Infinity, ease: 'linear' }}
+            className="text-[10px] font-mono whitespace-nowrap text-white"
+          >
+            0x7F4A...3B9C // AES-256 // ENCRYPTED_PACKET // 0x8A1B...4C2D // SECURE_CHANNEL // HANDSHAKE_VERIFIED
+          </motion.div>
+        ))}
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        
+      {/* Ambient glow */}
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_30%_50%,rgba(79,183,197,0.01)_0%,transparent_60%)]" />
+
+      <div className="w-full px-10 lg:px-20 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            {/* Left Column: Brand & Headline */}
-            <div className="text-left">
-                {/* Animated Vault Icon - Left Aligned */}
-                <div className="relative inline-block mb-8">
-                    <div className="absolute inset-0 animate-ping opacity-20 rounded-full border border-sentinel-green" />
-                    <div className="w-20 h-20 rounded-full bg-[#F9FAFB] border border-sentinel-green/30 flex items-center justify-center relative z-10 shadow-[0_0_40px_rgba(11,115,80,0.1)]">
-                        <Shield size={32} className="text-sentinel-green" strokeWidth={1.5} />
-                        <motion.div 
-                            animate={{ opacity: [0, 1, 0] }}
-                            transition={{ duration: 2, repeat: Infinity }}
-                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                        >
-                            <Lock size={16} className="text-leta-gray-900 fill-white" />
-                        </motion.div>
-                    </div>
-                </div>
 
-                <h2 className="text-4xl md:text-6xl font-bold text-leta-gray-900 mb-6 font-sans tracking-tight leading-tight">
-                    Confidentiality First. <br/>
-                    <span className="text-leta-gray-500">Always.</span>
-                </h2>
-                
-                <p className="text-leta-gray-600 text-lg leading-relaxed font-light mb-8 font-mono max-w-xl border-l-2 border-sentinel-green/30 pl-6">
-                    Sentinel.AI is architected with a profound understanding of the fiduciary obligations carried by tax and legal practitioners.
-                </p>
-
-                {/* Security Badges - Aligned Left */}
-                <div className="flex flex-wrap gap-3">
-                    <div className="px-3 py-1.5 border border-leta-gray-200 rounded-leta flex items-center gap-2 bg-leta-gray-50 text-[10px] font-mono text-leta-gray-600 uppercase tracking-wider">
-                        <Server size={12} className="text-sentinel-green" />
-                        <span>ISOLATED_ENV</span>
-                    </div>
-                    <div className="px-3 py-1.5 border border-leta-gray-200 rounded-leta flex items-center gap-2 bg-leta-gray-50 text-[10px] font-mono text-leta-gray-600 uppercase tracking-wider">
-                        <FileKey size={12} className="text-sentinel-green" />
-                        <span>AES_256</span>
-                    </div>
-                    <div className="px-3 py-1.5 border border-leta-gray-200 rounded-leta flex items-center gap-2 bg-leta-gray-50 text-[10px] font-mono text-leta-gray-600 uppercase tracking-wider">
-                        <Shield size={12} className="text-sentinel-green" />
-                        <span>ZERO_LOGS</span>
-                    </div>
-                </div>
+          {/* Left: Headline */}
+          <div className="text-left">
+            {/* Animated vault icon */}
+            <div className="relative inline-block mb-8">
+              <div className="absolute inset-0 animate-pulse opacity-20 rounded-full border border-white/[0.05]" />
+              <div className="w-20 h-20 rounded-full flex items-center justify-center relative z-10 border border-white/[0.06] bg-white/[0.01]">
+                <Shield size={30} className="text-[#4FB7C5]" strokeWidth={1.5} />
+                <motion.div
+                  animate={{ opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                >
+                  <Lock size={14} className="text-[#4FB7C5]" />
+                </motion.div>
+              </div>
             </div>
 
-            {/* Right Column: Detail Box */}
-            <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                className="bg-[#F9FAFB] border border-leta-gray-100 p-10 rounded-leta relative overflow-hidden group hover:border-sentinel-green/20 transition-all duration-300"
-            >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-sentinel-green/5 to-transparent rounded-leta-bl-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                
-                {/* Corner Markers */}
-                <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-leta-gray-300 group-hover:border-sentinel-green transition-colors" />
-                <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-leta-gray-300 group-hover:border-sentinel-green transition-colors" />
+            <h2 className="text-4xl md:text-6xl font-bold text-[#F4F7FA] mb-6 font-display tracking-tight leading-tight uppercase">
+              Confidentiality First. <br />
+              <span className="text-[#6C7A99]">Always.</span>
+            </h2>
 
-                <div className="mb-6 flex items-center gap-2 text-sentinel-green font-mono text-xs uppercase tracking-widest">
-                    <div className="w-1.5 h-1.5 rounded-full bg-sentinel-green animate-pulse" />
-                     Secure Enclave Active
+            <p className="text-lg leading-relaxed font-light mb-8 font-sans max-w-xl pl-6 border-l-2 border-[#4FB7C5]/30 text-[#A7B3C2]">
+              LETA Titan is architected with a profound understanding of the fiduciary
+              obligations carried by tax and legal practitioners.
+            </p>
+
+            {/* Security badges */}
+            <div className="flex flex-wrap gap-3">
+              {[
+                { Icon: Server,  label: 'ISOLATED_ENV' },
+                { Icon: FileKey, label: 'AES_256' },
+                { Icon: Shield,  label: 'ZERO_LOGS' },
+              ].map(({ Icon, label }) => (
+                <div
+                  key={label}
+                  className="px-3 py-1.5 rounded-lg flex items-center gap-2 text-[10px] font-sans font-semibold uppercase tracking-wider border border-white/[0.06] bg-[#0F1722] text-[#4FB7C5]"
+                >
+                  <Icon size={11} />
+                  <span>{label}</span>
                 </div>
+              ))}
+            </div>
+          </div>
 
-                <p className="text-leta-gray-600 mb-6 relative z-10 leading-8 text-[15px]">
-                    Every interaction—be it a query, document upload, or draft generation—remains <span className="text-leta-gray-900 font-semibold">strictly confidential</span> and isolated. Your data is never shared, repurposed, or used for model training without explicit consent.
-                </p>
-                <p className="text-leta-gray-600 relative z-10 leading-8 text-[15px]">
-                    All documents are stored effectively in <span className="text-leta-gray-900 font-semibold">AES-256 encrypted</span> silos with role-based access controls (RBAC) that meet the highest enterprise security standards.
-                </p>
-            </motion.div>
+          {/* Right: Detail box */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            className="relative overflow-hidden group transition-all duration-300 rounded-leta p-10 bg-[#0F1722] border border-white/[0.04] shadow-2xl hover:border-[#4FB7C5]/18"
+          >
+            {/* Corner markers */}
+            <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-[#4FB7C5]/20 group-hover:border-[#4FB7C5]/40 transition-colors duration-300" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-[#4FB7C5]/20 group-hover:border-[#4FB7C5]/40 transition-colors duration-300" />
+
+            <div className="mb-6 flex items-center gap-2 font-sans text-xs font-semibold uppercase tracking-widest text-[#4FB7C5]">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Secure Enclave Active
+            </div>
+
+            <p className="mb-6 relative z-10 leading-8 text-[15px] text-[#A7B3C2]">
+              Every interaction—be it a query, document upload, or draft generation—remains{' '}
+              <span className="font-semibold text-[#4FB7C5]">strictly confidential</span>{' '}
+              and isolated. Your data is never shared, repurposed, or used for model training without explicit consent.
+            </p>
+            <p className="relative z-10 leading-8 text-[15px] text-[#A7B3C2]">
+              All documents are stored effectively in{' '}
+              <span className="font-semibold text-[#4FB7C5]">AES-256 encrypted</span>{' '}
+              silos with role-based access controls (RBAC) that meet the highest enterprise security standards.
+            </p>
+          </motion.div>
+
         </div>
-
       </div>
     </section>
   );

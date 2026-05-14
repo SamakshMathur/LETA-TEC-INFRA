@@ -426,10 +426,36 @@ async def ask_question(request: Request, req: QuestionRequest):
             )
 
     async def rag_pipeline_orchestrator():
-        # --- Pulse 1: Analyzer Initialize (~100ms) ---
-        yield f"__STATUS__:{json.dumps({'msg': 'Initializing Statutory Analyzer...'})}__END_STATUS__"
-        
-        # 1. Fetch History if Session ID exists
+        # ── Stage 1: Query classifier + domain router (pure keyword, <1ms) ──────
+        from app.routing.router import route_query
+        from app.generation.synthesizer import _estimate_complexity
+        from app.generation.calculation_engine import detect_and_calculate, format_for_context
+        from app.generation.context_compressor import compress_context
+
+        route = route_query(question)
+        domain_paths = route.get("domain_paths", [])
+        _complexity = _estimate_complexity(question)
+
+        # Query-aware Pulse 1 message
+        _q = question.lower()
+        if "rule 42" in _q or "rule42" in _q:
+            _init_msg = "Computing Rule 42 ITC Reversal..."
+        elif "rule 43" in _q or "rule43" in _q:
+            _init_msg = "Computing Rule 43 Capital Goods Reversal..."
+        elif any(k in _q for k in ["itc", "input tax credit", "section 16", "section 17"]):
+            _init_msg = "Analyzing ITC Eligibility Provisions..."
+        elif any(k in _q for k in ["draft", "notice", "reply", "appeal", "submission"]):
+            _init_msg = "Initializing Statutory Drafting Engine..."
+        elif any(k in _q for k in ["refund", "export", "lut"]):
+            _init_msg = "Checking Refund & Export Provisions..."
+        elif any(k in _q for k in ["interest", "section 50", "penalty"]):
+            _init_msg = "Computing Interest & Penalty Exposure..."
+        else:
+            _init_msg = "Initializing Statutory Analyzer..."
+
+        yield f"__STATUS__:{json.dumps({'msg': _init_msg})}__END_STATUS__"
+
+        # 1. Fetch session history
         history_context = ""
         if session_id:
             collection = get_session_collection()
@@ -440,36 +466,33 @@ async def ask_question(request: Request, req: QuestionRequest):
                     for msg in recent:
                         history_context += f"{msg['role'].upper()}: {msg['content']}\n"
 
-        # ── Fast local routing (keyword-only, no LLM call) ──
-        from app.routing.router import route_query
-        route = route_query(question)
-        domain = route.get("domain", "general")
-
-        # ── Cache lookup (L1 exact + L2 semantic) ────────────────────────────────
+        # ── Stage 2: Cache lookup (L1 exact + L2 semantic) ───────────────────────
         from app.cache import cache_lookup
         from app.retrieval.retriever import embed_query
-        
-        yield f"__STATUS__:{json.dumps({'msg': f'Scanning Semantic Cache for {domain.upper()}...'})}__END_STATUS__"
+
+        yield f"__STATUS__:{json.dumps({'msg': 'Scanning Semantic Cache...'})}__END_STATUS__"
         query_vec = embed_query(question)
         cached_answer = cache_lookup(question, query_vec)
-        
+
         if cached_answer:
             cached_text, cached_sources = cached_answer
             _ask_logger.info("Cache HIT", extra={"query_id": query_id, "cache_hit": True})
-            yield f"__STATUS__:{json.dumps({'msg': 'Instant Statutory Retrieval Complete.'})}__END_STATUS__"
+            yield f"__STATUS__:{json.dumps({'msg': 'Cache Hit — Instant Retrieval Complete.'})}__END_STATUS__"
             if cached_sources:
-                import json as _json
-                yield f"__METADATA__:{_json.dumps({'type': 'metadata', 'sources': cached_sources})}__END_METADATA__"
+                yield f"__METADATA__:{json.dumps({'type': 'metadata', 'sources': cached_sources})}__END_METADATA__"
             yield cached_text
             return
 
-        # --- Pulse 2: Expansion (only for very complex multi-section queries) ---
-        # Threshold raised 0.25 → 0.70: query expansion is a blocking Haiku API
-        # call (~3-5s). Skip it for everything except complex drafting / disputes.
-        from app.generation.synthesizer import _estimate_complexity
-        _complexity = _estimate_complexity(question)
-        if _complexity >= 0.70:
-            yield f"__STATUS__:{json.dumps({'msg': 'Deep Legal Analysis Mode...'})}__END_STATUS__"
+        # ── Stage 3: Pre-computed calculation injection (deterministic, <1ms) ────
+        calc_result = detect_and_calculate(question)
+        calc_block = format_for_context(calc_result) if calc_result else ""
+        if calc_result:
+            yield f"__STATUS__:{json.dumps({'msg': 'Pre-computing Statutory Formula...'})}__END_STATUS__"
+
+        # ── Stage 4: Query expansion — only for deeply complex queries ────────────
+        # Blocking Haiku API call (~3-5s). Only justified at complexity ≥ 0.80.
+        if _complexity >= 0.80:
+            yield f"__STATUS__:{json.dumps({'msg': 'Deep Legal Analysis Mode — Expanding Query...'})}__END_STATUS__"
             from app.retrieval.query_refiner import generate_advanced_queries
             advanced_queries = generate_advanced_queries(question)
             refined_q = advanced_queries.get("queries", [question])[0]
@@ -477,36 +500,51 @@ async def ask_question(request: Request, req: QuestionRequest):
             advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
             refined_q = question
 
-        # --- Pulse 3: Retrieval ---
-        yield f"__STATUS__:{json.dumps({'msg': f'Querying Statutory Provisions ({domain.upper()})...'})}__END_STATUS__"
+        # ── Stage 5: Targeted hybrid retrieval ────────────────────────────────────
+        domain_label = ", ".join(domain_paths[:2]) if domain_paths else "All Databases"
+        yield f"__STATUS__:{json.dumps({'msg': f'Querying Statutory Provisions ({domain_label})...'})}__END_STATUS__"
         retriever = get_retriever()
         chunks = retriever.search(
             query=refined_q,
             top_k=15,
             allowed_sources=route["use_sources"],
             advanced_queries=advanced_queries,
+            domain_paths=domain_paths,
         )
-        context = build_context(chunks)
 
-        # Append History to Context
-        full_rag_context = context
-        if history_context:
-            full_rag_context = f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" + context
+        # ── Stage 6: Context assembly — citation registry + compressed excerpts ───
+        # build_context() provides the citation registry (hallucination grounding).
+        # compress_context() provides the focused factual text block (speed).
+        citation_block = build_context(chunks)      # ~5 KB: registry + authority metadata
+        compressed_block = compress_context(chunks, question)  # ~9 KB: focused excerpts
 
-        # Build truth rules text for hallucination guard
+        full_rag_context = (
+            (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
+            + citation_block
+            + (f"\n\n{calc_block}" if calc_block else "")
+            + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
+            + compressed_block
+        )
+
         from app.generation.rules_engine import rules_engine
         truth_rules_text = rules_engine.get_all_rules_as_text()
 
-        # --- Pulse 4: Final Synthesis ---
-        yield f"__STATUS__:{json.dumps({'msg': 'Synthesizing Sovereign Legal Position...'})}__END_STATUS__"
-        
+        # ── Stage 7: Streaming LLM synthesis ──────────────────────────────────────
+        if any(k in _q for k in ["draft", "notice", "reply", "appeal", "submission"]):
+            _synth_msg = "Drafting Statutory Reply..."
+        elif _complexity >= 0.60:
+            _synth_msg = "Synthesizing Legal Position & Precedents..."
+        else:
+            _synth_msg = "Synthesizing Sovereign Legal Position..."
+
+        yield f"__STATUS__:{json.dumps({'msg': _synth_msg})}__END_STATUS__"
+
         from app.generation.synthesizer import synthesize_answer_stream
         response_stream = synthesize_answer_stream(question, full_rag_context)
 
-        # Wrap with full post-generation accuracy pipeline + cache store
         async for chunk in stream_and_save(
             response_stream, session_id, question,
-            chunks=chunks, context=context, truth_rules_text=truth_rules_text,
+            chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
             query_vec=query_vec,
         ):
             yield chunk
@@ -574,21 +612,33 @@ async def ask_question_with_file(
                 for msg in recent:
                     history_context += f"{msg['role'].upper()}: {msg['content']}\n"
     
-    # Retrieve standard context with Advanced Expansions
-    from app.retrieval.query_refiner import generate_advanced_queries
-    advanced_queries = generate_advanced_queries(question_text)
-    refined_q = advanced_queries.get("queries", [question_text])[0]
-    
-    route = route_query(refined_q)
+    # Route + optional query expansion (blocked Haiku call — skip for simple queries)
+    route = route_query(question_text)
+    from app.generation.synthesizer import _estimate_complexity
+    _file_complexity = _estimate_complexity(question_text)
+    if _file_complexity >= 0.80:
+        from app.retrieval.query_refiner import generate_advanced_queries
+        advanced_queries = generate_advanced_queries(question_text)
+        refined_q = advanced_queries.get("queries", [question_text])[0]
+    else:
+        advanced_queries = {"queries": [question_text], "hyde_document": "", "topic": "General", "subtopic": None}
+        refined_q = question_text
+
     retriever = get_retriever()
     chunks = retriever.search(
         query=refined_q,
-        top_k=50,
+        top_k=15,
         allowed_sources=route["use_sources"],
-        advanced_queries=advanced_queries
+        advanced_queries=advanced_queries,
+        domain_paths=route.get("domain_paths", []),
     )
     from app.generation.context_builder import build_context
-    rag_context = build_context(chunks)
+    from app.generation.context_compressor import compress_context
+    rag_context = (
+        build_context(chunks)
+        + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
+        + compress_context(chunks, question_text)
+    )
 
     # Combine File Content with RAG Context
     file_context = ""

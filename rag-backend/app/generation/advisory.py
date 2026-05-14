@@ -12,7 +12,6 @@ from app.config import (
     DATA_DIR
 )
 from app.generation.prompts.advisory_prompt import ADVISORY_SYSTEM_PROMPT
-from app.generation.prompts.intent_prompts import DEFINITION_PROMPT, RATE_PROMPT, COMPARISON_PROMPT
 from app.generation.pdf_report import PDFReportGenerator
 from app.routing.intent_classifier import classify_intent
 
@@ -65,22 +64,11 @@ def generate_legal_advisory(user_input: str, context: str, subject: str = "GST Q
         from .rules_engine import rules_engine
         rules_text = rules_engine.get_all_rules_as_text()
 
-        # Select Template
-        if query_type == "definition":
-            base_prompt = DEFINITION_PROMPT
-        elif query_type == "rate_classification":
-            base_prompt = RATE_PROMPT
-        elif query_type == "comparison":
-            base_prompt = COMPARISON_PROMPT
-        else:
-            # Default to full Advisory for section_advisory or others
-            base_prompt = ADVISORY_SYSTEM_PROMPT.format(
-                subject=subject,
-                rules_context=rules_text
-            )
-
-        # For non-advisory types, we might not need {rules_context} formatted into them if they are static.
-        # But ADVISORY_SYSTEM_PROMPT expects .format(). The others do not currently have placeholders.
+        # Select Template - Always use the full detailed Advisory template as requested by the user
+        base_prompt = ADVISORY_SYSTEM_PROMPT.format(
+            subject=subject,
+            rules_context=rules_text
+        )
         
         system_prompt = base_prompt
         

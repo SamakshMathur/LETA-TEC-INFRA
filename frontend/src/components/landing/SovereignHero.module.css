@@ -1,0 +1,588 @@
+.heroSection {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  padding-top: 140px;
+  padding-bottom: 80px;
+  overflow: hidden;
+  background-color: #050816; /* Base Matte Dark Surface */
+}
+
+/* LAYER 5 — SUBTLE NOISE OVERLAY (Extremely low opacity to feel expensive) */
+.bgNoiseOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* LAYER 2 — LARGE RADIAL VIGNETTE (Subtle center illumination) */
+.bgRadialVignette {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(
+    circle at center,
+    rgba(20, 40, 55, 0.28) 0%,
+    transparent 60%
+  );
+}
+
+/* LAYER 3 — EDGE DARKENING (Top and corners darker, movie cinematography) */
+.bgEdgeDarkening {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 3;
+  background: 
+    linear-gradient(to bottom, rgba(5, 8, 22, 0.8) 0%, transparent 15%),
+    linear-gradient(to top, rgba(5, 8, 22, 0.9) 0%, transparent 12%),
+    radial-gradient(circle at 0% 0%, rgba(5, 8, 22, 0.9) 0%, transparent 40%),
+    radial-gradient(circle at 100% 0%, rgba(5, 8, 22, 0.9) 0%, transparent 40%),
+    radial-gradient(circle at 0% 100%, rgba(5, 8, 22, 0.9) 0%, transparent 40%),
+    radial-gradient(circle at 100% 100%, rgba(5, 8, 22, 0.9) 0%, transparent 40%);
+}
+
+/* LAYER 4 — ATMOSPHERIC LIGHT SHAFTS (Vertical, very subtle soft gradients, opacity 2-4%) */
+.bgLightShaft1 {
+  position: absolute;
+  top: 0;
+  left: 25%;
+  width: 1px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(58, 130, 148, 0.03) 30%,
+    rgba(58, 130, 148, 0.04) 50%,
+    rgba(58, 130, 148, 0.03) 70%,
+    transparent 100%
+  );
+  filter: blur(80px);
+}
+
+.bgLightShaft2 {
+  position: absolute;
+  top: 0;
+  right: 25%;
+  width: 1px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(20, 40, 55, 0.04) 20%,
+    rgba(20, 40, 55, 0.06) 50%,
+    rgba(20, 40, 55, 0.04) 80%,
+    transparent 100%
+  );
+  filter: blur(100px);
+}
+
+/* LAYER 6 — DEPTH BLUR ORBS (Max 2, very large, extremely soft, steel blue & deep teal, opacity 2-4%) */
+.bgDepthBlurOrb1 {
+  position: absolute;
+  top: -10%;
+  left: 10%;
+  width: 700px;
+  height: 700px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(circle, rgba(58, 130, 148, 0.12) 0%, transparent 70%);
+  filter: blur(140px);
+  animation: driftOrb1 30s ease-in-out infinite alternate;
+}
+
+.bgDepthBlurOrb2 {
+  position: absolute;
+  bottom: -10%;
+  right: 15%;
+  width: 800px;
+  height: 800px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(circle, rgba(20, 40, 55, 0.18) 0%, transparent 70%);
+  filter: blur(160px);
+  animation: driftOrb2 35s ease-in-out infinite alternate;
+}
+
+@keyframes driftOrb1 {
+  0% { transform: translate(0px, 0px) scale(1); }
+  100% { transform: translate(50px, 30px) scale(1.05); }
+}
+
+@keyframes driftOrb2 {
+  0% { transform: translate(0px, 0px) scale(1); }
+  100% { transform: translate(-40px, -20px) scale(1.08); }
+}
+
+/* 1. Interactive Dot Grid Canvas */
+.interactiveDotGridCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 3. Atmospheric lighting falloff (upper-center illumination fading naturally into darkness) */
+.bgRadialFalloff {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 3;
+  background: radial-gradient(
+    ellipse at 50% 15%,
+    rgba(58, 130, 148, 0.08) 0%,
+    rgba(20, 40, 55, 0.04) 40%,
+    transparent 80%
+  );
+}
+
+/* 5. Ambient floating dust particles (extremely sparse, very slow movement, tiny and soft) */
+.dustParticlesContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 6;
+  overflow: hidden;
+}
+
+.dustParticle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  filter: blur(0.5px);
+}
+
+.dustParticle.p1 { top: 25%; left: 30%; animation: floatDust1 25s linear infinite; }
+.dustParticle.p2 { top: 60%; left: 70%; animation: floatDust2 30s linear infinite; }
+.dustParticle.p3 { top: 40%; left: 80%; animation: floatDust1 28s linear infinite; }
+.dustParticle.p4 { top: 15%; left: 60%; animation: floatDust2 32s linear infinite; }
+.dustParticle.p5 { top: 75%; left: 20%; animation: floatDust1 22s linear infinite; }
+.dustParticle.p6 { top: 35%; left: 45%; animation: floatDust2 26s linear infinite; }
+
+@keyframes floatDust1 {
+  0% { transform: translateY(0) translateX(0) scale(1); opacity: 0.05; }
+  50% { opacity: 0.25; }
+  100% { transform: translateY(-80px) translateX(40px) scale(1.2); opacity: 0.05; }
+}
+
+@keyframes floatDust2 {
+  0% { transform: translateY(0) translateX(0) scale(1); opacity: 0.05; }
+  50% { opacity: 0.2; }
+  100% { transform: translateY(-60px) translateX(-30px) scale(1.1); opacity: 0.05; }
+}
+
+.gridContainer {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+  position: relative;
+  z-index: 10;
+  width: 100%;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 920px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Left Column (Main content container) */
+.leftColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+.statusIndicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  background-color: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(12px);
+  margin-bottom: var(--space-4);
+}
+
+.pingDotContainer {
+  position: relative;
+  display: flex;
+  height: 8px;
+  width: 8px;
+}
+
+.pingDot {
+  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+  position: absolute;
+  display: inline-flex;
+  height: 100%;
+  width: 100%;
+  border-radius: 9999px;
+  background-color: var(--color-brand);
+  opacity: 0.75;
+}
+
+.staticDot {
+  position: relative;
+  display: inline-flex;
+  border-radius: 9999px;
+  height: 8px;
+  width: 8px;
+  background-color: var(--color-brand);
+}
+
+.statusText {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--color-brand);
+}
+
+.heroHeading {
+  font-family: inherit;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #FFFFFF;
+  letter-spacing: -0.04em;
+  margin-bottom: var(--space-4);
+  font-size: clamp(44px, 5.5vw, 76px);
+  line-height: 0.92;
+}
+
+.headingGradient {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-image: linear-gradient(135deg,
+      var(--color-brand) 0%,
+      rgba(94, 206, 220, 0.4) 40%,
+      var(--color-brand) 60%,
+      rgba(94, 206, 220, 0.4) 80%,
+      var(--color-brand) 100%);
+  background-size: 200% auto;
+  animation: gradientFlow 8s ease-in-out infinite;
+}
+
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% center;
+  }
+
+  50% {
+    background-position: 100% center;
+  }
+
+  100% {
+    background-position: 0% center;
+  }
+}
+
+.supportingCopy {
+  font-family: inherit;
+  font-size: var(--text-lg);
+  font-weight: 300;
+  color: var(--color-text-body);
+  margin-bottom: var(--space-5);
+  max-width: 620px;
+  line-height: 1.7;
+}
+
+@media (min-width: 768px) {
+  .supportingCopy {
+    font-size: 20px;
+  }
+}
+
+.ctaContainer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.ctaButtonPrimary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 32px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  font-size: 14px;
+  color: #000000;
+  background-color: var(--color-brand);
+  box-shadow: var(--shadow-button);
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.ctaButtonPrimary:hover {
+  background-color: var(--color-brand-hover);
+  box-shadow: var(--shadow-button-hover);
+}
+
+.chevronIcon {
+  transition: transform 0.3s ease;
+}
+
+.ctaButtonPrimary:hover .chevronIcon {
+  transform: translateX(4px);
+}
+
+.ctaButtonSecondary {
+  padding: 16px 32px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-body);
+  background-color: transparent;
+  cursor: pointer;
+}
+
+.ctaButtonSecondary:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
+}
+
+.trustBadges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 48px;
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  width: 100%;
+}
+
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badgeIcon {
+  color: var(--color-brand);
+}
+
+.badgeText {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+/* Right Column: Terminal Window */
+.rightColumn {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .rightColumn {
+    display: block;
+    grid-column: span 5 / span 5;
+  }
+}
+
+.terminalContainer {
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-bg-secondary);
+  box-shadow: 0 4px 40px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.terminalHeader {
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: rgba(255, 255, 255, 0.01);
+  border-b: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.windowControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+}
+
+.closeDot {
+  background-color: rgba(239, 68, 68, 0.2);
+}
+
+.minimizeDot {
+  background-color: rgba(245, 158, 11, 0.2);
+}
+
+.maximizeDot {
+  background-color: rgba(16, 185, 129, 0.2);
+}
+
+.terminalTitle {
+  margin-left: 8px;
+  font-family: monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.terminalBadge {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: rgba(79, 183, 197, 0.8);
+}
+
+.terminalBody {
+  padding: var(--space-4);
+  font-family: monospace;
+}
+
+.terminalSection {
+  margin-bottom: 24px;
+}
+
+.terminalSection:last-child {
+  margin-bottom: 0;
+}
+
+.telemetrySection {
+  padding-top: var(--space-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.telemetryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  font-size: var(--text-sm);
+  margin-top: 8px;
+}
+
+.telemetryLabel {
+  color: var(--color-text-muted);
+  font-size: 9px;
+}
+
+.telemetryValue {
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.diagnosticsBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  margin-top: 8px;
+}
+
+.diagnosticsTitle {
+  color: #FFFFFF;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 0;
+}
+
+.diagnosticsDesc {
+  font-size: 10px;
+  color: var(--color-text-heading-sec);
+  margin: 2px 0 0 0;
+}
+
+.diagnosticsBadge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: bold;
+  background-color: var(--color-brand-soft);
+  border: 1px solid var(--color-border-cyan);
+  color: var(--color-brand);
+}
+
+.comment {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  margin-bottom: 6px;
+}
+
+.promptText {
+  color: var(--color-text-heading);
+  font-size: var(--text-sm);
+  margin: 4px 0;
+}
+
+.promptTextHighlight {
+  color: var(--color-brand);
+}
+
+@keyframes ping {
+
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
