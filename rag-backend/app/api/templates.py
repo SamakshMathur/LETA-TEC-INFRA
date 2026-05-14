@@ -64,15 +64,22 @@ class TemplateResponse(BaseModel):
             score=score
         )
 
+class EnhanceRequest(BaseModel):
+    current_content: str
+    instructions: Optional[str] = None
+
 # --- Endpoints ---
 
 @router.get("/search")
 async def search_templates(
     query: Optional[str] = None, 
+    category: Optional[str] = None,
+    sub_category: Optional[str] = None,
+    stage: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    SOTA Semantic Search for Litigation Templates.
-    Generates query embeddings and ranks documents by cosine similarity.
+    SOTA Semantic Search for Litigation Templates with Metadata Filtering.
+    Generates query embeddings, filters metadata, and ranks documents by cosine similarity.
     """
     collection = get_template_collection()
     if collection is None:
@@ -80,12 +87,21 @@ async def search_templates(
 
     result_groups = []
 
+    # Build DB filter query
+    filter_query = {}
+    if category and category != "All":
+        filter_query["category"] = category
+    if sub_category:
+        filter_query["sub_category"] = sub_category
+    if stage:
+        filter_query["stage"] = stage
+
     if query:
         # 1. Generate Query Embedding
         query_vector = embed_texts([query])[0]
         
-        # 2. Fetch templates with embeddings
-        all_docs = list(collection.find({}, {"embedding": 1, "title": 1, "category": 1, "sub_category": 1, "stage": 1, "keywords": 1, "summary": 1}))
+        # 2. Fetch templates with embeddings matching any category filter
+        all_docs = list(collection.find(filter_query, {"embedding": 1, "title": 1, "category": 1, "sub_category": 1, "stage": 1, "keywords": 1, "summary": 1}))
         
         if not all_docs:
             return {"groups": []}
@@ -160,53 +176,67 @@ async def search_templates(
             })
             
     else:
-        # ── Grouped Home View ──────────────────────────────────────────
-        # Fetching categories dynamically ensures all 1,200+ docs are visible
-        all_categories = collection.distinct("category")
-        
-        # 1. Start with a "Master Library" of most recent globally
-        recent_all = list(collection.find({}).sort("ingested_at", -1).limit(50))
-        if recent_all:
-            result_groups.append({
-                "title": "Master Litigation Library",
-                "type": "row",
-                "templates": [TemplateResponse.from_mongo(d).dict() for d in recent_all]
-            })
+        # ── Grouped Home View with Category Filtering ──────────────────────────────────────────
+        titles = {
+            "ITC": "ITC Reversals & Compliance",
+            "Appeal": "Appeals & Writ Formats",
+            "Demand/Recovery": "Demand & Recovery Responses",
+            "Refund": "Refund Claims & Formats",
+            "Registration": "Registration & Cancellation Replies",
+            "Notification": "GST Notifications (2025-26)",
+            "Circular": "GST Circulars & Clarifications",
+            "E-Way Bill": "E-Way Bill & Detention Replies",
+            "Compliance & Returns": "GSTR Returns & Mismatch Strategies",
+            "Demand & Penalty": "Penalty, Interest & Demand Responses",
+            "FEMA": "FEMA Regulatory Compliance",
+            "Direct Tax": "Direct Tax & TDS Guidelines",
+            "Corporate": "Corporate Compliance Protocols"
+        }
 
-        # 2. Dynamic Categories (Netflix-style shelves)
-        # We increase the limit to 100 per row to show "All" responses effectively
-        for cat in all_categories:
-            if not cat or cat == "General": continue 
-            
-            docs = list(collection.find({"category": cat}).sort("ingested_at", -1).limit(100))
+        if category and category != "All":
+            docs = list(collection.find(filter_query).sort("ingested_at", -1).limit(100))
             if docs:
-                # Map internal category names to human-friendly titles
-                titles = {
-                    "ITC": "ITC Reversals & Compliance",
-                    "Appeal": "Appeals & Writ Formats",
-                    "Demand/Recovery": "Demand & Recovery Responses",
-                    "Refund": "Refund Claims & Formats",
-                    "Registration": "Registration & Cancellation Replies",
-                    "Notification": "GST Notifications (2025-26)",
-                    "Circular": "GST Circulars & Clarifications",
-                    "E-Way Bill": "E-Way Bill & Detention Replies",
-                    "Compliance & Returns": "GSTR Returns & Mismatch Strategies",
-                    "Demand & Penalty": "Penalty, Interest & Demand Responses"
-                }
                 result_groups.append({
-                    "title": titles.get(cat, f"{cat} Intelligence"),
+                    "title": titles.get(category, f"{category} Intelligence"),
                     "type": "row",
                     "templates": [TemplateResponse.from_mongo(d).dict() for d in docs]
                 })
+        else:
+            all_categories = collection.distinct("category")
+            
+            # 1. Start with a "Master Library" of most recent globally
+            recent_all = list(collection.find(filter_query).sort("ingested_at", -1).limit(50))
+            if recent_all:
+                result_groups.append({
+                    "title": "Master Litigation Library",
+                    "type": "row",
+                    "templates": [TemplateResponse.from_mongo(d).dict() for d in recent_all]
+                })
 
-        # 3. Add General / Miscellaneous at the bottom
-        general_docs = list(collection.find({"category": "General"}).sort("ingested_at", -1).limit(100))
-        if general_docs:
-            result_groups.append({
-                "title": "General Litigation Utility",
-                "type": "row",
-                "templates": [TemplateResponse.from_mongo(d).dict() for d in general_docs]
-            })
+            # 2. Dynamic Categories (Netflix-style shelves)
+            for cat in all_categories:
+                if not cat or cat == "General": continue 
+                
+                cat_filter = filter_query.copy()
+                cat_filter["category"] = cat
+                docs = list(collection.find(cat_filter).sort("ingested_at", -1).limit(100))
+                if docs:
+                    result_groups.append({
+                        "title": titles.get(cat, f"{cat} Intelligence"),
+                        "type": "row",
+                        "templates": [TemplateResponse.from_mongo(d).dict() for d in docs]
+                    })
+
+            # 3. Add General / Miscellaneous at the bottom
+            gen_filter = filter_query.copy()
+            gen_filter["category"] = "General"
+            general_docs = list(collection.find(gen_filter).sort("ingested_at", -1).limit(100))
+            if general_docs:
+                result_groups.append({
+                    "title": "General Litigation Utility",
+                    "type": "row",
+                    "templates": [TemplateResponse.from_mongo(d).dict() for d in general_docs]
+                })
             
     return {"groups": result_groups}
 
@@ -298,11 +328,15 @@ Your EXCLUSIVE goal is to help the user customize and refine this specific legal
 
 STRICT OPERATIONAL RULES:
 1. FOCUS: Your only purpose is to modify this draft. If the user asks general GST questions unrelated to drafting this document, politely decline and ask how you can help amend the current draft.
-2. TONAL EXCELLENCE: Maintain a professional, respectful 'Sentinel' tone (high-end, precise, authoritative).
+2. TONAL EXCELLENCE: Maintain a professional, respectful 'Sentinel' tone (high-end, precise, authoritative, and legally speaking).
 3. FACT INTEGRATION: Incorporate user facts (names, dates, GSTINs, amounts, specific arguments) with 100% precision.
-4. ITERATIVE IMPROVEMENT: If the user asks for changes ('make it more aggressive', 'add a paragraph about section 16(4)', 'shorten the prayer clause'), apply those changes to the latest version of the draft.
-5. FORMATTING: Output the updated legal draft within clear markers: [DRAFT_START] and [DRAFT_END].
-6. CONTEXT: You can provide a brief, professional explanation of the changes made outside the markers, but keep the focus on the document.
+4. STATUTORY & REGULATORY COMPLETENESS: Ensure that the customized draft is highly elaborated and systematically mentions all possible sections, rules, notifications, and circulars that are applicable to strengthen the legal grounds. Do not truncate or use overly brief shortcuts.
+5. NON-REPETITIVE: The draft and explanations must be elaborate yet completely non-repetitive, with high legal information density.
+6. ITERATIVE IMPROVEMENT: If the user asks for changes ('make it more aggressive', 'add a paragraph about section 16(4)', 'shorten the prayer clause'), apply those changes to the latest version of the draft.
+7. FORMATTING & CONCLUSION: Output the updated legal draft within clear markers: [DRAFT_START] and [DRAFT_END].
+   - Inside the draft (before [DRAFT_END]), ensure there is a clear, definitive, and conclusive legal prayer/conclusion followed by a formal signature block.
+   - Outside the markers (at the very end of your response), you MUST provide a structured, conclusive summary of the key changes, the legal rules/regulations applied, and actionable strategic recommendations.
+8. COMPLETE RESPONSES: Ensure the draft is fully generated and reaches the signature block and conclusive summary. Never truncate or generate half-baked replies.
 """
     }
 
@@ -348,6 +382,71 @@ STRICT OPERATIONAL RULES:
     except Exception as e:
         logger.error(f"Template customization failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"AI Customization failed: {str(e)}")
+
+@router.post("/{template_id}/enhance")
+async def enhance_template(
+    template_id: str,
+    request: EnhanceRequest
+):
+    """
+    SOTA Professional AI Legal Draft Enhancement / Rewriting Engine.
+    Rewrites the legal text professionally, improving grammar, statutory logic, and formal tone, while fully retaining all citations and details.
+    """
+    collection = get_template_collection()
+    try:
+        doc = collection.find_one({"_id": ObjectId(template_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Template ID")
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    system_msg = {
+        "role": "system",
+        "content": """You are 'LETA', an elite enterprise legal drafting optimizer.
+Your objective is to take the provided draft legal document and enhance/refine it to a supreme professional standard.
+
+RULES:
+1. REWRITE PROFESSIONALLY: Eliminate informal vocabulary, improve grammatical syntax, and maximize legal and statutory authority.
+2. CITATION RETENTION: You must strictly preserve all legal sections, rule numbers, notifications, case citations, and specific facts (dates, names, prices) present in the text. Do not omit them under any circumstance.
+3. LOGICAL RESTRUCTURING: Group the submissions into clear, formal, numbered sections (e.g., 1. Preliminary Objections, 2. Statement of Facts, 3. Grounds of Appeal / Substantive Defense, 4. Prayer).
+4. OUTPUT ONLY THE ENHANCED CONTENT: Do not include conversational preambles, introductory lines, or post-scripts. Output ONLY the fully drafted, optimized document text directly. Do not surround it with markdown blocks. Just plain text.
+"""
+    }
+
+    user_prompt = f"Optimize and professionally enhance the following legal draft:\n\n{request.current_content}"
+    if request.instructions:
+        user_prompt += f"\n\nFocus specifically on these instructions: {request.instructions}"
+
+    chat_messages = [{"role": "user", "content": user_prompt}]
+
+    try:
+        client = get_ai_client()
+        if LLM_PROVIDER == "anthropic":
+            resp = client.messages.create(
+                model=CLAUDE_MAIN_MODEL,
+                max_tokens=4096,
+                system=system_msg["content"],
+                messages=chat_messages,
+                temperature=0.3,
+            )
+            enhanced_draft = resp.content[0].text
+        else:
+            openai_messages = [system_msg] + chat_messages
+            resp = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=openai_messages,
+                temperature=0.3,
+            )
+            enhanced_draft = resp.choices[0].message.content
+
+        return {
+            "status": "success",
+            "enhanced_content": enhanced_draft.strip()
+        }
+    except Exception as e:
+        logger.error(f"Template enhancement failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"AI Enhancement failed: {str(e)}")
 
 @router.post("/upload")
 async def upload_templates(

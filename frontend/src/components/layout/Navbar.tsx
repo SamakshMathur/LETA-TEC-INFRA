@@ -13,9 +13,7 @@ const MODULES = [
 ];
 
 const NAV_LINKS = [
-  { label: 'Intelligence', path: '/gst'   },
-  { label: 'Compliance',   path: '/docs'  },
-  { label: 'Expert',       path: '/about' },
+  { label: 'About Us',     path: '/about' },
   { label: 'Resources',    path: '/docs'  },
 ];
 
@@ -71,26 +69,27 @@ const Navbar = () => {
     <nav
       className="fixed top-0 left-0 w-full z-50 transition-all duration-300"
       style={{
-        height: scrolled ? '60px' : '76px',
-        background: scrolled
-          ? 'rgba(6,8,22,0.92)'
-          : 'transparent',
-        backdropFilter: scrolled ? 'blur(24px)' : 'none',
-        WebkitBackdropFilter: scrolled ? 'blur(24px)' : 'none',
-        borderBottom: scrolled ? '1px solid rgba(124,58,237,0.15)' : '1px solid transparent',
+        height: '80px',
+        background: 'rgba(7,9,13,0.72)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255,255,255,0.04)',
       }}
     >
-      <div className="max-w-7xl mx-auto px-6 h-full flex items-center">
+      <div className="w-full px-10 lg:px-20 h-full flex items-center">
 
         {/* ── Logo ─────────────────────────────────────────────────────────── */}
         <div className="flex-1 flex justify-start">
-          <Link to="/" className="flex items-center gap-1 group flex-shrink-0">
-            <span className="font-display font-bold text-xl tracking-tight text-white">
+          <Link to="/" className="flex items-center gap-2 group flex-shrink-0">
+            <span
+              className="font-display font-bold text-2xl tracking-[0.04em]"
+              style={{ color: '#F4F7FA' }}
+            >
               LETA
             </span>
             <span
-              className="font-display font-bold text-xl tracking-tight"
-              style={{ color: '#7C3AED' }}
+              className="font-display font-bold text-2xl tracking-[0.04em]"
+              style={{ color: '#4FB7C5' }}
             >
               TITAN
             </span>
@@ -98,33 +97,15 @@ const Navbar = () => {
         </div>
 
         {/* ── Center Nav ───────────────────────────────────────────────────── */}
-        <div className="hidden md:flex items-center gap-8">
-          {NAV_LINKS.map(({ label, path }) => (
-            <Link
-              key={label}
-              to={path}
-              className="relative text-[13px] font-semibold transition-colors duration-200"
-              style={{ color: isActive(path) ? '#A78BFA' : '#94A3B8' }}
-              onMouseEnter={e => { if (!isActive(path)) e.currentTarget.style.color = '#CBD5E1'; }}
-              onMouseLeave={e => { if (!isActive(path)) e.currentTarget.style.color = '#94A3B8'; }}
-            >
-              {label}
-              {isActive(path) && (
-                <motion.span
-                  layoutId="activeNavIndicator"
-                  className="absolute -bottom-1.5 left-0 right-0 h-[2px] rounded-full"
-                  style={{ background: 'linear-gradient(90deg, #7C3AED, #8B5CF6)' }}
-                />
-              )}
-            </Link>
-          ))}
-
+        <div className="hidden md:flex items-center gap-10">
           {/* Modules dropdown */}
           <div className="relative" ref={modulesRef}>
             <button
               onClick={() => setModulesOpen(v => !v)}
-              className="flex items-center gap-1.5 text-[13px] font-semibold transition-colors duration-200"
-              style={{ color: '#94A3B8' }}
+              className="flex items-center gap-1.5 text-[14px] font-medium tracking-wider transition-colors duration-200"
+              style={{ color: '#A7B3C2' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#F4F7FA'}
+              onMouseLeave={e => { if (!modulesOpen) e.currentTarget.style.color = '#A7B3C2' }}
             >
               <LayoutGrid size={14} />
               Modules
@@ -138,14 +119,14 @@ const Navbar = () => {
               <div
                 className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 rounded-2xl py-2 z-50"
                 style={{
-                  background: 'rgba(11,16,32,0.97)',
-                  border: '1px solid rgba(124,58,237,0.2)',
+                  background: '#0F1722',
+                  border: '1px solid rgba(255,255,255,0.06)',
                   backdropFilter: 'blur(24px)',
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.7), 0 0 40px rgba(124,58,237,0.1)',
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.55)',
                 }}
               >
                 <div className="px-4 py-2 mb-1">
-                  <span className="text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: 'rgba(124,58,237,0.7)' }}>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(79,183,197,0.8)' }}>
                     Sovereign Modules
                   </span>
                 </div>
@@ -156,23 +137,23 @@ const Navbar = () => {
                     onClick={() => setModulesOpen(false)}
                     className="flex items-center justify-between px-4 py-3 text-[13px] font-medium transition-colors duration-200"
                     style={{
-                      color: isActive(path) ? '#A78BFA' : '#94A3B8',
-                      background: isActive(path) ? 'rgba(124,58,237,0.08)' : 'transparent',
+                      color: isActive(path) ? '#4FB7C5' : '#A7B3C2',
+                      background: isActive(path) ? 'rgba(255,255,255,0.03)' : 'transparent',
                     }}
-                    onMouseEnter={e => { if (!isActive(path)) { e.currentTarget.style.background = 'rgba(124,58,237,0.06)'; e.currentTarget.style.color = '#CBD5E1'; } }}
-                    onMouseLeave={e => { if (!isActive(path)) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94A3B8'; } }}
+                    onMouseEnter={e => { if (!isActive(path)) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = '#F4F7FA'; } }}
+                    onMouseLeave={e => { if (!isActive(path)) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#A7B3C2'; } }}
                   >
                     <div className="flex items-center gap-3">
                       <Icon size={15} />
                       {label}
                     </div>
                     {status === 'LIVE' ? (
-                      <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider" style={{ color: '#A78BFA' }}>
-                        <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#A78BFA' }} />
+                      <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: '#4FB7C5' }}>
+                        <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#4FB7C5' }} />
                         Live
                       </span>
                     ) : (
-                      <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
+                      <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#6C7A99' }}>
                         Soon
                       </span>
                     )}
@@ -181,6 +162,26 @@ const Navbar = () => {
               </div>
             )}
           </div>
+
+          {NAV_LINKS.map(({ label, path }) => (
+            <Link
+              key={label}
+              to={path}
+              className="relative text-[14px] font-medium tracking-wider transition-colors duration-200"
+              style={{ color: isActive(path) ? '#F4F7FA' : '#A7B3C2' }}
+              onMouseEnter={e => { if (!isActive(path)) e.currentTarget.style.color = '#F4F7FA'; }}
+              onMouseLeave={e => { if (!isActive(path)) e.currentTarget.style.color = '#A7B3C2'; }}
+            >
+              {label}
+              {isActive(path) && (
+                <motion.span
+                  layoutId="activeNavIndicator"
+                  className="absolute -bottom-1.5 left-0 right-0 h-[2px] rounded-full"
+                  style={{ background: '#4FB7C5' }}
+                />
+              )}
+            </Link>
+          ))}
         </div>
 
         {/* ── Right Side ───────────────────────────────────────────────────── */}
@@ -191,25 +192,25 @@ const Navbar = () => {
                 onClick={() => setUserOpen(v => !v)}
                 className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl transition-all duration-200"
                 style={{
-                  border: '1px solid rgba(124,58,237,0.25)',
-                  background: 'rgba(124,58,237,0.06)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  background: 'rgba(255,255,255,0.03)',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(124,58,237,0.5)'; e.currentTarget.style.boxShadow = '0 0 15px rgba(124,58,237,0.2)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(124,58,237,0.25)'; e.currentTarget.style.boxShadow = 'none'; }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(79,183,197,0.3)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
               >
                 <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black text-white"
-                  style={{ background: 'linear-gradient(135deg, #7C3AED, #5B21B6)' }}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-semibold text-black"
+                  style={{ background: '#4FB7C5' }}
                 >
                   {initials}
                 </div>
-                <span className="text-[13px] font-semibold hidden sm:block" style={{ color: '#CBD5E1' }}>
+                <span className="text-[13px] font-semibold hidden sm:block" style={{ color: '#F4F7FA' }}>
                   {displayName.split(' ')[0]}
                 </span>
                 <ChevronDown
                   size={13}
                   className={`transition-transform ${userOpen ? 'rotate-180' : ''}`}
-                  style={{ color: '#475569' }}
+                  style={{ color: '#6C7A99' }}
                 />
               </button>
 
@@ -217,19 +218,19 @@ const Navbar = () => {
                 <div
                   className="absolute top-full right-0 mt-3 w-56 rounded-2xl py-2 z-50"
                   style={{
-                    background: 'rgba(11,16,32,0.97)',
-                    border: '1px solid rgba(124,58,237,0.2)',
+                    background: '#0F1722',
+                    border: '1px solid rgba(255,255,255,0.06)',
                     backdropFilter: 'blur(24px)',
-                    boxShadow: '0 20px 40px rgba(0,0,0,0.7)',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.55)',
                   }}
                 >
-                  <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.1)' }}>
-                    <p className="text-[13px] font-bold truncate" style={{ color: '#E2E8F0' }}>{displayName}</p>
-                    {subLabel && <p className="text-xs truncate mt-0.5" style={{ color: '#475569' }}>{subLabel}</p>}
+                  <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p className="text-[13px] font-bold truncate" style={{ color: '#F4F7FA' }}>{displayName}</p>
+                    {subLabel && <p className="text-xs truncate mt-0.5" style={{ color: '#6C7A99' }}>{subLabel}</p>}
                     {user?.role === 'admin' && (
                       <span
-                        className="inline-block mt-1.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
-                        style={{ background: 'rgba(124,58,237,0.15)', color: '#A78BFA' }}
+                        className="inline-block mt-1.5 px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider"
+                        style={{ background: 'rgba(79,183,197,0.15)', color: '#4FB7C5' }}
                       >
                         Admin
                       </span>
@@ -238,18 +239,18 @@ const Navbar = () => {
                   <button
                     onClick={() => { setUserOpen(false); navigate('/settings'); }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-[13px] font-medium transition-colors text-left"
-                    style={{ color: '#94A3B8' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(124,58,237,0.06)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent'; }}
+                    style={{ color: '#A7B3C2' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#F4F7FA'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#A7B3C2'; e.currentTarget.style.background = 'transparent'; }}
                   >
                     <Settings size={14} /> Settings
                   </button>
                   <button
                     onClick={handleSignOut}
                     className="w-full flex items-center gap-3 px-4 py-3 text-[13px] font-medium transition-colors text-left"
-                    style={{ color: '#94A3B8' }}
+                    style={{ color: '#A7B3C2' }}
                     onMouseEnter={e => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.06)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#A7B3C2'; e.currentTarget.style.background = 'transparent'; }}
                   >
                     <LogOut size={14} /> Sign Out
                   </button>
@@ -259,13 +260,12 @@ const Navbar = () => {
           ) : (
             <Link to={ROUTES.LOGIN}>
               <button
-                className="px-5 py-2 rounded-xl text-[13px] font-bold text-white transition-all duration-200"
+                className="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-black transition-all duration-200"
                 style={{
-                  background: 'linear-gradient(135deg, #7C3AED, #5B21B6)',
-                  boxShadow: '0 0 20px rgba(124,58,237,0.4)',
+                  background: '#4FB7C5',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 0 35px rgba(124,58,237,0.65)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 0 20px rgba(124,58,237,0.4)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#3EA6B4'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#4FB7C5'; e.currentTarget.style.transform = 'translateY(0)'; }}
               >
                 Connect Portal
               </button>

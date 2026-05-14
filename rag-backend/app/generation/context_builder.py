@@ -1,9 +1,12 @@
 import os
 import re
 
-# Character cap — raised for Claude 200K context window (was 20K for OpenAI TPM limits)
-MAX_CONTEXT_CHARS = 80000
-MAX_CHUNK_CHARS = 3000
+# Character caps — tuned for TITAN sub-5s target.
+# MAX_CHUNK_CHARS: 1000 chars ≈ 250 tokens — enough for one full statutory paragraph.
+# MAX_CONTEXT_CHARS: 15000 chars ≈ 3750 tokens — keeps total LLM input well under 6KB.
+# (Previous values: 80 000 / 3 000 caused 12 000-18 000 token context injections.)
+MAX_CONTEXT_CHARS = 15000
+MAX_CHUNK_CHARS = 1000
 
 # ─────────────────────────────────────────────────────────────
 # Citation extraction patterns — used to build the registry

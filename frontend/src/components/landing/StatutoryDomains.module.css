@@ -1,0 +1,363 @@
+.section {
+  padding: 80px 0;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-bg-main);
+}
+
+.container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+  position: relative;
+  z-index: 10;
+}
+
+/* ── Section Header ── */
+.headerRow {
+  margin-bottom: 64px;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .headerRow {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.title {
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 30px;
+  margin-bottom: 16px;
+  letter-spacing: -0.025em;
+  color: var(--color-text-heading);
+}
+
+@media (min-width: 768px) {
+  .title {
+    font-size: 48px;
+  }
+}
+
+.statusIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-brand);
+}
+
+.matrixLabel {
+  margin-top: 16px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-muted);
+}
+
+@media (min-width: 768px) {
+  .matrixLabel {
+    margin-top: 0;
+  }
+}
+
+/* ── Grid Layout ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 32px;
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+}
+
+/* ── Bento Cards ── */
+.bentoCard {
+  position: relative;
+  border-radius: 12px;
+  padding: 32px;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 420px;
+}
+
+.bentoCard:hover {
+  border-color: var(--color-border-cyan);
+  transform: translateY(-2px);
+}
+
+.cardWide {
+  grid-column: span 1 / span 1;
+}
+
+.cardNarrow {
+  grid-column: span 1 / span 1;
+}
+
+@media (min-width: 1024px) {
+  .cardWide {
+    grid-column: span 8 / span 8;
+    padding: 40px;
+  }
+  .cardNarrow {
+    grid-column: span 4 / span 4;
+    padding: 40px;
+  }
+}
+
+.cardIconWatermark {
+  position: absolute;
+  right: -5%;
+  bottom: -5%;
+  opacity: 0.015;
+  color: var(--color-brand);
+  pointer-events: none;
+  transition: transform 0.5s ease;
+}
+
+.bentoCard:hover .cardIconWatermark {
+  transform: scale(1.05);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.iconWrapper {
+  padding: 16px;
+  border-radius: 16px;
+  background-color: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.activeBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-family: inherit;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: var(--color-brand-soft);
+  border: 1px solid var(--color-border-cyan);
+  color: var(--color-brand);
+}
+
+.badgePulseDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: var(--color-brand);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.comingSoonBadge {
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-family: inherit;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--color-text-muted);
+}
+
+.cardTitle {
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 24px;
+  margin-bottom: 12px;
+  letter-spacing: -0.025em;
+  color: var(--color-text-heading);
+}
+
+@media (min-width: 1024px) {
+  .cardTitleLarge {
+    font-size: 30px;
+  }
+}
+
+.cardDesc {
+  font-family: inherit;
+  font-weight: normal;
+  color: var(--color-text-body);
+  max-width: 576px;
+  line-height: 1.625;
+}
+
+.cardDescMuted {
+  color: var(--color-text-muted);
+}
+
+/* ── Card Footers ── */
+.cardFooterRow {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+@media (min-width: 640px) {
+  .cardFooterRow {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.progressContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (min-width: 640px) {
+  .progressContainer {
+    max-width: 320px;
+  }
+}
+
+.progressMeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.progressBarLabelAccent {
+  color: var(--color-brand);
+}
+
+.progressTrack {
+  height: 4px;
+  width: 100%;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.progressThumb {
+  height: 100%;
+  background-color: var(--color-brand);
+}
+
+.progressThumbMuted {
+  height: 100%;
+  background-color: rgba(108, 122, 153, 0.4);
+}
+
+.initializeBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #000000;
+  background-color: var(--color-brand);
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.initializeBtn:hover {
+  background-color: var(--color-brand-hover);
+}
+
+/* Standard Narrow Card Footer */
+.cardFooterSimple {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+/* FEMA specific footer pagination dots */
+.paginationRow {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paginationDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: #27272a;
+}
+
+.paginationDotActive {
+  background-color: rgba(79, 183, 197, 0.3);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.paginationText {
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  margin-left: 6px;
+  letter-spacing: 0.05em;
+}
+
+/* Company Law specific footer meta row */
+.metaRow {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.metaText {
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.metaTextTracking {
+  letter-spacing: 0.12em;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: .5;
+  }
+}

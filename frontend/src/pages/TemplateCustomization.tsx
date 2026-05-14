@@ -24,7 +24,7 @@ const TemplateCustomization: React.FC = () => {
         
         setMessages([{
           role: 'assistant',
-          content: `Welcome to the **Sovereign Drafting Suite**. I've initialized the **${data.title}** protocol. \n\nProvide the case specifics—GSTINs, amounts, or contextual nuances—and I will synthesize a high-fidelity legal draft for your review.`
+          content: `Welcome to the **Executive Drafting Suite**. I've initialized the **${data.title}** layout. \n\nProvide the case specifics—GSTINs, amounts, or contextual nuances—and I will synthesize a high-fidelity professional draft for your review.`
         }]);
       } catch (err) {
         console.error(err);
@@ -68,7 +68,7 @@ const TemplateCustomization: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
-      setMessages([...updatedMessages, { role: 'assistant', content: "An error occurred in the neural synthesis layer. Please re-input your directives." }]);
+      setMessages([...updatedMessages, { role: 'assistant', content: "An error occurred in the draft synthesis process. Please re-input your directives." }]);
     } finally {
       setIsGenerating(false);
     }
@@ -88,43 +88,43 @@ const TemplateCustomization: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FFFFFF] text-leta-gray-200 flex flex-col h-screen overflow-hidden selection:bg-emerald-500/30">
+    <div className="min-h-screen bg-[#07090D] text-[#A1AAB8] flex flex-col h-screen overflow-hidden selection:bg-[#67E8F9]/30">
       
       {/* Top Navigation - Titan Glass */}
-      <div className="bg-glass border-b border-leta-gray-100 px-8 py-4 flex items-center justify-between z-30 relative backdrop-blur-2xl">
+      <div className="bg-[#10141B]/80 border-b border-white/[0.06] px-8 py-4 flex items-center justify-between z-30 relative backdrop-blur-2xl">
         <div className="flex items-center gap-6">
           <button 
             onClick={() => navigate('/gst/templates')}
-            className="group flex items-center gap-2 text-leta-gray-600 hover:text-leta-gray-900 transition-all bg-leta-gray-50 px-3 py-2 rounded-leta border border-leta-gray-100 hover:border-emerald-500/30"
+            className="group flex items-center gap-2 text-white/70 hover:text-white transition-all bg-white/[0.02] px-3.5 py-2 rounded-leta border border-white/[0.06] hover:border-white/[0.1]"
           >
-            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
-            <span className="text-[10px] font-black tracking-widest uppercase">Dashboard</span>
+            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform text-[#67E8F9]" />
+            <span className="text-[10px] font-black tracking-widest uppercase font-mono">Dashboard</span>
           </button>
           
-          <div className="h-8 w-[1px] bg-leta-white/10" />
+          <div className="h-8 w-[1px] bg-white/[0.05]" />
           
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-sm font-black tracking-widest text-leta-gray-900 uppercase flex items-center gap-2">
-                <Zap size={14} className="text-emerald-500 fill-emerald-500" /> 
+              <h1 className="text-sm font-bold tracking-widest text-white uppercase flex items-center gap-2 font-display">
+                <Zap size={14} className="text-[#67E8F9] fill-[#67E8F9]" /> 
                 LETA_TITAN // DRAFT_SUITE
               </h1>
-              <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-mono tracking-tighter">v3.0_STABLE</span>
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-white/[0.02] border border-white/[0.05] text-[#67E8F9] font-mono tracking-tighter">v4.0_STABLE</span>
             </div>
-            <p className="text-[10px] text-leta-gray-500 mt-0.5 tracking-tight flex items-center gap-2 uppercase">
-              REFINING: <span className="text-emerald-400 font-bold max-w-[200px] truncate">{template?.title}</span>
+            <p className="text-[10px] text-[#A1AAB8] mt-0.5 tracking-tight flex items-center gap-2 uppercase font-mono">
+              REFINING: <span className="text-white font-medium max-w-[200px] truncate">{template?.title}</span>
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <button className="p-2.5 rounded-leta bg-leta-gray-50 border border-leta-gray-200 text-leta-gray-600 hover:text-emerald-400 transition-all">
+          <button className="p-2.5 rounded-leta bg-white/[0.02] border border-white/[0.05] text-white/70 hover:text-[#67E8F9] hover:border-white/[0.1] transition-all">
             <Share2 size={18} />
           </button>
           {generatedDraft && (
              <button 
                onClick={handleDownload}
-               className="flex items-center gap-3 bg-leta-white text-leta-black px-6 py-2.5 rounded-leta text-[10px] font-black tracking-widest uppercase hover:opacity-90 transition-opacity shadow-[0_4px_20px_rgba(0,0,0,0.05)]"
+               className="flex items-center gap-3 bg-[#67E8F9] text-[#07090D] px-6 py-2.5 rounded-leta text-[10px] font-black tracking-widest uppercase hover:bg-[#5EEAD4] transition-colors shadow-2xl"
              >
                <Download size={16} /> EXPORT .DOCX
              </button>
@@ -134,32 +134,32 @@ const TemplateCustomization: React.FC = () => {
 
       {/* Main Workspace Surface */}
       <div className="flex-1 flex overflow-hidden relative">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_-20%,rgba(16,185,129,0.05)_0%,transparent_50%)] pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_-20%,rgba(103,232,249,0.015)_0%,transparent_50%)] pointer-events-none" />
         
         {/* Left Side: Modular Chat Panel */}
-        <div className="w-[440px] flex flex-col bg-[#050505] border-r border-leta-gray-100 relative z-20 shadow-[-20px_0_60px_rgba(0,0,0,0.5)]">
+        <div className="w-[440px] flex flex-col bg-[#10141B] border-r border-white/[0.06] relative z-20 shadow-[-20px_0_60px_rgba(0,0,0,0.5)]">
           
           {/* Status Bar */}
-          <div className="px-6 py-2 border-b border-leta-gray-100 bg-leta-white/[0.02] flex items-center justify-between">
-            <span className="text-[8px] font-black tracking-[0.2em] text-leta-gray-500 uppercase">Neural Stream</span>
+          <div className="px-6 py-2 border-b border-white/[0.06] bg-white/[0.01] flex items-center justify-between">
+            <span className="text-[8px] font-black tracking-[0.2em] text-[#A1AAB8] uppercase font-mono">Live Session</span>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[8px] font-black text-emerald-500 uppercase">Synced</span>
+              <span className="text-[8px] font-black text-emerald-500 uppercase font-mono">Synced</span>
             </div>
           </div>
 
           {/* Chat History Container */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-[linear-gradient(rgba(0,0,0,0)_0%,rgba(16,185,129,0.02)_100%)]">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-[linear-gradient(rgba(0,0,0,0)_0%,rgba(103,232,249,0.01)_100%)]">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[90%] rounded-2xl p-5 text-[13px] leading-relaxed transition-all duration-500 ${
+                <div className={`max-w-[90%] rounded-leta p-5 text-[13px] leading-relaxed transition-all duration-500 ${
                   msg.role === 'user' 
-                  ? 'bg-emerald-600 text-leta-gray-900 font-medium rounded-tr-none shadow-[0_10px_25px_rgba(16,185,129,0.15)] animate-slide-left' 
-                  : 'bg-leta-gray-50 border border-leta-gray-200 text-leta-gray-300 rounded-tl-none backdrop-blur-md animate-slide-right'
+                  ? 'bg-[#67E8F9] text-[#07090D] font-medium rounded-tr-none shadow-[0_10px_25px_rgba(103,232,249,0.1)] animate-slide-left' 
+                  : 'bg-[#07090D] border border-white/[0.06] text-[#A1AAB8] rounded-tl-none backdrop-blur-md animate-slide-right'
                 }`}>
                   <div className="flex items-center gap-2 mb-2 opacity-50">
-                    {msg.role === 'user' ? <User size={12} strokeWidth={2.5} /> : <Zap size={12} className="text-emerald-500" />}
-                    <span className="text-[9px] uppercase tracking-[0.2em] font-black">
+                    {msg.role === 'user' ? <User size={12} strokeWidth={2.5} /> : <Zap size={12} className="text-[#67E8F9]" />}
+                    <span className="text-[9px] uppercase tracking-[0.2em] font-black font-mono">
                       {msg.role === 'user' ? 'Advocate' : 'LETA_CORELINK'}
                     </span>
                   </div>
@@ -171,14 +171,14 @@ const TemplateCustomization: React.FC = () => {
             ))}
             {isGenerating && (
               <div className="flex justify-start animate-slide-right">
-                <div className="bg-leta-gray-50 border border-leta-gray-100 text-leta-gray-600 p-5 rounded-2xl rounded-tl-none flex flex-col gap-4 w-full">
+                <div className="bg-[#07090D] border border-white/[0.06] text-[#A1AAB8] p-5 rounded-leta rounded-tl-none flex flex-col gap-4 w-full">
                   <div className="flex items-center gap-3">
-                    <Loader2 size={16} className="animate-spin text-emerald-500" />
-                    <span className="text-[10px] font-black tracking-widest uppercase italic text-emerald-500/70">Synthesizing draft...</span>
+                    <Loader2 size={16} className="animate-spin text-[#67E8F9]" />
+                    <span className="text-[10px] font-bold tracking-widest uppercase italic text-[#67E8F9] font-mono">Synthesizing draft...</span>
                   </div>
                   <div className="flex gap-1">
-                    <div className="h-1 bg-emerald-500/20 rounded-full w-full overflow-hidden">
-                       <div className="h-full bg-emerald-500 w-1/3 animate-progress"></div>
+                    <div className="h-1 bg-white/[0.05] rounded-full w-full overflow-hidden">
+                       <div className="h-full bg-[#67E8F9] w-1/3 animate-progress"></div>
                     </div>
                   </div>
                 </div>
@@ -188,16 +188,15 @@ const TemplateCustomization: React.FC = () => {
           </div>
 
           {/* Chat Input - Premium Dock */}
-          <div className="p-6 bg-glass border-t border-leta-gray-100 backdrop-blur-3xl">
+          <div className="p-6 bg-[#10141B] border-t border-white/[0.06]">
             <form onSubmit={handleSendMessage} className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded-2xl blur opacity-0 group-focus-within:opacity-100 transition duration-700"></div>
               <div className="relative">
                 <textarea
                   rows={3}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder="Instruct LETA (e.g., 'Incorporate the new ITC circular 183' or 'Set date as 24/03/24')"
-                  className="w-full bg-leta-white/[0.03] border border-leta-gray-200 rounded-2xl p-5 pr-14 text-sm text-leta-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 resize-none transition-all shadow-inner font-sans"
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5 pr-14 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#67E8F9]/30 resize-none transition-all shadow-inner font-sans"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -208,26 +207,26 @@ const TemplateCustomization: React.FC = () => {
                 <button 
                   type="submit"
                   disabled={!inputValue.trim() || isGenerating}
-                  className="absolute right-4 bottom-4 w-10 h-10 bg-emerald-600 text-leta-gray-900 rounded-leta hover:bg-emerald-500 transition-colors disabled:opacity-30 disabled:grayscale flex items-center justify-center shadow-lg"
+                  className="absolute right-4 bottom-4 w-10 h-10 bg-[#07090D] border border-white/[0.06] text-[#67E8F9] rounded-leta hover:bg-hover transition-colors disabled:opacity-30 disabled:grayscale flex items-center justify-center shadow-lg hover:text-[#5EEAD4] hover:border-white/[0.1]"
                 >
                   <Send size={18} />
                 </button>
               </div>
             </form>
-            <div className="flex items-center justify-center gap-6 mt-4 opacity-40">
-               <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest"><Sparkles size={8}/> AI_ENHANCED</div>
-               <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest"><FileText size={8}/> LEGALLY_VETTED</div>
+            <div className="flex items-center justify-center gap-6 mt-4 opacity-30">
+               <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest font-mono"><Sparkles size={8}/> AI_ENHANCED</div>
+               <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest font-mono"><FileText size={8}/> LEGALLY_VETTED</div>
             </div>
           </div>
         </div>
 
         {/* Right Side: High-Fidelity Document Canvas */}
-        <div className="flex-1 bg-[#0a0a0a] flex flex-col p-12 overflow-hidden relative">
+        <div className="flex-1 bg-[#07090D] flex flex-col p-12 overflow-hidden relative">
           
           {/* Decorative Canvas Background */}
-          <div className="absolute inset-0 opacity-[0.4] pointer-events-none overflow-hidden">
-             <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-emerald-500/10 blur-[180px] rounded-full translate-x-1/2 -translate-y-1/2" />
-             <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full -translate-x-1/2 translate-y-1/2" />
+          <div className="absolute inset-0 opacity-[0.2] pointer-events-none overflow-hidden">
+             <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[#67E8F9]/5 blur-[180px] rounded-full translate-x-1/2 -translate-y-1/2" />
+             <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-white/[0.01] blur-[150px] rounded-full -translate-x-1/2 translate-y-1/2" />
           </div>
 
           {/* Action Ribbon for Draft */}
@@ -235,7 +234,7 @@ const TemplateCustomization: React.FC = () => {
             <div className="absolute top-12 right-12 z-20 flex items-center gap-3 animate-slide-left">
               <button 
                 onClick={copyToClipboard}
-                className="flex items-center gap-2 bg-leta-gray-50 hover:bg-leta-white text-leta-gray-600 hover:text-leta-black px-4 py-2 rounded-leta border border-leta-gray-200 transition-all font-black text-[10px] uppercase tracking-widest"
+                className="flex items-center gap-2 bg-[#151922] hover:bg-[#1C2330] text-white px-4 py-2 rounded-leta border border-white/[0.06] hover:border-[#67E8F9]/30 transition-all font-black text-[10px] uppercase tracking-widest font-mono"
               >
                 {showCopyFeedback ? <CheckCircle2 size={14} className="text-emerald-500" /> : <Copy size={14} />}
                 {showCopyFeedback ? 'Copied' : 'Copy'}
@@ -253,13 +252,13 @@ const TemplateCustomization: React.FC = () => {
 
             {!generatedDraft && !isGenerating ? (
               <div className="h-full flex flex-col items-center justify-center text-center opacity-20 select-none py-32 grayscale group-hover/doc:grayscale-0 transition-all duration-1000">
-                <FileText size={120} strokeWidth={0.5} className="mb-8 text-leta-black" />
+                <FileText size={120} strokeWidth={0.5} className="mb-8 text-black" />
                 <h3 className="text-3xl font-serif italic mb-4">Awaiting Synthesis</h3>
                 <p className="text-base font-sans font-light max-w-sm tracking-tight leading-relaxed">Your professional legal response will materialize here as you collaborate with LETA on the left.</p>
                 <div className="mt-12 flex gap-4">
-                   <div className="w-12 h-[1px] bg-leta-black/20" />
-                   <div className="w-2 h-2 rounded-full border border-leta-gray-300" />
-                   <div className="w-12 h-[1px] bg-leta-black/20" />
+                   <div className="w-12 h-[1px] bg-black/20" />
+                   <div className="w-2 h-2 rounded-full border border-neutral-400" />
+                   <div className="w-12 h-[1px] bg-black/20" />
                 </div>
               </div>
             ) : (
@@ -271,12 +270,12 @@ const TemplateCustomization: React.FC = () => {
 
           {/* Status Indicators Footer */}
           <div className="mt-8 flex justify-between items-center px-4">
-             <div className="flex items-center gap-12 text-[10px] text-leta-gray-900/20 font-mono tracking-[0.3em] uppercase">
-                <span className="flex items-center gap-2"><div className="w-1 h-1 bg-emerald-500 rounded-full" /> CANVAS: HIGH_FIDELITY</span>
+             <div className="flex items-center gap-12 text-[10px] text-white/30 font-mono tracking-[0.3em] uppercase">
+                <span className="flex items-center gap-2"><div className="w-1 h-1 bg-[#67E8F9] rounded-full" /> CANVAS: HIGH_FIDELITY</span>
                 <span>SECURITY: ENCRYPTED</span>
              </div>
-             <div className="text-[9px] text-leta-gray-900/30 font-black tracking-widest uppercase bg-leta-gray-50 border border-leta-gray-100 py-1.5 px-4 rounded-leta">
-                TITAN_INTELLIGENCE // V3_ENGINE
+             <div className="text-[9px] text-[#67E8F9] font-bold tracking-widest uppercase bg-[#151922] border border-white/[0.06] py-1.5 px-4 rounded-leta">
+                TITAN_DRAFTING // V4_ENGINE
              </div>
           </div>
         </div>
@@ -291,11 +290,11 @@ const TemplateCustomization: React.FC = () => {
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(0, 0, 0, 0.05);
+          background: rgba(255, 255, 255, 0.05);
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(16, 185, 129, 0.2);
+          background: rgba(103, 232, 249, 0.2);
         }
         @keyframes slide-left {
           from { opacity: 0; transform: translateX(20px); }

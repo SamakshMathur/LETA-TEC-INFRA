@@ -191,7 +191,7 @@ class Retriever:
 
         logger.info("Retriever initialized: 3-Layer Architecture + Provision Graph + MMR")
 
-    def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None):
+    def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None):
         if not query or not query.strip():
             logger.warning("search() called with empty query")
             return []
@@ -266,13 +266,34 @@ class Retriever:
             for idx in top_bm25_idxs:
                 _add_to_pool(idx)
 
-        # Filter by allowed_sources
+        # Filter by allowed_sources (file extension)
         if allowed_sources:
             candidate_pool = [
                 c for c in candidate_pool
                 if any(src.lower() in c.get("rel_path", c.get("metadata", {}).get("rel_path", "")).lower()
                        for src in allowed_sources)
             ]
+
+        # Filter by domain_paths (RAG_INFORMATION_DATABASE sub-folder names).
+        # Only applied when the router detected a specific domain; empty = no filter.
+        if domain_paths:
+            full_path_key = "source"
+            filtered = [
+                c for c in candidate_pool
+                if any(
+                    dp.lower() in c.get(full_path_key, "").lower()
+                    or dp.lower() in c.get("rel_path", c.get("metadata", {}).get("rel_path", "")).lower()
+                    for dp in domain_paths
+                )
+            ]
+            # Only apply the domain filter when it keeps a meaningful subset;
+            # fall back to the unfiltered pool if the filter is too aggressive.
+            if len(filtered) >= max(3, top_k // 3):
+                candidate_pool = filtered
+            else:
+                logger.debug(
+                    f"domain_paths filter too aggressive ({len(filtered)} results) — skipping"
+                )
 
         # Merge layers: Statute-First > Graph Expanded > Semantic
         # Cap statute results to top 50 to avoid memory explosion in reranker

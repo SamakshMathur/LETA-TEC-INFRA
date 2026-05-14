@@ -29,11 +29,11 @@ const SystemFooter = () => {
   return (
     <footer
       className="pt-16 pb-8 relative overflow-hidden"
-      style={{ backgroundColor: 'var(--surface-container-low)' }}
+      style={{ backgroundColor: 'var(--bg-secondary)' }}
     >
       <div
         className="absolute top-0 left-0 w-full h-px pointer-events-none"
-        style={{ background: 'linear-gradient(to right, transparent, rgba(124,58,237,0.2), transparent)' }}
+        style={{ background: 'linear-gradient(to right, transparent, rgba(79,183,197,0.2), transparent)' }}
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -44,15 +44,15 @@ const SystemFooter = () => {
             <Link to="/" className="flex items-center gap-2 mb-6 group">
               <div
                 className="w-8 h-8 rounded-leta flex items-center justify-center transition-all duration-300"
-                style={{ backgroundColor: 'rgba(124,58,237,0.1)' }}
+                style={{ backgroundColor: 'rgba(79,183,197,0.1)' }}
               >
-                <Shield size={15} style={{ color: '#7C3AED' }} />
+                <Shield size={15} style={{ color: '#4FB7C5' }} />
               </div>
               <span className="font-display font-bold text-lg tracking-tight text-white">
-                LETA <span style={{ color: '#7C3AED' }}>TITAN</span>
+                LETA <span style={{ color: '#4FB7C5' }}>TITAN</span>
               </span>
             </Link>
-            <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#94A3B8' }}>
+            <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#A1AAB8' }}>
               Advanced statutory intelligence for the modern Chartered Accountant.
               Autonomous deconstruction of complex legal frameworks.
             </p>
@@ -62,9 +62,9 @@ const SystemFooter = () => {
                   key={i}
                   href="#"
                   className="transition-colors duration-200"
-                  style={{ color: '#475569' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#A78BFA'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
+                  style={{ color: '#6B7280' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#4FB7C5'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; }}
                 >
                   <Icon size={17} />
                 </a>
@@ -76,7 +76,7 @@ const SystemFooter = () => {
           <div>
             <h4
               className="text-xs font-bold uppercase tracking-[0.12em] mb-6 font-mono"
-              style={{ color: '#CBD5E1' }}
+              style={{ color: '#F5F7FA' }}
             >
               Platform
             </h4>
@@ -91,9 +91,9 @@ const SystemFooter = () => {
                   <Link
                     to={to}
                     className="transition-colors duration-200"
-                    style={{ color: '#475569' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#A78BFA'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
+                    style={{ color: '#6B7280' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#4FB7C5'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; }}
                   >
                     {label}
                   </Link>
@@ -106,7 +106,7 @@ const SystemFooter = () => {
           <div>
             <h4
               className="text-xs font-bold uppercase tracking-[0.12em] mb-6 font-mono"
-              style={{ color: '#CBD5E1' }}
+              style={{ color: '#F5F7FA' }}
             >
               Resources
             </h4>
@@ -121,9 +121,9 @@ const SystemFooter = () => {
                   <Link
                     to={to}
                     className="transition-colors duration-200"
-                    style={{ color: '#475569' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#A78BFA'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
+                    style={{ color: '#6B7280' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#4FB7C5'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; }}
                   >
                     {label}
                   </Link>
@@ -135,20 +135,20 @@ const SystemFooter = () => {
           {/* Live network terminal */}
           <div
             className="rounded-leta font-mono text-xs overflow-hidden relative min-h-[160px] p-4"
-            style={{ backgroundColor: 'var(--surface-container-lowest)' }}
+            style={{ backgroundColor: 'var(--bg-main)' }}
           >
-            <div className="flex items-center gap-2 mb-3 pb-2" style={{ borderBottom: '1px solid rgba(124,58,237,0.1)' }}>
-              <Activity size={11} style={{ color: '#7C3AED' }} className="animate-pulse" />
-              <span className="uppercase tracking-widest text-[10px]" style={{ color: '#475569' }}>
+            <div className="flex items-center gap-2 mb-3 pb-2" style={{ borderBottom: '1px solid rgba(79,183,197,0.1)' }}>
+              <Activity size={11} style={{ color: '#4FB7C5' }} className="animate-pulse" />
+              <span className="uppercase tracking-widest text-[10px]" style={{ color: '#6B7280' }}>
                 Network Activity
               </span>
             </div>
 
             <div className="flex flex-col gap-2">
-              <div style={{ color: 'rgba(124,58,237,0.25)' }}>
+              <div style={{ color: 'rgba(79,183,197,0.25)' }}>
                 &gt; {logMessages[(currentLog - 2 + logMessages.length) % logMessages.length]}
               </div>
-              <div style={{ color: 'rgba(124,58,237,0.4)' }}>
+              <div style={{ color: 'rgba(79,183,197,0.4)' }}>
                 &gt; {logMessages[(currentLog - 1 + logMessages.length) % logMessages.length]}
               </div>
               <motion.div
@@ -156,28 +156,22 @@ const SystemFooter = () => {
                 initial={{ opacity: 0, x: 8 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="font-bold"
-                style={{ color: '#A78BFA' }}
+                style={{ color: '#4FB7C5' }}
               >
                 &gt; {logMessages[currentLog]}
                 <span className="animate-pulse ml-1">_</span>
               </motion.div>
             </div>
 
-            <div
-              className="absolute inset-0 pointer-events-none opacity-[0.04]"
-              style={{
-                backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(124,58,237,0.5) 2px, rgba(124,58,237,0.5) 4px)',
-              }}
-            />
           </div>
         </div>
 
         {/* Bottom bar */}
         <div
           className="pt-8 flex flex-col md:flex-row justify-between items-center gap-4"
-          style={{ borderTop: '1px solid rgba(124,58,237,0.1)' }}
+          style={{ borderTop: '1px solid rgba(79,183,197,0.1)' }}
         >
-          <p className="text-xs font-mono" style={{ color: '#475569' }}>
+          <p className="text-xs font-mono" style={{ color: '#6B7280' }}>
             &copy; {new Date().getFullYear()} LETA TITAN — All Rights Reserved.
           </p>
           <div className="flex items-center gap-2">
@@ -185,7 +179,7 @@ const SystemFooter = () => {
               className="w-2 h-2 rounded-full animate-pulse"
               style={{ backgroundColor: '#22C55E' }}
             />
-            <span className="text-xs font-mono uppercase tracking-widest" style={{ color: '#475569' }}>
+            <span className="text-xs font-mono uppercase tracking-widest" style={{ color: '#6B7280' }}>
               System Operational
             </span>
           </div>

@@ -3,7 +3,7 @@ import {
   Home, About, Documentation,
   GST, GstTemplates, TemplateCustomization,
   AdminTemplateDashboard, AdminUploadPortal,
-  SignupPage,
+  SignupPage, LetaWorkspace,
 } from '../pages';
 import LoginPage from '../pages/auth/login';
 import { ROUTES } from '../constants/routes';
@@ -26,6 +26,7 @@ export const protectedRoutes: RouteConfig[] = [
   { path: ROUTES.DOCS,  element: <Documentation /> },
 
   { path: ROUTES.DASHBOARD, element: <GST /> },
+  { path: '/:domainId/leta', element: <LetaWorkspace /> },
 
   {
     path: ROUTES.GST.ROOT,

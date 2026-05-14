@@ -2,6 +2,11 @@ import React from 'react';
 import { FileText, Code, Book } from 'lucide-react';
 import { DocumentLibrary } from '../components/documents';
 
+import cx from 'classnames/bind';
+import styles from './Documentation.module.css';
+
+const cn = cx.bind(styles);
+
 const DOC_CARDS = [
   {
     icon: Book,
@@ -24,60 +29,45 @@ const DOC_CARDS = [
 ];
 
 const Documentation: React.FC = () => (
-  <div className="min-h-screen pt-28 pb-16" style={{ backgroundColor: 'var(--surface)' }}>
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div className={cn('pageWrapper')}>
+    <div className={cn('container')}>
 
       {/* Header */}
-      <div className="text-center mb-14">
-        <h1
-          className="font-display font-bold text-4xl mb-3 tracking-tight uppercase"
-          style={{ color: '#e5e2e1' }}
-        >
+      <div className={cn('header')}>
+        <h1 className={cn('title')}>
           LETA TITAN Knowledge Ops
         </h1>
-        <p className="font-mono text-xs tracking-widest uppercase" style={{ color: '#9a9a9a' }}>
+        <p className={cn('subtitle')}>
           Secure statutory repository &amp; AI-powered legal intelligence network.
         </p>
       </div>
 
       {/* Document Library */}
-      <div
-        className="mb-16 rounded-leta overflow-hidden"
-        style={{ backgroundColor: 'var(--surface-container-low)' }}
-      >
+      <div className={cn('libraryContainer')}>
         <DocumentLibrary />
       </div>
 
       {/* Info cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+      <div className={cn('grid')}>
         {DOC_CARDS.map(({ icon: Icon, title, desc, link }) => (
           <div
             key={title}
-            className="rounded-leta p-8 flex flex-col gap-5 group transition-all duration-300 cursor-pointer"
-            style={{ backgroundColor: 'var(--surface-container-high)' }}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--surface-bright)'; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--surface-container-high)'; }}
+            className={cn('card')}
           >
-            <div
-              className="w-11 h-11 rounded-leta flex items-center justify-center transition-colors"
-              style={{ backgroundColor: 'var(--surface-container-lowest)' }}
-            >
-              <Icon size={20} style={{ color: '#9a9a9a' }} />
+            <div className={cn('iconWrapper')}>
+              <Icon size={20} />
             </div>
             <div>
-              <h3 className="font-semibold text-lg mb-2 transition-colors" style={{ color: '#e5e2e1' }}>
+              <h3 className={cn('cardTitle')}>
                 {title}
               </h3>
-              <p className="text-sm font-light leading-relaxed" style={{ color: '#9a9a9a' }}>
+              <p className={cn('cardDesc')}>
                 {desc}
               </p>
             </div>
             <a
               href="#"
-              className="text-sm font-semibold transition-colors mt-auto"
-              style={{ color: '#4F46E5' }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#111827'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = '#4F46E5'; }}
+              className={cn('cardLink')}
             >
               {link} →
             </a>

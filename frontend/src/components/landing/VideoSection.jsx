@@ -4,73 +4,98 @@ import { Play } from 'lucide-react';
 
 const VideoSection = () => {
   const containerRef = useRef(null);
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start end", "end start"]
-  });
-
-  const scale = useTransform(scrollYProgress, [0, 0.5], [0.9, 1]);
+  const { scrollYProgress } = useScroll({ target: containerRef, offset: ['start end', 'end start'] });
+  const scale   = useTransform(scrollYProgress, [0, 0.5], [0.95, 1]);
   const opacity = useTransform(scrollYProgress, [0, 0.3], [0.5, 1]);
 
   return (
-    <section ref={containerRef} className="py-24 bg-[#FFFFFF] relative overflow-hidden text-leta-gray-900 border-t border-leta-gray-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-        <motion.div 
+    <section
+      ref={containerRef}
+      className="py-[140px] relative overflow-hidden border-t border-white/[0.05]"
+    >
+      {/* Ambient glow behind video */}
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] pointer-events-none bg-[radial-gradient(ellipse,rgba(103,232,249,0.02)_0%,transparent_70%)] blur-[80px]" />
+
+
+
+      <div className="w-full px-10 lg:px-20 text-center relative z-10">
+
+        {/* Header */}
+        <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           className="mb-12"
         >
-            <span className="inline-block py-1 px-3 border border-sentinel-green/30 text-sentinel-green bg-sentinel-green/5 font-mono text-[10px] tracking-[0.2em] mb-4 uppercase">
-                // EXECUTION_LOG_01
-            </span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-6 font-sans tracking-tight">
-              See <span className="text-leta-gray-500">LETA</span> in Action
-            </h2>
-            <p className="text-leta-gray-600 max-w-2xl mx-auto text-lg font-mono text-sm leading-relaxed border-l border-sentinel-blue/30 pl-4 text-left md:text-center md:border-l-0 md:pl-0">
-                Observing real-time statutory deconstruction and analysis protocols.
-            </p>
+          <span className="inline-block py-1.5 px-3.5 font-mono text-[10px] tracking-[0.2em] mb-4 uppercase rounded-full border border-white/[0.05] bg-white/[0.02] text-[#67E8F9]">
+            // EXECUTION_LOG_01
+          </span>
+          <h2 className="text-3xl md:text-5xl font-bold mb-6 font-display tracking-tight text-[#F5F7FA] uppercase">
+            See LETA in Action
+          </h2>
+          <p className="max-w-2xl mx-auto text-sm leading-relaxed font-mono text-[#A1AAB8]">
+            Observing real-time statutory deconstruction and analysis protocols.
+          </p>
         </motion.div>
 
-        <motion.div 
+        {/* Video frame */}
+        <motion.div
           style={{ scale, opacity }}
-          className="relative aspect-video max-w-5xl mx-auto bg-[#F9FAFB] border border-leta-gray-200 group shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+          className="relative aspect-video max-w-5xl mx-auto group rounded-2xl overflow-hidden border border-white/[0.06] bg-secondary shadow-2xl"
+          initial={{ boxShadow: '0 40px 80px rgba(0,0,0,0.6)' }}
         >
-            {/* Corner Indicators */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-sentinel-green/50 z-20" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-sentinel-green/50 z-20" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-sentinel-green/50 z-20" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-sentinel-green/50 z-20" />
+          {/* Actual border overlay */}
+          <div className="absolute inset-0 rounded-2xl z-20 pointer-events-none border border-white/[0.06]" />
 
-            {/* Placeholder for actual video source */}
-            <div className="absolute inset-0 flex items-center justify-center bg-transparent">
-                <div className="absolute inset-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80')] bg-cover bg-center grayscale mix-blend-luminosity" />
-                <div className="absolute inset-0 bg-[#F9FAFB]/60" />
-                
-                <motion.button 
-                    whileTap={{ opacity: 0.8 }}
-                    className="relative z-10 w-24 h-24 flex items-center justify-center text-sentinel-green group-hover:text-leta-gray-900 transition-colors duration-200"
-                >
-                    <div className="absolute inset-0 border border-sentinel-green/30 rounded-full animate-[spin_10s_linear_infinite]" />
-                    <div className="absolute inset-2 border border-sentinel-green/10 rounded-full animate-[spin_5s_linear_infinite_reverse]" />
-                    <Play size={32} fill="currentColor" className="ml-1" />
-                </motion.button>
-            </div>
-            
-            {/* Overlay UI elements to make it look technical */}
-            <div className="absolute top-4 left-4 flex items-center gap-3 font-mono text-[10px] text-sentinel-green tracking-widest bg-leta-gray-500 px-2 py-1 border border-sentinel-green/20">
-                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                <span>REC_001 // LIVE_FEED</span>
-            </div>
-            
-            <div className="absolute bottom-4 right-4 font-mono text-[10px] text-leta-gray-500 tracking-widest">
-                [ 1080p | 60FPS | ENCRYPTED ]
-            </div>
+          {/* Corner indicators */}
+          {[
+            'top-0 left-0 border-t border-l',
+            'top-0 right-0 border-t border-r',
+            'bottom-0 left-0 border-b border-l',
+            'bottom-0 right-0 border-b border-r',
+          ].map((cls, i) => (
+            <div key={i} className={`absolute ${cls} w-5 h-5 z-20 pointer-events-none border-white/[0.15]`} />
+          ))}
+
+          {/* Background image */}
+          <div
+            className="absolute inset-0 bg-cover bg-center grayscale"
+            style={{
+              backgroundImage: `url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80')`,
+              opacity: 0.1,
+              mixBlendMode: 'luminosity',
+            }}
+          />
+          {/* Dark overlay */}
+          <div className="absolute inset-0 bg-[#07090D]/90" />
+
+          {/* Play button */}
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <motion.button
+              whileTap={{ opacity: 0.8 }}
+              className="relative flex items-center justify-center transition-all duration-300 text-[#67E8F9] hover:text-[#5EEAD4]"
+              style={{ width: 96, height: 96 }}
+            >
+              <div className="absolute inset-0 rounded-full animate-[spin_10s_linear_infinite] border border-white/[0.05]" />
+              <div className="absolute inset-2 rounded-full animate-[spin_5s_linear_infinite_reverse] border border-[#67E8F9]/10" />
+              <div className="absolute inset-0 rounded-full bg-white/[0.01]" />
+              <Play size={30} fill="currentColor" className="ml-1 relative z-10" />
+            </motion.button>
+          </div>
+
+          {/* REC badge */}
+          <div className="absolute top-4 left-4 flex items-center gap-2 font-mono text-[10px] tracking-widest px-3 py-1.5 z-20 rounded-lg bg-[#07090D]/80 border border-white/[0.06] text-[#67E8F9]">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span>REC_001 // LIVE_FEED</span>
+          </div>
+
+          {/* Tech label */}
+          <div className="absolute bottom-4 right-4 font-mono text-[10px] tracking-widest z-20 text-[#6B7280]/40">
+            [ 1080p | 60FPS | ENCRYPTED ]
+          </div>
         </motion.div>
+
       </div>
-      
-      {/* Background Grid */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
     </section>
   );
 };

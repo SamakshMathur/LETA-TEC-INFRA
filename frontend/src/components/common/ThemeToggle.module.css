@@ -1,0 +1,42 @@
+.toggleContainer {
+  position: relative;
+}
+
+.toggleButton {
+  position: relative;
+  width: 40px; /* 10 spacing units in Tailwind */
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px; /* full */
+  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-bg-secondary);
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.toggleButton:active {
+  transform: scale(0.9);
+}
+
+.iconContainer {
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hoverRing {
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.toggleButton:hover .hoverRing {
+  border-color: var(--color-brand-soft);
+}

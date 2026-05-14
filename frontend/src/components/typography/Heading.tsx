@@ -1,4 +1,8 @@
 import React from 'react';
+import cx from 'classnames/bind';
+import styles from './Heading.module.css';
+
+const cn = cx.bind(styles);
 
 type HeadingProps = {
   level?: "h1" | "h2" | "h3";
@@ -6,12 +10,10 @@ type HeadingProps = {
   className?: string;
 };
 
-export const Heading = ({ level = "h1", children, className = "" }: HeadingProps) => {
-  const styles = {
-    h1: "text-h1 font-heading font-bold",
-    h2: "text-h2 font-heading font-semibold",
-    h3: "text-h3 font-heading font-medium",
-  };
-
-  return <h1 className={`${styles[level]} ${className}`}>{children}</h1>;
+export const Heading = ({ level = "h1", children, className }: HeadingProps) => {
+  return (
+    <h1 className={cn('heading', level, className)}>
+      {children}
+    </h1>
+  );
 };

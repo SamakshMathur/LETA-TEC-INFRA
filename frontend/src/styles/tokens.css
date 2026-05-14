@@ -1,0 +1,61 @@
+:root {
+  /* ─── Brand ─── */
+  --color-brand:            #4FB7C5;
+  --color-brand-hover:      #3EA6B4;
+  --color-brand-soft:       rgba(79, 183, 197, 0.12);
+  --color-brand-dark:       #25707C;
+
+  /* ─── Background & Surfaces ─── */
+  --color-bg-main:          #070B11;
+  --color-bg-secondary:     #0F1722;
+  --color-bg-card:          #0F1722;
+  --color-bg-hover:         #131D2B;
+  --color-bg-navbar:        rgba(7, 11, 17, 0.72);
+
+  --color-surface:          #070B11;
+  --color-surface-bright:   #0F1722;
+  --color-surface-lowest:   #070B11;
+  --color-surface-low:      #0F1722;
+  --color-surface-high:     #131D2B;
+
+  /* ─── Semantic status palette ─── */
+  --color-status-positive:  #10B981;
+  --color-status-warning:   #F59E0B;
+  --color-status-negative:  #EF4444;
+  --color-status-neutral:   #9CA3AF;
+
+  /* ─── Text & Typography Colors ─── */
+  --color-text-heading:     #F4F7FA;
+  --color-text-heading-sec: #A7B3C2;
+  --color-text-body:        #A7B3C2;
+  --color-text-muted:       #6C7A99;
+  --color-text-meta:        #525D73;
+  --color-text-disabled:    #525D73;
+  --color-text-accent:      #4FB7C5;
+  --color-text-link:        #4FB7C5;
+
+  /* ─── Borders & Glass Effects ─── */
+  --color-border-subtle:    rgba(255, 255, 255, 0.05);
+  --color-border-cyan:      rgba(79, 183, 197, 0.15);
+  --color-glass-bg:         rgba(255, 255, 255, 0.02);
+  --color-glass-elevated:   rgba(255, 255, 255, 0.04);
+
+  /* ─── Shadows ─── */
+  --shadow-card:            0px 4px 20px rgba(0, 0, 0, 0.18);
+  --shadow-button:          0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-button-hover:    0 4px 16px rgba(79, 183, 197, 0.2);
+
+  /* ─── Spacing — base unit 8px ─── */
+  --space-1:   8px;
+  --space-2:   16px;
+  --space-3:   24px;
+  --space-4:   32px;
+  --space-5:   40px;
+
+  /* ─── Typography Sizes ─── */
+  --text-xs:    11px;
+  --text-sm:    13px;
+  --text-base:  14px;
+  --text-lg:    18px;
+  --text-xl:    24px;
+}

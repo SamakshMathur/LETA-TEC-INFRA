@@ -1,34 +1,30 @@
 import React from 'react';
 import { ShieldCheck, AlertTriangle, AlertOctagon } from 'lucide-react';
 
-// Confidence levels mapping
-// > 90% -> High (Green)
-// 70-90% -> Medium (Yellow/Orange)
-// < 70% -> Low (Red)
-
 const ConfidenceBadge = ({ score }) => {
-  let colorClass = "bg-leta-gray-100 text-leta-gray-600 border-leta-gray-200";
-  let icon = ShieldCheck;
-  let label = "Unknown Confidence";
+  let style = { background: 'rgba(71,85,105,0.15)', color: '#94A3B8', border: '1px solid rgba(71,85,105,0.3)' };
+  let Icon = ShieldCheck;
+  let label = 'Unknown Confidence';
 
   if (score >= 0.9) {
-    colorClass = "bg-sentinel-green/10 text-sentinel-green border-sentinel-green/20";
-    label = "High Confidence";
+    style = { background: 'rgba(34,197,94,0.1)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.2)' };
+    label = 'High Confidence';
   } else if (score >= 0.7) {
-    colorClass = "bg-yellow-50 text-yellow-700 border-yellow-200";
-    icon = AlertTriangle;
-    label = "Medium Confidence";
+    style = { background: 'rgba(245,158,11,0.1)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)' };
+    Icon = AlertTriangle;
+    label = 'Medium Confidence';
   } else {
-    colorClass = "bg-red-50 text-red-700 border-red-200";
-    icon = AlertOctagon;
-    label = "Low Confidence";
+    style = { background: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' };
+    Icon = AlertOctagon;
+    label = 'Low Confidence';
   }
 
-  const Icon = icon;
-
   return (
-    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold uppercase tracking-wide ${colorClass}`}>
-      <Icon size={14} />
+    <div
+      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide font-mono"
+      style={style}
+    >
+      <Icon size={13} />
       <span>{label} ({Math.round(score * 100)}%)</span>
     </div>
   );

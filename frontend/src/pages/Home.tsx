@@ -1,22 +1,40 @@
 import React from 'react';
 import {
-  Hero, StatutoryHero3D, StatutoryDomains, LetaIntro,
-  PromoCards, VideoSection, HowItWorks, SecuritySection,
+  SovereignHero,
+  IntelligenceEngine,
+  IntelligenceFeed,
+  MemoryMap,
+  StatutoryDomains,
+  SimulatedWorkspace,
+  SovereignTrust,
 } from '../components/landing';
 import { DynamicBackground } from '../components/effects';
 
 const Home: React.FC = () => {
   return (
-    <div className="relative">
-      <div className="" />
+    <div className="relative overflow-hidden bg-[#070B11]">
       <DynamicBackground />
-      <Hero />
-      <LetaIntro />
-      <HowItWorks />
+      
+      {/* SECTION 01 — Sovereign Hero Interface */}
+      <SovereignHero />
+      
+      {/* SECTION 02 — Statutory Intelligence Modules */}
       <StatutoryDomains />
-      <SecuritySection />
-      <PromoCards />
-      <VideoSection />
+      
+      {/* SECTION 03 — Statutory Intelligence Engine */}
+      <IntelligenceEngine />
+      
+      {/* SECTION 04 — Live Legal Intelligence Feed */}
+      <IntelligenceFeed />
+      
+      {/* SECTION 05 — Legal Intelligence Memory Map */}
+      <MemoryMap />
+      
+      {/* SECTION 06 — Operational Intelligence Workspace */}
+      <SimulatedWorkspace />
+      
+      {/* SECTION 07 — Sovereign Trust Layer */}
+      <SovereignTrust />
     </div>
   );
 };

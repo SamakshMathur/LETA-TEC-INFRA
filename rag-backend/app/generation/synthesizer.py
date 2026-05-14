@@ -341,88 +341,54 @@ def _stream_openai(question: str, system_prompt: str, response_mode: str = "deta
 
 def synthesize_answer_stream(question: str, context: str):
     """
-    Generates a streaming legal answer using the configured LLM provider.
-
-    Routing logic (Anthropic only):
-      - Estimates query complexity (0.0–1.0) without an LLM call
-      - Simple queries (score < HAIKU_COMPLEXITY_THRESHOLD) → Haiku (~9x cheaper)
-      - Complex queries → Sonnet with extended thinking (full accuracy)
-
-    Token budget guard:
-      - Rejects queries where estimated input tokens exceed MAX_INPUT_TOKENS
-      - Prevents runaway API spend from adversarial or oversized inputs
+    Public API: Generates a streaming answer.
+    Decides between Anthropic and OpenAI based on configuration,
+    handles complexity/mode estimation, formats prompts and streams chunks.
     """
-    if not question or not question.strip():
-        logger.warning("synthesize_answer_stream called with empty question")
-        yield "Error: No question provided."
-        return
-
-    if LLM_PROVIDER == "anthropic" and not ANTHROPIC_API_KEY:
-        yield "## Error: ANTHROPIC_API_KEY not configured."
-        return
-    if LLM_PROVIDER != "anthropic" and not OPENAI_API_KEY and not OLLAMA_API_KEY:
-        yield "## Error: No LLM API Key configured."
-        return
-
-    try:
-        truth_rules_text = rules_engine.get_all_rules_as_text()
-    except Exception as e:
-        logger.error(f"Rules engine error: {e}")
-        yield f"Error: Could not load truth rules ({e})"
-        return
-
     complexity = _estimate_complexity(question)
-    is_draft_request = any(kw in question.lower() for kw in ["draft", "notice", "reply", "appeal", "submission", "advisory"])
+    is_draft = any(kw in question.lower() for kw in ["draft", "notice", "reply", "appeal", "submission", "advisory"])
 
-    if is_draft_request:
-        response_mode, prompt_template, max_tokens = "draft", DRAFTING_PROMPT, 4000
-    elif LLM_PROVIDER == "anthropic":
-        response_mode, prompt_template, max_tokens = _select_response_mode(complexity)
+    if is_draft:
+        prompt_template = DRAFTING_PROMPT
+        use_haiku = False
+        use_thinking = False  # Thinking disabled — DRAFTING_PROMPT is self-sufficient; all tokens go to output
+        max_tokens = 16000   # 16 000 output tokens ≈ 11 000–12 000 words — enough for any legal draft
     else:
-        response_mode, prompt_template, max_tokens = "detailed", SYSTEM_PROMPT, CLAUDE_MAX_TOKENS
+        mode_name, prompt_template, max_tokens = _select_response_mode(complexity)
+        use_haiku = complexity < HAIKU_COMPLEXITY_THRESHOLD
+        use_thinking = (not use_haiku) and (complexity >= SONNET_THINKING_THRESHOLD)
 
-    try:
-        formatted_system_prompt = prompt_template.format(
-            context=context,
-            truth_rules=truth_rules_text,
-        )
-    except KeyError as e:
-        logger.error(f"System prompt template error — missing placeholder: {e}")
-        yield f"Error: System prompt misconfigured (missing {e})"
-        return
-
-    # ── Token budget guard ────────────────────────────────────────────────────
-    estimated_tokens = _count_tokens_approx(formatted_system_prompt + question)
-    if estimated_tokens > MAX_INPUT_TOKENS:
-        logger.warning(
-            f"Token budget exceeded | estimated={estimated_tokens} | "
-            f"limit={MAX_INPUT_TOKENS} | question={question[:80]}"
-        )
-        yield (
-            "## Query Too Large\n"
-            "Your query with the retrieved context exceeds the processing limit. "
-            "Please narrow your question to a specific section or provision."
-        )
-        return
+    truth_rules_text = rules_engine.get_all_rules_as_text()
+    system_prompt = prompt_template.format(context=context, truth_rules=truth_rules_text)
 
     if LLM_PROVIDER == "anthropic":
-        use_haiku   = complexity < HAIKU_COMPLEXITY_THRESHOLD     # < 0.4 → Haiku
-        use_thinking = complexity >= SONNET_THINKING_THRESHOLD    # >= 0.7 → Sonnet + thinking
         logger.info(
-            f"synthesize | complexity={complexity:.2f} | mode={response_mode} | "
-            f"model={'haiku' if use_haiku else 'sonnet'} | thinking={use_thinking} | "
-            f"max_tokens={max_tokens} | q={question[:80]}"
+            f"Routing to Claude: complexity={complexity:.2f} | draft={is_draft} | "
+            f"haiku={use_haiku} | thinking={use_thinking}"
         )
         yield from _stream_claude(
-            question, formatted_system_prompt,
+            question=question,
+            system_prompt=system_prompt,
             use_haiku=use_haiku,
             use_thinking=use_thinking,
             max_tokens_override=max_tokens,
         )
     else:
-        logger.debug(f"synthesize_answer_stream | provider={LLM_PROVIDER} | question={question[:80]}")
-        yield from _stream_openai(question, formatted_system_prompt, response_mode=response_mode)
+        logger.info(
+            f"Routing to OpenAI/Ollama: model={LLM_MODEL} | complexity={complexity:.2f} | draft={is_draft}"
+        )
+        yield from _stream_openai(
+            question=question,
+            system_prompt=system_prompt,
+            response_mode="draft" if is_draft else "detailed",
+        )
 
 
 def synthesize_answer(question: str, context: str) -> str:
-    return "".join(synthesize_answer_stream(question, context))
+    """
+    Public API: Synchronous answer generation wrapper.
+    """
+    chunks = []
+    for chunk in synthesize_answer_stream(question, context):
+        chunks.append(chunk)
+    return "".join(chunks)

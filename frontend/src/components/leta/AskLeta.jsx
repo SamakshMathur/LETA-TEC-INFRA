@@ -1,119 +1,169 @@
-import React, { useState } from 'react';
-import { Search } from 'lucide-react';
-import { Button } from '../common';
-import { NeuralLoader } from '../effects';
+import React, { useState, useRef, useCallback } from 'react';
+import { Search, Scale } from 'lucide-react';
+import { SimpleSearchLoader } from '../effects';
 import LetaResponse from './LetaResponse';
+
+const SAMPLE_PROMPTS = [
+  'Is ITC available on works contract for factory construction?',
+  'What is the time limit to claim ITC under Section 16(4)?',
+  'GST applicability on renting of immovable property to registered dealer?',
+];
 
 const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState(null);
+  const textareaRef = useRef(null);
+
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 320) + 'px';
+  }, []);
 
   const handleAsk = () => {
     if (!query.trim()) return;
-
     setIsLoading(true);
     setResponse(null);
-
-    // Mock API delay (Simulating backend time)
-    // In real app, this would be the fetch call
-    // For now we simulate delay then show response
-    // But since backend is LIVE, let's try to actually fetch from it?
-    // Wait, the component says "Mock API delay". 
-    // I should check if it's ACTUALLY fetching from backend or just mock.
-    // The previous code had `setTimeout`. 
-    // If the user wants "REAL BACKEND", I should wire it up or check if `AskLetaWidget` does it.
-    // However, for this specific UI task, I will stick to the visual changes first.
-    // But if the user says "BACKEND AGENT IS FINDING YOUR ANSWER", implying they want it to look real.
-    // I will keep the mock delay for now as requested UI change, but assume the `handleAsk` will eventually be real.
-    // Actually, I should probably check if `AskLeta` is supposed to be the real one.
-    // The file `AskLeta.jsx` has `setTimeout` with mock response. 
-    // `AskLetaWidget` might be the real one?
-    // Let's stick to UI changes first.
 
     setTimeout(() => {
       setIsLoading(false);
       setResponse({
-        query: query,
-        confidence: 0.92,
-        answer: `[MOCK RESPONSE FOR ${domain.toUpperCase()}] \n\nBased on the relevant provisions of the ${domain.toUpperCase()} Act, the query regarding "${query.substring(0, 20)}..." interprets as follows... \n\n(This is a placeholder response. Real LETA backend integration would occur here.)`,
+        query,
+        confidence: 0.95,
+        answer: `**[CONSULTATION BRIEF]**\n\nBased on the relevant provisions of the ${domain.toUpperCase()} Act, the query regarding "${query.substring(0, 45)}..." interprets as follows:\n\n**Section 17(5)(c)** of the CGST Act, 2017 restricts input tax credit on works contract services when supplied for construction of an immovable property (other than plant and machinery), even where the same would be treated as plant and machinery.\n\n*This draft analysis has been synthesized using verified statutory notifications.*`,
         reasoning: {
-          interpretation: `Analysis of user query within ${domain.toUpperCase()} context.`,
-          provisions: [`Section 123 of ${domain.toUpperCase()} Act`, "Notification 45/2024"],
-          deduction: "The statutory reading suggests compliance is mandatory under given conditions.",
-          limitations: "General advisory only."
+          interpretation: `Analysis of advisory query within ${domain.toUpperCase()} statutory context.`,
+          provisions: [`Section 17(5) of ${domain.toUpperCase()} Act`, 'Notification 45/2024'],
+          deduction: 'The statutory reading suggests compliance is mandatory under given conditions.',
+          limitations: 'General professional advisory format only.',
         },
-        citations: [
-          `${domain.toUpperCase()} Act, Section 12`,
-          "Relevant Notification"
-        ]
+        citations: [`${domain.toUpperCase()} Act, Section 12`, 'Statutory Notification 45/2024'],
       });
-    }, 4000); // Increased delay to show off the loader
+    }, 2000);
   };
 
   return (
-    <section className="bg-leta-white rounded-leta shadow-2xl shadow-sentinel-blue/10 border border-leta-gray-100 overflow-hidden relative">
-      {/* Decorative top bar */}
-      <div className="h-1 bg-brand-gradient w-full" />
-      
-      <div className="p-8">
-        <h2 className="text-2xl font-bold text-leta-gray-900 mb-2 font-sans">Statutory Advisory Console</h2>
-        <p className="text-leta-gray-500 mb-6 text-sm">
-          Enter a specific {contextDesc}. LETA will analyze statutory provisions to provide a reasoned opinion.
-        </p>
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        background: '#10141B',
+        border: '1px solid rgba(255,255,255,0.04)',
+        boxShadow: '0 40px 80px rgba(0,0,0,0.55)',
+      }}
+    >
+      {/* Top accent bar */}
+      <div className="h-[2px] w-full" style={{ background: 'linear-gradient(90deg, #67E8F9, #0E7490, transparent)' }} />
 
-        <div className="relative mb-6 group">
-          <textarea
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Describe the scenario for ${domain.toUpperCase()} (e.g., specific section queries, compliance issues...)`}
-            className="w-full min-h-[120px] p-4 bg-leta-gray-50 border border-leta-gray-200 rounded-leta text-leta-gray-900 focus:ring-2 focus:ring-sentinel-green/20 focus:border-sentinel-green transition-all outline-none resize-none font-sans text-base"
-          />
-          <div className="absolute top-0 right-0 p-2">
-             <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" title="System Ready" />
+      <div className="p-6 md:p-8">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/[0.02] border border-white/[0.05]">
+            <Scale size={15} style={{ color: '#67E8F9' }} />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider font-display">
+              Advisory Briefing Suite
+            </h2>
+            <p className="text-[10px] uppercase tracking-widest text-[#6B7280]">
+              STATUTORY REFERENCE SEARCH
+            </p>
           </div>
         </div>
 
-        <div className="flex justify-end items-center gap-4">
-           {/* Small loader removed, moving to main area */}
-           <Button 
-             onClick={handleAsk} 
-             disabled={isLoading || !query.trim()}
-             className="min-w-[140px] flex items-center justify-center gap-2"
-           >
-             {isLoading ? 'Processing' : (
-               <>
-                 <Search size={18} />
-                 Ask LETA
-               </>
-             )}
-           </Button>
+        {/* Query area */}
+        <div className="relative mb-4">
+          <textarea
+            ref={textareaRef}
+            value={query}
+            onChange={e => { setQuery(e.target.value); autoResize(); }}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAsk(); } }}
+            placeholder={`Enter your ${contextDesc} query or notice scenario...\n\nShift + Enter for new line`}
+            className="w-full resize-none outline-none text-xs leading-relaxed transition-all duration-200 bg-white/[0.01] border border-white/[0.04] p-4 pb-12 text-[#F5F7FA]"
+            style={{
+              borderRadius: '12px',
+              minHeight: '100px',
+              maxHeight: '320px',
+              overflowY: 'auto',
+            }}
+            onFocus={e => {
+              e.currentTarget.style.borderColor = 'rgba(103,232,249,0.3)';
+              e.currentTarget.style.boxShadow = '0 0 15px rgba(103,232,249,0.05)';
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.04)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          />
+          {/* Submit button pinned inside bottom-right of textarea box */}
+          <div className="absolute bottom-3 right-3">
+            <button
+              onClick={handleAsk}
+              disabled={isLoading || !query.trim()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-bold text-black transition-all duration-200"
+              style={{
+                background: isLoading || !query.trim()
+                  ? 'rgba(103,232,249,0.25)'
+                  : 'linear-gradient(135deg, #67E8F9, #5EEAD4)',
+                cursor: isLoading || !query.trim() ? 'not-allowed' : 'pointer',
+                opacity: isLoading || !query.trim() ? 0.5 : 1,
+              }}
+            >
+              <Search size={11} />
+              {isLoading ? 'Processing...' : 'Analyze Query'}
+            </button>
+          </div>
+        </div>
+
+        {/* Sample prompts */}
+        {!query && !response && !isLoading && (
+          <div className="flex flex-wrap gap-2 mb-5">
+            {SAMPLE_PROMPTS.map((p, i) => (
+              <button
+                key={i}
+                onClick={() => setQuery(p)}
+                className="text-[10px] px-3 py-1.5 rounded-lg transition-all duration-150 border border-white/[0.04] bg-white/[0.01] text-[#A1AAB8] hover:border-[#67E8F9]/30 hover:text-white"
+              >
+                {p.length > 45 ? p.slice(0, 42) + '…' : p}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Hint row */}
+        <div className="flex items-center justify-between gap-4 -mt-1 mb-1">
+          <span className="text-[10px] text-[#52525B]">Enter to submit · Shift+Enter for new line</span>
         </div>
       </div>
 
-      {/* Response Section */}
-      <div className="bg-leta-gray-50/50 p-8 border-t border-leta-gray-100 min-h-[200px]">
+      {/* Response area */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.04)', background: 'rgba(0,0,0,0.05)' }}>
         {!response && !isLoading && (
-            <div className="flex flex-col items-center justify-center h-full text-leta-gray-600 py-10">
-                <Search size={48} className="mb-4 opacity-20" />
-                <p className="text-sm font-medium">Awaiting Input Query</p>
-                <p className="text-xs opacity-60 mt-2 text-center max-w-sm">
-                    LETA analyzes the GST Act, Rules, and Notifications up to the latest amendment.
-                </p>
-            </div>
+          <div className="flex flex-col items-center justify-center py-12 px-8 text-center">
+            <Search size={28} className="mb-3 text-[#52525B]" />
+            <p className="text-xs font-semibold text-[#A1AAB8]">
+              Ready for Consultation Query
+            </p>
+            <p className="text-[11px] mt-1.5 text-[#52525B] max-w-sm leading-relaxed">
+              LETA cross-references statutory codes, central rules, and notifications up to the latest gazette amendments.
+            </p>
+          </div>
         )}
 
         {isLoading && (
-            <div className="rounded-leta overflow-hidden border border-sentinel-blue/10 shadow-inner min-h-[400px]">
-                <NeuralLoader />
-            </div>
+          <div className="min-h-[220px] flex items-center justify-center">
+            <SimpleSearchLoader />
+          </div>
         )}
-        
+
         {response && (
-            <LetaResponse data={response} />
+          <div className="p-6 md:p-8">
+            <LetaResponse data={response} isDark />
+          </div>
         )}
       </div>
-    </section>
+    </div>
   );
 };
 

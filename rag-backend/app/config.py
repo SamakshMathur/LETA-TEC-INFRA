@@ -22,7 +22,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")           # used only when provider
 CLAUDE_MAIN_MODEL = os.getenv("CLAUDE_MAIN_MODEL", "claude-sonnet-4-6")
 CLAUDE_UTILITY_MODEL = os.getenv("CLAUDE_UTILITY_MODEL", "claude-haiku-4-5-20251001")
 CLAUDE_THINKING_BUDGET = int(os.getenv("CLAUDE_THINKING_BUDGET", "1500"))
-CLAUDE_MAX_TOKENS = int(os.getenv("CLAUDE_MAX_TOKENS", "6000"))
+CLAUDE_MAX_TOKENS = int(os.getenv("CLAUDE_MAX_TOKENS", "8000"))
 VISUAL_LLM_MODEL = "claude-sonnet-4-6"
 
 # ─── Embedding Config ─────────────────────────────────────────────────────
@@ -32,9 +32,9 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
 VECTOR_DIM = 1024 if EMBEDDING_PROVIDER == "local" else 3072
 
 # ─── Retrieval Tuning (externalized magic numbers) ─────────────────────────
-VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "50"))
-VECTOR_EXPANDED_TOP_K = int(os.getenv("VECTOR_EXPANDED_TOP_K", "15"))
-BM25_TOP_K = int(os.getenv("BM25_TOP_K", "30"))
+VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "25"))   # was 50
+VECTOR_EXPANDED_TOP_K = int(os.getenv("VECTOR_EXPANDED_TOP_K", "10"))  # was 15
+BM25_TOP_K = int(os.getenv("BM25_TOP_K", "20"))                        # was 30
 MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.7"))
 MAX_RESPONSE_POINTS = int(os.getenv("MAX_RESPONSE_POINTS", "15"))
 

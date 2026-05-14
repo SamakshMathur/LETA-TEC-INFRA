@@ -3,11 +3,11 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, Environment, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 
-// Sentinel Color Palette
+// Sovereign LETA Titan Color Palette
 const COLORS = {
-  blue: '#003B59',
-  green: '#0B7350',
-  white: '#FFFFFF',
+  blue: '#151922',  // Deep Graphite
+  green: '#5EEAD4', // Sovereign Teal
+  white: '#67E8F9', // Sovereign Cyan
 };
 
 // Abstract Statutory Layer Component
@@ -109,8 +109,8 @@ const StatutoryHero3D = () => {
         <StatutoryScene />
       </Canvas>
       {/* Gradient Overlay to ensure text readability and blend with background */}
-      <div className="absolute inset-0 bg-gradient-to-r from-sentinel-blue/90 via-sentinel-blue/50 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-sentinel-blue" />
+      <div className="absolute inset-0 bg-gradient-to-r from-[#07090D]/90 via-[#07090D]/50 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#07090D]" />
     </div>
   );
 };

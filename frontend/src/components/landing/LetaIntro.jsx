@@ -62,12 +62,12 @@ const features = [
 
 const LetaIntro = () => {
   return (
-    <section className="relative py-32 text-white overflow-hidden" style={{ borderTop: '1px solid rgba(124,58,237,0.1)' }}>
+    <section className="relative py-[140px] text-white overflow-hidden border-t border-white/[0.05]">
       {/* Neural Background Layer */}
       <NeuralBackground />
       
       {/* Gradient Vignette */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#060816] via-transparent to-[#060816] z-10 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#07090D] via-transparent to-[#07090D] z-10 pointer-events-none" />
 
       <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-20 text-center md:text-left">
@@ -75,10 +75,10 @@ const LetaIntro = () => {
              initial={{ opacity: 0, y: 10 }}
              whileInView={{ opacity: 1, y: 0 }}
              viewport={{ once: false }}
-             className="inline-flex items-center gap-2 py-1 px-3 mb-6 border border-sentinel-green/30 rounded-leta bg-sentinel-green/5 backdrop-blur-md"
+             className="inline-flex items-center gap-2 py-1.5 px-3.5 mb-6 border border-white/[0.06] rounded-leta bg-white/[0.02]"
            >
-              <div className="w-2 h-2 bg-sentinel-green rounded-full animate-ping" />
-              <span className="text-[10px] font-mono text-sentinel-green tracking-[0.2em] font-bold uppercase">
+              <div className="w-1.5 h-1.5 bg-[#67E8F9] rounded-full animate-pulse" />
+              <span className="text-[10px] font-mono text-[#67E8F9] tracking-[0.2em] font-bold uppercase">
                 System Status: Active
               </span>
            </motion.div>
@@ -88,7 +88,7 @@ const LetaIntro = () => {
              whileInView={{ opacity: 1, x: 0 }}
              viewport={{ once: false }}
              transition={{ duration: 0.8 }}
-             className="text-5xl md:text-7xl font-bold mb-4 tracking-tighter font-sans text-leta-gray-900 uppercase"
+             className="text-5xl md:text-7xl font-bold mb-4 tracking-tighter font-display text-[#F5F7FA] uppercase"
            >
              <ScifiText text="INTRODUCING LETA" className="" />
            </motion.h2>
@@ -98,7 +98,7 @@ const LetaIntro = () => {
               whileInView={{ opacity: 1, width: "100%" }}
               viewport={{ once: false }}
               transition={{ delay: 0.5, duration: 1 }}
-              className="h-[1px] bg-gradient-to-r from-sentinel-blue via-sentinel-green to-transparent max-w-xl mb-6"
+              className="h-[1px] bg-white/[0.05] max-w-xl mb-6"
            />
 
             {/* FULL FORM DECODING */}
@@ -107,7 +107,7 @@ const LetaIntro = () => {
              whileInView={{ opacity: 1 }}
              viewport={{ once: false }}
              transition={{ delay: 1 }}
-             className="text-2xl md:text-3xl font-mono text-leta-gray-900 mb-8 tracking-widest uppercase"
+             className="text-2xl md:text-3xl font-mono text-[#F5F7FA] mb-8 tracking-widest uppercase"
            >
               [ LEGAL TAXATION INTELLIGENCE ]
            </motion.h3>
@@ -117,10 +117,10 @@ const LetaIntro = () => {
              whileInView={{ opacity: 1 }}
              viewport={{ once: false }}
              transition={{ delay: 1.2 }}
-             className="text-xl md:text-2xl text-leta-gray-600 max-w-3xl font-light leading-relaxed border-l-2 border-leta-gray-200 pl-6"
+             className="text-xl md:text-2xl text-[#A1AAB8] max-w-3xl font-light leading-relaxed border-l-2 border-white/[0.05] pl-6"
            >
              LETA is not a chatbot. <br className="hidden md:block" />
-             It is a <span className="text-leta-gray-900 font-medium">statutory intelligence system</span>, <br className="hidden md:block" />
+             It is a <span className="text-[#F5F7FA] font-medium">statutory intelligence system</span>, <br className="hidden md:block" />
              embedded directly into professional GST workflows.
            </motion.p>
         </div>
@@ -133,19 +133,19 @@ const LetaIntro = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: false }}
               transition={{ duration: 0.5, delay: idx * 0.15 + 0.5 }} // Reduced delay for smoother re-entry
-              className="p-8 border border-leta-gray-200 bg-leta-gray-50 hover:bg-leta-gray-50 hover:border-sentinel-green/50 transition-all duration-300 rounded-leta group relative overflow-hidden"
+              className="p-8 border border-white/[0.06] bg-[#151922] hover:border-[#67E8F9]/18 hover:-translate-y-0.5 transition-all duration-300 rounded-leta group relative overflow-hidden shadow-2xl"
             >
-              <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-100 transition-opacity">
-                 <feature.icon size={48} strokeWidth={0.5} className="text-leta-gray-900" />
+              <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-40 transition-opacity">
+                 <feature.icon size={48} strokeWidth={0.5} className="text-white" />
               </div>
 
-              <div className="w-12 h-12 mb-6 flex items-center justify-center text-sentinel-green border border-sentinel-green/20 rounded-leta bg-sentinel-green/5 group-hover:scale-110 transition-transform duration-300">
+              <div className="w-12 h-12 mb-6 flex items-center justify-center text-[#67E8F9] border border-white/[0.05] rounded-leta bg-white/[0.02] group-hover:scale-105 transition-transform duration-300">
                 <feature.icon size={24} strokeWidth={1.5} />
               </div>
-              <h3 className="text-lg font-bold text-leta-gray-900 mb-3 font-mono tracking-wide uppercase border-b border-leta-gray-200 pb-2 inline-block">
+              <h3 className="text-lg font-bold text-[#F5F7FA] mb-3 font-mono tracking-wide uppercase border-b border-white/[0.05] pb-2 inline-block">
                 {feature.title}
               </h3>
-              <p className="text-leta-gray-600 leading-relaxed text-sm font-mono mt-2">
+              <p className="text-[#A1AAB8] leading-relaxed text-sm font-mono mt-2">
                 {feature.desc}
               </p>
             </motion.div>

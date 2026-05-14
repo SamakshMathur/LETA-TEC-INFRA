@@ -1,19 +1,15 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import cx from 'classnames/bind';
+import styles from './AnimatedButton.module.css';
 
-const Button = ({ children, onClick, variant = 'primary', className = '', ...props }) => {
-  const baseStyles = "px-6 py-3 rounded-leta font-sans font-medium transition-all duration-150 text-sm tracking-wide disabled:opacity-50 disabled:cursor-not-allowed";
-  
-  const variants = {
-    primary: "bg-brand-gradient text-leta-gray-900 shadow-lg focus:ring-2 focus:ring-leta-primary/50 hover:brightness-110 border border-transparent",
-    secondary: "bg-transparent text-leta-gray-900 border border-sentinel-blue/20 hover:bg-sentinel-blue/5",
-    outline: "bg-transparent text-leta-gray-900 border border-leta-white/30 hover:bg-leta-white/10"
-  };
+const cn = cx.bind(styles);
 
+const Button = ({ children, onClick, variant = 'primary', className, ...props }) => {
   return (
     <motion.button
       whileTap={{ opacity: 0.8 }}
-      className={`${baseStyles} ${variants[variant]} ${className}`}
+      className={cn('animatedButton', variant, className)}
       onClick={onClick}
       {...props}
     >
@@ -23,3 +19,4 @@ const Button = ({ children, onClick, variant = 'primary', className = '', ...pro
 };
 
 export default Button;
+
