@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -499,7 +499,7 @@ const LetaWorkspace: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#070B11] select-none text-sm font-body overflow-hidden">
+    <div className="h-screen w-screen flex flex-col bg-[#000000] select-none text-sm font-body overflow-hidden">
       
       {/* ── TOP HEADER NAVBAR (Fixed, flex-shrink: 0) ─────────────────────────────────────────── */}
       <header className="h-[72px] flex-shrink-0 flex items-center justify-between px-6 bg-[#0F1722] border-b border-white/[0.04] relative z-20">
@@ -647,7 +647,7 @@ const LetaWorkspace: React.FC = () => {
         </aside>
 
         {/* 2. CENTER WORKSPACE: Main Drafting Board (Locked layout, flex-column) */}
-        <section className="flex-grow flex flex-col h-full bg-[#070B11] overflow-hidden relative">
+        <section className="flex-grow flex flex-col h-full bg-[#000000] overflow-hidden relative">
           
           {/* Collapse sidebar trigger */}
           <button
@@ -762,7 +762,7 @@ const LetaWorkspace: React.FC = () => {
           </div>
 
           {/* CHAT INPUT AREA (Sticky at bottom, inherits width constraint) */}
-          <div className="p-6 md:px-10 py-6 border-t border-white/[0.04] bg-[#070B11] flex-shrink-0 relative z-20">
+          <div className="p-6 md:px-10 py-6 border-t border-white/[0.04] bg-[#000000] flex-shrink-0 relative z-20">
             <div className="max-w-[920px] mx-auto relative">
               
               {/* Soft overlay file picker display */}

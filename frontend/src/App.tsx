@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 
 import { Navbar, SystemFooter, ScrollToTop } from './components/layout';
@@ -8,7 +8,7 @@ import { authRoutes, protectedRoutes } from './routes';
 
 const NotFound: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-screen gap-6"
-    style={{ background: '#07090D' }}>
+    style={{ background: '#000000' }}>
     <span className="font-display font-bold text-8xl text-white">404</span>
     <p className="text-sm font-mono" style={{ color: '#A1AAB8' }}>
       This route does not exist in the system.
@@ -32,7 +32,7 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.error) {
       return (
-        <div style={{ background: '#07090D', color: '#EF4444', minHeight: '100vh',
+        <div style={{ background: '#000000', color: '#EF4444', minHeight: '100vh',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexDirection: 'column', gap: '1rem', fontFamily: 'monospace' }}>
           <h2>Something went wrong</h2>
@@ -57,7 +57,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   if (isLetaWorkspace) {
     return (
-      <main className="h-screen w-screen overflow-hidden bg-[#07090D] flex flex-col">
+      <main className="h-screen w-screen overflow-hidden bg-[#000000] flex flex-col">
         {children}
       </main>
     );
@@ -65,7 +65,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="min-h-screen flex flex-col"
-      style={{ background: '#07090D', backgroundAttachment: 'fixed', color: '#A1AAB8' }}>
+      style={{ background: '#000000', backgroundAttachment: 'fixed', color: '#A1AAB8' }}>
       <Navbar />
       <main className="flex-grow">{children}</main>
       <SystemFooter />

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+﻿import React, { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { Play } from 'lucide-react';
 
@@ -67,7 +67,7 @@ const VideoSection = () => {
             }}
           />
           {/* Dark overlay */}
-          <div className="absolute inset-0 bg-[#07090D]/90" />
+          <div className="absolute inset-0 bg-[#000000]/90" />
 
           {/* Play button */}
           <div className="absolute inset-0 flex items-center justify-center z-10">
@@ -84,7 +84,7 @@ const VideoSection = () => {
           </div>
 
           {/* REC badge */}
-          <div className="absolute top-4 left-4 flex items-center gap-2 font-mono text-[10px] tracking-widest px-3 py-1.5 z-20 rounded-lg bg-[#07090D]/80 border border-white/[0.06] text-[#67E8F9]">
+          <div className="absolute top-4 left-4 flex items-center gap-2 font-mono text-[10px] tracking-widest px-3 py-1.5 z-20 rounded-lg bg-[#000000]/80 border border-white/[0.06] text-[#67E8F9]">
             <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
             <span>REC_001 // LIVE_FEED</span>
           </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, Download, Copy, Loader2, FileText, User, Sparkles, CheckCircle2, Zap, Share2 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
@@ -88,7 +88,7 @@ const TemplateCustomization: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#07090D] text-[#A1AAB8] flex flex-col h-screen overflow-hidden selection:bg-[#67E8F9]/30">
+    <div className="min-h-screen bg-[#000000] text-[#A1AAB8] flex flex-col h-screen overflow-hidden selection:bg-[#67E8F9]/30">
       
       {/* Top Navigation - Titan Glass */}
       <div className="bg-[#10141B]/80 border-b border-white/[0.06] px-8 py-4 flex items-center justify-between z-30 relative backdrop-blur-2xl">
@@ -124,7 +124,7 @@ const TemplateCustomization: React.FC = () => {
           {generatedDraft && (
              <button 
                onClick={handleDownload}
-               className="flex items-center gap-3 bg-[#67E8F9] text-[#07090D] px-6 py-2.5 rounded-leta text-[10px] font-black tracking-widest uppercase hover:bg-[#5EEAD4] transition-colors shadow-2xl"
+               className="flex items-center gap-3 bg-[#67E8F9] text-[#000000] px-6 py-2.5 rounded-leta text-[10px] font-black tracking-widest uppercase hover:bg-[#5EEAD4] transition-colors shadow-2xl"
              >
                <Download size={16} /> EXPORT .DOCX
              </button>
@@ -154,8 +154,8 @@ const TemplateCustomization: React.FC = () => {
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[90%] rounded-leta p-5 text-[13px] leading-relaxed transition-all duration-500 ${
                   msg.role === 'user' 
-                  ? 'bg-[#67E8F9] text-[#07090D] font-medium rounded-tr-none shadow-[0_10px_25px_rgba(103,232,249,0.1)] animate-slide-left' 
-                  : 'bg-[#07090D] border border-white/[0.06] text-[#A1AAB8] rounded-tl-none backdrop-blur-md animate-slide-right'
+                  ? 'bg-[#67E8F9] text-[#000000] font-medium rounded-tr-none shadow-[0_10px_25px_rgba(103,232,249,0.1)] animate-slide-left' 
+                  : 'bg-[#000000] border border-white/[0.06] text-[#A1AAB8] rounded-tl-none backdrop-blur-md animate-slide-right'
                 }`}>
                   <div className="flex items-center gap-2 mb-2 opacity-50">
                     {msg.role === 'user' ? <User size={12} strokeWidth={2.5} /> : <Zap size={12} className="text-[#67E8F9]" />}
@@ -171,7 +171,7 @@ const TemplateCustomization: React.FC = () => {
             ))}
             {isGenerating && (
               <div className="flex justify-start animate-slide-right">
-                <div className="bg-[#07090D] border border-white/[0.06] text-[#A1AAB8] p-5 rounded-leta rounded-tl-none flex flex-col gap-4 w-full">
+                <div className="bg-[#000000] border border-white/[0.06] text-[#A1AAB8] p-5 rounded-leta rounded-tl-none flex flex-col gap-4 w-full">
                   <div className="flex items-center gap-3">
                     <Loader2 size={16} className="animate-spin text-[#67E8F9]" />
                     <span className="text-[10px] font-bold tracking-widest uppercase italic text-[#67E8F9] font-mono">Synthesizing draft...</span>
@@ -207,7 +207,7 @@ const TemplateCustomization: React.FC = () => {
                 <button 
                   type="submit"
                   disabled={!inputValue.trim() || isGenerating}
-                  className="absolute right-4 bottom-4 w-10 h-10 bg-[#07090D] border border-white/[0.06] text-[#67E8F9] rounded-leta hover:bg-hover transition-colors disabled:opacity-30 disabled:grayscale flex items-center justify-center shadow-lg hover:text-[#5EEAD4] hover:border-white/[0.1]"
+                  className="absolute right-4 bottom-4 w-10 h-10 bg-[#000000] border border-white/[0.06] text-[#67E8F9] rounded-leta hover:bg-hover transition-colors disabled:opacity-30 disabled:grayscale flex items-center justify-center shadow-lg hover:text-[#5EEAD4] hover:border-white/[0.1]"
                 >
                   <Send size={18} />
                 </button>
@@ -221,7 +221,7 @@ const TemplateCustomization: React.FC = () => {
         </div>
 
         {/* Right Side: High-Fidelity Document Canvas */}
-        <div className="flex-1 bg-[#07090D] flex flex-col p-12 overflow-hidden relative">
+        <div className="flex-1 bg-[#000000] flex flex-col p-12 overflow-hidden relative">
           
           {/* Decorative Canvas Background */}
           <div className="absolute inset-0 opacity-[0.2] pointer-events-none overflow-hidden">

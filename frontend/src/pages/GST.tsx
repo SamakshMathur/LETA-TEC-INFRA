@@ -1,10 +1,10 @@
-import React from 'react';
+﻿import React from 'react';
 import { AskLeta } from '../components/leta';
 import { TrendingUp, AlertCircle, Shield, Activity } from 'lucide-react';
 
 const GST: React.FC = () => {
   return (
-    <div className="min-h-screen pb-24 pt-[140px] bg-[#07090D]">
+    <div className="min-h-screen pb-24 pt-[140px] bg-[#000000]">
 
       {/* ── Page Header ──────────────────────────────────────────────────────── */}
       <div className="px-6 sm:px-12 lg:px-24 mb-12 relative overflow-hidden">

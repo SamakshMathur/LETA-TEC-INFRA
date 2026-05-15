@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+﻿import React, { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, Environment, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
@@ -109,8 +109,8 @@ const StatutoryHero3D = () => {
         <StatutoryScene />
       </Canvas>
       {/* Gradient Overlay to ensure text readability and blend with background */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[#07090D]/90 via-[#07090D]/50 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#07090D]" />
+      <div className="absolute inset-0 bg-gradient-to-r from-[#000000]/90 via-[#000000]/50 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#000000]" />
     </div>
   );
 };

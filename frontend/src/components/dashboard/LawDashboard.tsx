@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Link } from 'react-router-dom';
 import { AskLetaWidget } from '../leta';
 import { DocumentLibrary } from '../documents';
@@ -38,7 +38,7 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
   };
 
   return (
-    <div className="min-h-screen pb-24 bg-[#070B11] text-[#F4F7FA] selection:bg-[#4FB7C5]/25">
+    <div className="min-h-screen pb-24 bg-[#000000] text-[#F4F7FA] selection:bg-[#4FB7C5]/25">
       {/* Soft, ultra-subtle ambient background radial leak (NO neon glow, 1% opacity) */}
       <div 
         className="absolute top-0 left-0 w-full h-[500px] pointer-events-none"

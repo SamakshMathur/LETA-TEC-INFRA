@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FileText, Landmark, Globe, Briefcase, ChevronDown, Settings, LogOut, LayoutGrid } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -70,9 +70,7 @@ const Navbar = () => {
       className="fixed top-0 left-0 w-full z-50 transition-all duration-300"
       style={{
         height: '80px',
-        background: 'rgba(7,9,13,0.72)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        background: '#000000',
         borderBottom: '1px solid rgba(255,255,255,0.04)',
       }}
     >

@@ -1,9 +1,9 @@
-import React from 'react';
+﻿import React from 'react';
 import { Database, Folder, Shield, ArrowRight, ChevronRight, HelpCircle, FileText } from 'lucide-react';
 
 const SimulatedWorkspace = () => {
   return (
-    <section className="py-[80px] bg-[#070B11] relative overflow-hidden border-b border-white/[0.03]">
+    <section className="py-[80px] bg-[#000000] relative overflow-hidden border-b border-white/[0.03]">
       <div className="max-w-[1600px] mx-auto px-10 lg:px-20 relative z-10">
         
         {/* Section Header */}

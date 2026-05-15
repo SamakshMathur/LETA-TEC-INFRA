@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, FileEdit, FileText, FolderOpen, FileOutput, ArrowRight } from 'lucide-react';
 
@@ -84,7 +84,7 @@ const HowItWorks = () => {
                     {step.title}
                   </h3>
                   {step.status === 'coming_soon' && (
-                    <span className="px-2 py-1 rounded-leta bg-[#07090D] border border-white/[0.06] text-[10px] text-white/40 font-mono uppercase tracking-wider">
+                    <span className="px-2 py-1 rounded-leta bg-[#000000] border border-white/[0.06] text-[10px] text-white/40 font-mono uppercase tracking-wider">
                       Coming Soon
                     </span>
                   )}
@@ -133,7 +133,7 @@ const HowItWorks = () => {
                            </div>
                            
                            {/* Decorative Code Snippet */}
-                           <div className="mt-12 text-left p-4 bg-[#07090D] border border-white/[0.06] rounded-leta font-mono text-[10px] text-white/50 max-w-xs mx-auto">
+                           <div className="mt-12 text-left p-4 bg-[#000000] border border-white/[0.06] rounded-leta font-mono text-[10px] text-white/50 max-w-xs mx-auto">
                               <p opacity="0.5">// EXECUTING PROTOCOL...</p>
                               <p className="text-[#67E8F9] mt-1">&gt; load_module('{activeStep}')</p>
                               <p className="text-[#A1AAB8] mt-1">&gt; status: active</p>

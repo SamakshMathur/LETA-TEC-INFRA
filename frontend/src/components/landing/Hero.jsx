@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ShieldCheck, Zap, CheckCircle } from 'lucide-react';
@@ -11,7 +11,7 @@ const METRICS = [
 
 const Hero = () => {
   return (
-    <div className="relative min-h-screen flex items-center pt-[140px] pb-[140px] overflow-hidden bg-[#07090D]">
+    <div className="relative min-h-screen flex items-center pt-[140px] pb-[140px] overflow-hidden bg-[#000000]">
 
       {/* ── Layer 2: Ambient glow blobs (Subtle, muted dark teal/cyan) ─────────── */}
       <div className="absolute bottom-[-10%] left-[-8%] w-[600px] h-[500px] rounded-full pointer-events-none"

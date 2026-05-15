@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Map, Award, BookOpen, FileCheck } from 'lucide-react';
 
@@ -72,7 +72,7 @@ const IntelligenceEngine = () => {
   }, []);
 
   return (
-    <section className="py-[80px] relative overflow-hidden bg-[#070B11]">
+    <section className="py-[80px] relative overflow-hidden bg-[#000000]">
 
 
       <div className="max-w-[1600px] mx-auto px-10 lg:px-20 relative z-10">
@@ -124,7 +124,7 @@ const IntelligenceEngine = () => {
                           ? 'bg-[#151922] border-[#67E8F9] text-[#67E8F9] shadow-[0_0_20px_rgba(103,232,249,0.15)] scale-110'
                           : isPassed
                           ? 'bg-[#10141B] border-[#67E8F9]/50 text-[#67E8F9]/80'
-                          : 'bg-[#07090D] border-white/[0.05] text-[#6B7280]'
+                          : 'bg-[#000000] border-white/[0.05] text-[#6B7280]'
                       } group-hover:border-[#67E8F9]/80`}
                     >
                       <IconComponent size={20} className="transition-transform duration-300 group-hover:scale-105" />

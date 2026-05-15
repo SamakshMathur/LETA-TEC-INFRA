@@ -1,8 +1,8 @@
-import React from 'react';
+﻿import React from 'react';
 import { motion } from 'framer-motion';
 
 const About: React.FC = () => (
-  <div className="min-h-screen bg-[#070B11]">
+  <div className="min-h-screen bg-[#000000]">
 
     {/* Header */}
     <div className="pt-[140px] pb-20 px-4 sm:px-6 lg:px-8 text-center bg-[#0F1722] border-b border-white/[0.04]">

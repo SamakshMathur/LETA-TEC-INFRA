@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, Clock, Cpu } from 'lucide-react';
 
@@ -44,7 +44,7 @@ const IntelligenceFeed = () => {
   }, []);
 
   return (
-    <section className="py-[80px] bg-[#070B11] relative overflow-hidden border-t border-b border-white/[0.03]">
+    <section className="py-[80px] bg-[#000000] relative overflow-hidden border-t border-b border-white/[0.03]">
       <div className="max-w-[1600px] mx-auto px-10 lg:px-20 relative z-10">
         
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center">

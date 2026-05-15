@@ -1,10 +1,10 @@
-import { motion } from 'framer-motion';
+﻿import { motion } from 'framer-motion';
 import React from 'react';
 import { Lock, Shield, Server, FileKey } from 'lucide-react';
 
 const SecuritySection = () => {
   return (
-    <section className="relative py-[140px] bg-[#070B11] overflow-hidden border-t border-white/[0.05]">
+    <section className="relative py-[140px] bg-[#000000] overflow-hidden border-t border-white/[0.05]">
 
       {/* Scrolling encryption hash bg */}
       <div className="absolute inset-0 opacity-[0.015] pointer-events-none overflow-hidden flex flex-col gap-8 justify-center">

@@ -1,12 +1,18 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Shield, ChevronRight, Scale } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 import cx from 'classnames/bind';
 import styles from './SovereignHero.module.css';
 
 const cn = cx.bind(styles);
+
+const STATS = [
+  { number: '2,400+', label: 'GST Circulars' },
+  { number: '14',     label: 'HC Jurisdictions' },
+  { number: '99.2%',  label: 'Citation Accuracy' },
+];
 
 const InteractiveDotGrid = () => {
   const canvasRef = React.useRef(null);
@@ -41,13 +47,11 @@ const InteractiveDotGrid = () => {
     window.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseleave', handleMouseLeave);
 
-    const spacing = 22; // 18px-24px spacing
+    const spacing = 22;
     const interactionRadius = 140;
 
     const render = () => {
       ctx.clearRect(0, 0, width, height);
-
-      // Smooth mouse interpolation (LERP) for ultra-premium feel
       mouseRef.current.x += (mouseRef.current.targetX - mouseRef.current.x) * 0.1;
       mouseRef.current.y += (mouseRef.current.targetY - mouseRef.current.y) * 0.1;
 
@@ -65,7 +69,6 @@ const InteractiveDotGrid = () => {
 
           if (dist < interactionRadius) {
             const force = (interactionRadius - dist) / interactionRadius;
-            // Subtle bulge/distortion
             dotRadius = 1.0 + force * 1.5;
             alpha = 0.18 + force * 0.42;
           }
@@ -119,15 +122,21 @@ const SovereignHero = () => {
 
       <div className={cn('gridContainer')}>
         <div className={cn('grid')}>
-          
-          {/* Left Column: Premium Typography & Content */}
           <div className={cn('leftColumn')}>
-            
+
+            {/* Eyebrow line — expands from center before badge */}
+            <motion.div
+              className={cn('eyebrowLine')}
+              initial={{ scaleX: 0, opacity: 0 }}
+              animate={{ scaleX: 1, opacity: 1 }}
+              transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
+            />
+
             {/* System Status Indicator */}
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
+              transition={{ duration: 0.6, delay: 0.15 }}
               className={cn('statusIndicator')}
             >
               <span className={cn('pingDotContainer')}>
@@ -138,12 +147,12 @@ const SovereignHero = () => {
                 Enterprise Statutory Intelligence
               </span>
             </motion.div>
- 
-            {/* Cinematic Hero Header */}
+
+            {/* Hero Heading */}
             <motion.h1
               initial={{ opacity: 0, y: 25 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 0.9, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
               className={cn('heroHeading')}
             >
               Legal and TAX <br />
@@ -151,22 +160,23 @@ const SovereignHero = () => {
                 Assistant
               </span>
             </motion.h1>
- 
-            {/* Low-noise high-impact Supporting Copy */}
+
+            {/* Supporting Copy */}
             <motion.p
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.25 }}
+              transition={{ duration: 0.8, delay: 0.35 }}
               className={cn('supportingCopy')}
             >
-              Professional GST and legal advisory intelligence for compliance and litigation workflows. Built with high-fidelity citations, circulars, and Indian judicial precedents.
+              Professional GST and legal advisory intelligence for compliance and litigation workflows.
+              Built with high-fidelity citations, circulars, and Indian judicial precedents.
             </motion.p>
- 
+
             {/* CTA Elements */}
             <motion.div
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.35 }}
+              transition={{ duration: 0.8, delay: 0.45 }}
               className={cn('ctaContainer')}
             >
               <Link to="/gst">
@@ -181,30 +191,41 @@ const SovereignHero = () => {
                 </button>
               </Link>
             </motion.div>
- 
-            {/* Trust Badges */}
+
+            {/* Stat Row */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.8, delay: 0.5 }}
-              className={cn('trustBadges')}
+              transition={{ duration: 1, delay: 0.65 }}
+              className={cn('statsRow')}
             >
-              <div className={cn('badge')}>
-                <Shield size={14} className={cn('badgeIcon')} />
-                <span className={cn('badgeText')}>
-                  SECURE ENCRYPTED ARCHIVE
-                </span>
-              </div>
-              <div className={cn('badge')}>
-                <Scale size={14} className={cn('badgeIcon')} />
-                <span className={cn('badgeText')}>
-                  STATUTORY PRECISION SYSTEM
-                </span>
-              </div>
+              {STATS.map((s, i) => (
+                <React.Fragment key={s.label}>
+                  <div className={cn('statItem')}>
+                    <span className={cn('statNumber')}>{s.number}</span>
+                    <span className={cn('statLabel')}>{s.label}</span>
+                  </div>
+                  {i < STATS.length - 1 && <div className={cn('statDivider')} />}
+                </React.Fragment>
+              ))}
             </motion.div>
+
           </div>
         </div>
       </div>
+
+      {/* Scroll Cue */}
+      <motion.div
+        className={cn('scrollCue')}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1, delay: 1.1 }}
+      >
+        <div className={cn('scrollLine')}>
+          <div className={cn('scrollDot')} />
+        </div>
+      </motion.div>
+
     </section>
   );
 };

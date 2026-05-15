@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, Loader2, Zap, Sparkles, Filter, FileText, CheckCircle2, 
   Copy, Download, Star, History, Bookmark, Edit3, Eye, BookOpen, 
@@ -342,7 +342,7 @@ const GstTemplates: React.FC = () => {
   const vagueScenarios = getVagueClarifications();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#07090D] text-[#A1AAB8] font-sans selection:bg-[#67E8F9]/30">
+    <div className="flex h-screen overflow-hidden bg-[#000000] text-[#A1AAB8] font-sans selection:bg-[#67E8F9]/30">
       
       {/* LEFT COLUMN: ARCHIVES, DRAFT CATEGORIES & RECENT SEARCHES */}
       <div className="w-80 border-r border-white/[0.04] bg-[#10141B] flex flex-col h-full shrink-0 z-20">
@@ -508,7 +508,7 @@ const GstTemplates: React.FC = () => {
         </div>
 
         {/* Live Status indicator */}
-        <div className="p-4 border-t border-white/[0.06] bg-[#07090D] flex items-center justify-between">
+        <div className="p-4 border-t border-white/[0.06] bg-[#000000] flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
             <span className="text-[9px] font-mono tracking-wider uppercase text-white/50">LETA_ONLINE</span>
@@ -518,10 +518,10 @@ const GstTemplates: React.FC = () => {
       </div>
 
       {/* CENTER COLUMN: SEARCH CONSOLE & ACTIVE DRAFT FEED */}
-      <div className="flex-1 flex flex-col h-full border-r border-white/[0.04] bg-[#07090D] overflow-hidden relative z-10">
+      <div className="flex-1 flex flex-col h-full border-r border-white/[0.04] bg-[#000000] overflow-hidden relative z-10">
         
 
-        <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-[#07090D] to-transparent pointer-events-none" />
+        <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-[#000000] to-transparent pointer-events-none" />
 
         {/* Search header container */}
         <div className="px-8 pt-8 pb-6 relative z-10">
@@ -577,7 +577,7 @@ const GstTemplates: React.FC = () => {
               )}
               <button 
                 type="submit"
-                className="bg-[#151922] hover:bg-[#67E8F9] hover:text-[#07090D] border-l border-white/[0.06] hover:border-transparent text-[#67E8F9] px-8 py-5 text-xs font-black tracking-[0.18em] uppercase transition-all font-mono shrink-0 flex items-center gap-2"
+                className="bg-[#151922] hover:bg-[#67E8F9] hover:text-[#000000] border-l border-white/[0.06] hover:border-transparent text-[#67E8F9] px-8 py-5 text-xs font-black tracking-[0.18em] uppercase transition-all font-mono shrink-0 flex items-center gap-2"
               >
                 <Zap size={12} className="animate-pulse" />
                 FIND_DRAFTS
@@ -638,7 +638,7 @@ const GstTemplates: React.FC = () => {
                           setQuery(sc.query);
                           fetchTemplates(sc.query, activeCategory, activeStage);
                         }}
-                        className="flex items-center gap-1.5 bg-[#07090D] hover:bg-[#151922] border border-[#67E8F9]/20 hover:border-[#67E8F9]/40 text-[#67E8F9] hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-all shadow-sm"
+                        className="flex items-center gap-1.5 bg-[#000000] hover:bg-[#151922] border border-[#67E8F9]/20 hover:border-[#67E8F9]/40 text-[#67E8F9] hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-all shadow-sm"
                       >
                         <span>{sc.label}</span>
                         <ChevronRight size={12} />
@@ -866,7 +866,7 @@ const GstTemplates: React.FC = () => {
                   </p>
 
                   {/* Draft Suitability & Relevant Provisions */}
-                  <div className="bg-[#07090D] border border-white/[0.03] rounded-xl p-3 mb-4 flex items-center justify-between gap-4 text-left">
+                  <div className="bg-[#000000] border border-white/[0.03] rounded-xl p-3 mb-4 flex items-center justify-between gap-4 text-left">
                     <div className="flex-1 space-y-1 font-mono text-[10px] text-[#A1AAB8]/50 overflow-hidden">
                       <div className="flex items-center gap-1.5">
                         <span className="text-white/30 shrink-0">Classification:</span>
@@ -905,7 +905,7 @@ const GstTemplates: React.FC = () => {
                       {item.keywords && item.keywords.slice(0, 4).map((kw: string, i: number) => (
                         <span 
                           key={i} 
-                          className="text-[9px] font-mono bg-[#07090D] border border-white/[0.05] text-[#A1AAB8]/50 px-2 py-0.5 rounded"
+                          className="text-[9px] font-mono bg-[#000000] border border-white/[0.05] text-[#A1AAB8]/50 px-2 py-0.5 rounded"
                         >
                           {kw}
                         </span>
@@ -937,7 +937,7 @@ const GstTemplates: React.FC = () => {
                             }
                           }, 150);
                         }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-[#67E8F9] text-[#07090D] hover:bg-[#5EEAD4] transition-colors flex items-center gap-1"
+                        className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-[#67E8F9] text-[#000000] hover:bg-[#5EEAD4] transition-colors flex items-center gap-1"
                       >
                         <Edit3 size={12} />
                         Use Draft
@@ -1004,7 +1004,7 @@ const GstTemplates: React.FC = () => {
             
             {/* Editor vs Preview Mode Ribbon */}
             <div className="px-6 py-2 border-b border-white/[0.04] bg-[#151922]/50 flex items-center justify-between">
-              <div className="flex bg-[#07090D] p-0.5 rounded-lg border border-white/[0.05]">
+              <div className="flex bg-[#000000] p-0.5 rounded-lg border border-white/[0.05]">
                 <button
                   onClick={() => setIsEditing(false)}
                   className={`px-3 py-1.5 rounded-md text-[10px] font-mono font-bold tracking-wider uppercase transition-all flex items-center gap-1.5 ${
@@ -1040,7 +1040,7 @@ const GstTemplates: React.FC = () => {
 
                 <button
                   onClick={handleDownloadDocx}
-                  className="flex items-center gap-1.5 bg-[#67E8F9] text-[#07090D] px-3.5 py-1.5 rounded-lg text-[10px] font-mono font-black tracking-widest uppercase hover:bg-[#5EEAD4] transition-colors shadow-lg"
+                  className="flex items-center gap-1.5 bg-[#67E8F9] text-[#000000] px-3.5 py-1.5 rounded-lg text-[10px] font-mono font-black tracking-widest uppercase hover:bg-[#5EEAD4] transition-colors shadow-lg"
                   title="Export .DOCX Word Format"
                 >
                   <FileDown size={12} />
@@ -1050,7 +1050,7 @@ const GstTemplates: React.FC = () => {
             </div>
 
             {/* Document Canvas Shelf */}
-            <div className="flex-1 overflow-y-auto p-6 bg-[#07090D]/50 custom-scrollbar flex flex-col justify-between">
+            <div className="flex-1 overflow-y-auto p-6 bg-[#000000]/50 custom-scrollbar flex flex-col justify-between">
               
               {/* Paper physics simulation container */}
               <div 
@@ -1099,7 +1099,7 @@ const GstTemplates: React.FC = () => {
                     placeholder="E.g., 'Strengthen the limitation argument under Section 73'"
                     value={enhanceInstructions}
                     onChange={(e) => setEnhanceInstructions(e.target.value)}
-                    className="w-full bg-[#07090D] border border-white/[0.06] rounded-xl py-2.5 px-4 pr-12 text-xs text-white placeholder-white/20 focus:outline-none focus:border-[#67E8F9]/30"
+                    className="w-full bg-[#000000] border border-white/[0.06] rounded-xl py-2.5 px-4 pr-12 text-xs text-white placeholder-white/20 focus:outline-none focus:border-[#67E8F9]/30"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -1110,7 +1110,7 @@ const GstTemplates: React.FC = () => {
                   <button
                     onClick={handleEnhanceDraft}
                     disabled={isEnhancing || !editedContent}
-                    className="absolute right-1.5 top-1.5 p-1.5 rounded-lg bg-[#151922] hover:bg-[#67E8F9] hover:text-[#07090D] border border-white/[0.05] hover:border-transparent text-[#67E8F9] transition-all disabled:opacity-30 disabled:pointer-events-none"
+                    className="absolute right-1.5 top-1.5 p-1.5 rounded-lg bg-[#151922] hover:bg-[#67E8F9] hover:text-[#000000] border border-white/[0.05] hover:border-transparent text-[#67E8F9] transition-all disabled:opacity-30 disabled:pointer-events-none"
                   >
                     {isEnhancing ? (
                       <Loader2 size={13} className="animate-spin" />
@@ -1161,7 +1161,7 @@ const GstTemplates: React.FC = () => {
 
           </div>
         ) : (
-          <div className="flex-1 flex flex-col p-6 overflow-y-auto justify-center space-y-6 bg-[#07090D]/10 custom-scrollbar animate-fade-in">
+          <div className="flex-1 flex flex-col p-6 overflow-y-auto justify-center space-y-6 bg-[#000000]/10 custom-scrollbar animate-fade-in">
             {/* Blueprint Header */}
             <div className="text-center space-y-1">
               <div className="w-10 h-10 rounded-full border border-white/[0.06] bg-[#10141B] flex items-center justify-center mx-auto shadow-md">

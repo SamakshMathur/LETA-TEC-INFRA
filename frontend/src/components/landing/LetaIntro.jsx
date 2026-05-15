@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Brain, ShieldCheck, Zap } from 'lucide-react';
 import { NeuralBackground } from '../effects';
@@ -67,7 +67,7 @@ const LetaIntro = () => {
       <NeuralBackground />
       
       {/* Gradient Vignette */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#07090D] via-transparent to-[#07090D] z-10 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#000000] via-transparent to-[#000000] z-10 pointer-events-none" />
 
       <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-20 text-center md:text-left">

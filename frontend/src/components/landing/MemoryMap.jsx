@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link2, Sparkles, Database, FileText } from 'lucide-react';
 
@@ -31,7 +31,7 @@ const MemoryMap = () => {
   const [hoveredNode, setHoveredNode] = useState(null);
 
   return (
-    <section className="py-[80px] bg-[#070B11] relative overflow-hidden border-b border-white/[0.03]">
+    <section className="py-[80px] bg-[#000000] relative overflow-hidden border-b border-white/[0.03]">
 
 
       <div className="max-w-[1600px] mx-auto px-10 lg:px-20 relative z-10">
@@ -53,7 +53,7 @@ const MemoryMap = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
           
           {/* SVG Map Canvas (Left/Center Column) */}
-          <div className="lg:col-span-8 relative h-[480px] md:h-[540px] rounded-leta border border-white/[0.05] bg-[#07090D] overflow-hidden shadow-[inset_0_0_40px_rgba(0,0,0,0.8)]">
+          <div className="lg:col-span-8 relative h-[480px] md:h-[540px] rounded-leta border border-white/[0.05] bg-[#000000] overflow-hidden shadow-[inset_0_0_40px_rgba(0,0,0,0.8)]">
             
             {/* SVG Relationship Connectors */}
             <svg className="absolute inset-0 w-full h-full pointer-events-none">
@@ -111,7 +111,7 @@ const MemoryMap = () => {
                         ? 'w-8 h-8 bg-[#10141B] border-[#67E8F9] text-[#67E8F9] shadow-[0_0_15px_rgba(103,232,249,0.25)] scale-110'
                         : isHovered
                         ? 'w-7 h-7 bg-[#10141B] border-[#67E8F9]/50 text-[#67E8F9]'
-                        : 'w-6 h-6 bg-[#07090D] border-white/[0.08] text-[#52525B]'
+                        : 'w-6 h-6 bg-[#000000] border-white/[0.08] text-[#52525B]'
                     } border`}
                   >
                     {node.isCore ? (
@@ -123,7 +123,7 @@ const MemoryMap = () => {
 
                   {/* Floating label */}
                   <span
-                    className={`mt-2 font-mono text-[9px] uppercase tracking-wider font-bold whitespace-nowrap bg-[#07090D]/80 px-2 py-0.5 rounded border ${
+                    className={`mt-2 font-mono text-[9px] uppercase tracking-wider font-bold whitespace-nowrap bg-[#000000]/80 px-2 py-0.5 rounded border ${
                       isSelected
                         ? 'text-white border-white/[0.1]'
                         : 'text-[#6B7280] border-transparent'

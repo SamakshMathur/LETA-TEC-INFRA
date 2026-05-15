@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   SovereignHero,
   IntelligenceEngine,
@@ -12,7 +12,7 @@ import { DynamicBackground } from '../components/effects';
 
 const Home: React.FC = () => {
   return (
-    <div className="relative overflow-hidden bg-[#070B11]">
+    <div className="relative overflow-hidden bg-[#000000]">
       <DynamicBackground />
       
       {/* SECTION 01 — Sovereign Hero Interface */}
