@@ -52,7 +52,7 @@ def _estimate_complexity(question: str) -> float:
     base_weight = 0.15
     if "itc" in q_lower or "input tax credit" in q_lower:
         base_weight = 0.35
-    if any(k in q_lower for k in ["draft", "notice", "reply"]):
+    if any(k in q_lower for k in ["draft", "notice", "reply", "scn", "show cause", "drc-01", "drc 01", "asmt-10", "appeal letter", "representation"]):
         base_weight = 0.35
 
     score = min(1.0, complex_hits * base_weight) - min(0.3, simple_hits * 0.15)
@@ -346,7 +346,13 @@ def synthesize_answer_stream(question: str, context: str):
     handles complexity/mode estimation, formats prompts and streams chunks.
     """
     complexity = _estimate_complexity(question)
-    is_draft = any(kw in question.lower() for kw in ["draft", "notice", "reply", "appeal", "submission", "advisory"])
+    _DRAFT_KW = [
+        "draft", "notice", "reply", "appeal", "submission", "advisory",
+        "scn", "show cause", "drc-01", "drc 01", "asmt-10", "asmt 10",
+        "write a letter", "write letter", "prepare reply", "prepare a reply",
+        "letter to", "representation", "response to notice", "respond to",
+    ]
+    is_draft = any(kw in question.lower() for kw in _DRAFT_KW)
 
     if is_draft:
         prompt_template = DRAFTING_PROMPT

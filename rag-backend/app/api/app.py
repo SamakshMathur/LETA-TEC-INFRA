@@ -307,7 +307,8 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
 
         if chunks and full_answer.strip():
             # Detect drafting intent to bypass the accuracy pipeline
-            is_draft = any(kw in user_query.lower() for kw in ["draft", "notice", "reply", "appeal", "submission", "advisory"])
+            _DRAFT_KW_CHECK = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","write a letter","write letter","prepare reply","representation","response to notice","respond to"]
+            is_draft = any(kw in user_query.lower() for kw in _DRAFT_KW_CHECK)
             
             if not is_draft:
                 # --- Parallel Accuracy Pipeline ---
@@ -444,7 +445,7 @@ async def ask_question(request: Request, req: QuestionRequest):
             _init_msg = "Computing Rule 43 Capital Goods Reversal..."
         elif any(k in _q for k in ["itc", "input tax credit", "section 16", "section 17"]):
             _init_msg = "Analyzing ITC Eligibility Provisions..."
-        elif any(k in _q for k in ["draft", "notice", "reply", "appeal", "submission"]):
+        elif any(k in _q for k in ["draft","notice","reply","appeal","submission","scn","show cause","drc-01","drc 01","asmt-10","representation"]):
             _init_msg = "Initializing Statutory Drafting Engine..."
         elif any(k in _q for k in ["refund", "export", "lut"]):
             _init_msg = "Checking Refund & Export Provisions..."
@@ -504,9 +505,12 @@ async def ask_question(request: Request, req: QuestionRequest):
         domain_label = ", ".join(domain_paths[:2]) if domain_paths else "All Databases"
         yield f"__STATUS__:{json.dumps({'msg': f'Querying Statutory Provisions ({domain_label})...'})}__END_STATUS__"
         retriever = get_retriever()
+        _DRAFT_KW = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","write a letter","write letter","prepare reply","representation","response to notice","respond to"]
+        _is_draft = any(k in _q for k in _DRAFT_KW)
+        _retrieval_top_k = 25 if _is_draft else (20 if _complexity >= 0.60 else 15)
         chunks = retriever.search(
             query=refined_q,
-            top_k=15,
+            top_k=_retrieval_top_k,
             allowed_sources=route["use_sources"],
             advanced_queries=advanced_queries,
             domain_paths=domain_paths,
@@ -530,7 +534,7 @@ async def ask_question(request: Request, req: QuestionRequest):
         truth_rules_text = rules_engine.get_all_rules_as_text()
 
         # ── Stage 7: Streaming LLM synthesis ──────────────────────────────────────
-        if any(k in _q for k in ["draft", "notice", "reply", "appeal", "submission"]):
+        if _is_draft:
             _synth_msg = "Drafting Statutory Reply..."
         elif _complexity >= 0.60:
             _synth_msg = "Synthesizing Legal Position & Precedents..."

@@ -4,10 +4,9 @@ import ConfidenceBadge from './ConfidenceBadge';
 import CitationList from './CitationList';
 import LetaExplainability from './LetaExplainability';
 import { BASE_URL } from '../../config/api';
-import { FileText, ShieldCheck, Copy, Check, RefreshCw } from 'lucide-react';
+import { ShieldCheck, Copy, Check, RefreshCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import AdvisoryModal from './AdvisoryModal';
 import ThinkingSources from './ThinkingSources';
 
 function linkifyLegalRefs(markdown, sources) {
@@ -73,7 +72,6 @@ function linkifyLegalRefs(markdown, sources) {
 }
 
 const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate }) => {
-  const [isAdvisoryOpen, setIsAdvisoryOpen] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
 
   const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
@@ -94,8 +92,8 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
         animate={{ opacity: 1, y: 0 }}
         className="rounded-2xl overflow-hidden"
         style={{
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: '#000000',
+          border: '1px solid rgba(79,183,197,0.15)',
         }}
       >
         {/* Header Bar */}
@@ -221,31 +219,6 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
             </ReactMarkdown>
           </div>
 
-          {/* Advisory CTA */}
-          <div className="mt-8 pt-5 flex justify-end" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <button
-              onClick={() => setIsAdvisoryOpen(true)}
-              className="group flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all duration-200"
-              style={{
-                background: 'rgba(103,232,249,0.08)',
-                border: '1px solid rgba(103,232,249,0.25)',
-                color: '#67E8F9',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(103,232,249,0.15)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(103,232,249,0.2)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'rgba(103,232,249,0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              <FileText size={14} className="group-hover:scale-110 transition-transform" />
-              <span className="font-mono text-xs font-bold uppercase tracking-widest">
-                Generate Legal Advisory
-              </span>
-            </button>
-          </div>
         </div>
 
         {/* Footer */}
@@ -258,12 +231,6 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
         </div>
       </motion.div>
 
-      <AdvisoryModal
-        isOpen={isAdvisoryOpen}
-        onClose={() => setIsAdvisoryOpen(false)}
-        initialQuery={data.query}
-        initialContext={data.answer}
-      />
     </>
   );
 };

@@ -1,10 +1,10 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  X, Send, Sparkles, FileText, ChevronRight, Menu, Paperclip, 
-  ChevronLeft, Folder, Star, Landmark, HelpCircle, FileCheck, 
-  Bookmark, Trash2, Calendar, ShieldCheck, Scale, Cpu, Download, Plus
+import {
+  X, Send, Sparkles, Menu, Paperclip,
+  ChevronLeft, Folder, Star, Landmark, FileCheck,
+  Bookmark, Trash2, Calendar, ShieldCheck, Scale, Download, Plus, Square
 } from 'lucide-react';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
@@ -39,7 +39,6 @@ interface OpenDoc {
 
 const LetaWorkspace: React.FC = () => {
   const { domainId = 'gst' } = useParams<{ domainId: string }>();
-  const navigate = useNavigate();
 
   // Active configurations based on current domain
   const domainConfig = {
@@ -128,6 +127,7 @@ const LetaWorkspace: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [query, setQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   
@@ -139,6 +139,7 @@ const LetaWorkspace: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const autoResize = () => {
     const el = textareaRef.current;
@@ -214,18 +215,29 @@ const LetaWorkspace: React.FC = () => {
     }
   };
 
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsStreaming(false);
+    setIsLoading(false);
+  };
+
   const handleAsk = async (queryOverride?: string) => {
     const activeQuery = typeof queryOverride === 'string' ? queryOverride : query;
     if (!activeQuery.trim()) return;
 
     const userMsg: Message = { role: 'user', content: activeQuery };
     const newAiMsg: Message = { role: 'assistant', content: '', confidence: 0.95, citations: [] };
-    
+
     setMessages(prev => [...prev, userMsg, newAiMsg]);
     setQuery('');
     setSelectedFile(null);
     setIsLoading(true);
+    setIsStreaming(false);
     if (textareaRef.current) textareaRef.current.style.height = '90px';
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       let activeSessionId = currentSessionId;
@@ -266,12 +278,13 @@ const LetaWorkspace: React.FC = () => {
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
-        res = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', body: formData });
+        res = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', body: formData, signal: controller.signal });
       } else {
         res = await fetch(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
+          signal: controller.signal,
         });
       }
 
@@ -280,7 +293,8 @@ const LetaWorkspace: React.FC = () => {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder('utf-8');
       setIsLoading(false);
-      
+      setIsStreaming(true);
+
       if (!reader) throw new Error('Response stream unavailable');
 
       let buffer = '';
@@ -370,9 +384,16 @@ const LetaWorkspace: React.FC = () => {
         }
       }
       
+      setIsStreaming(false);
+      abortControllerRef.current = null;
       // Update sidebar session list to sync names
       fetchSessions();
     } catch (error: any) {
+      if ((error as any)?.name === 'AbortError') {
+        // User stopped generation — leave partial content as-is
+        setIsStreaming(false);
+        return;
+      }
       console.error('LETA API Error:', error);
       setMessages(prev => {
         const next = [...prev];
@@ -383,6 +404,7 @@ const LetaWorkspace: React.FC = () => {
         return next;
       });
       setIsLoading(false);
+      setIsStreaming(false);
     }
   };
 
@@ -502,7 +524,7 @@ const LetaWorkspace: React.FC = () => {
     <div className="h-screen w-screen flex flex-col bg-[#000000] select-none text-sm font-body overflow-hidden">
       
       {/* ── TOP HEADER NAVBAR (Fixed, flex-shrink: 0) ─────────────────────────────────────────── */}
-      <header className="h-[72px] flex-shrink-0 flex items-center justify-between px-6 bg-[#0F1722] border-b border-white/[0.04] relative z-20">
+      <header className="h-[72px] flex-shrink-0 flex items-center justify-between px-6 bg-[#000000] border-b border-[#4FB7C5]/10 relative z-20">
         <div className="flex items-center gap-4">
           <Link 
             to={`/${domainId}`}
@@ -536,11 +558,11 @@ const LetaWorkspace: React.FC = () => {
 
         {/* 1. LEFT SIDEBAR: Independently Scrollable Consultations & Folders */}
         <aside 
-          className="h-full flex flex-col border-r border-white/[0.04] bg-[#0F1722] flex-shrink-0 transition-all duration-300 overflow-hidden relative z-10"
+          className="h-full flex flex-col border-r border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 transition-all duration-300 overflow-hidden relative z-10"
           style={{ width: isSidebarOpen ? '320px' : '0px' }}
         >
           {/* New Consultation trigger */}
-          <div className="p-4 flex-shrink-0 border-b border-white/[0.04]">
+          <div className="p-4 flex-shrink-0 border-b border-[#4FB7C5]/10">
             <button
               onClick={handleNewSession}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] transition-all duration-200 text-black bg-[#4FB7C5] hover:bg-[#3EA6B4]"
@@ -611,7 +633,7 @@ const LetaWorkspace: React.FC = () => {
             </div>
 
             {/* Structured Saved matter repositories */}
-            <div className="pt-4 border-t border-white/[0.03] space-y-1">
+            <div className="pt-4 border-t border-[#4FB7C5]/10 space-y-1">
               <span className="text-[10px] font-mono uppercase tracking-[0.2em] px-2 text-[#6B7280] block mb-2.5">
                 Advisory Repository
               </span>
@@ -638,7 +660,7 @@ const LetaWorkspace: React.FC = () => {
           </div>
 
           {/* Left panel collapse monitor */}
-          <div className="p-4 border-t border-white/[0.03] flex items-center justify-between text-[11px] text-[#475569]">
+          <div className="p-4 border-t border-[#4FB7C5]/10 flex items-center justify-between text-[11px] text-[#475569]">
             <div className="flex items-center gap-2">
               <ShieldCheck size={14} className="text-[#4FB7C5]" />
               <span className="font-sans font-semibold">Vault Storage Encrypted</span>
@@ -652,7 +674,7 @@ const LetaWorkspace: React.FC = () => {
           {/* Collapse sidebar trigger */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="absolute left-4 top-4 z-10 p-2 rounded-lg border border-white/[0.05] bg-[#0F1722] text-[#475569] hover:text-white transition-colors"
+            className="absolute left-4 top-4 z-10 p-2 rounded-lg border border-white/[0.05] bg-[#000000] text-[#475569] hover:text-white transition-colors"
             title="Toggle consultations list"
           >
             <Menu size={15} />
@@ -685,7 +707,7 @@ const LetaWorkspace: React.FC = () => {
                       <div
                         key={idx}
                         onClick={() => handleAsk(card.query)}
-                        className="p-4 rounded-xl border border-white/[0.04] bg-[#0F1722] hover:bg-[#131D2B] hover:border-[#4FB7C5]/20 cursor-pointer transition-all duration-200 group flex flex-col justify-between"
+                        className="p-4 rounded-xl border border-[#4FB7C5]/10 bg-[#000000] hover:bg-[#0a1520] hover:border-[#4FB7C5]/30 cursor-pointer transition-all duration-200 group flex flex-col justify-between"
                       >
                         <div className="flex items-center gap-1.5 mb-2 text-[#4FB7C5]">
                           <FileCheck size={12} />
@@ -713,7 +735,7 @@ const LetaWorkspace: React.FC = () => {
                       >
                         {isUser ? (
                           /* Right Aligned User Bubble with elegant layout governance */
-                          <div className="max-w-[70%] rounded-2xl p-4 bg-[#0F1722] border border-white/[0.04] shadow-md">
+                          <div className="max-w-[70%] rounded-2xl p-4 bg-[#000000] border border-[#4FB7C5]/15 shadow-md">
                             <span className="text-[9px] font-sans font-semibold text-[#4FB7C5]/80 uppercase tracking-wider block mb-1.5">
                               ADVISORY CONSULTATION QUERY
                             </span>
@@ -732,6 +754,7 @@ const LetaWorkspace: React.FC = () => {
                             </div>
                             
                             <LetaResponse
+                              onRegenerate={() => handleAsk(messages[idx - 1]?.content)}
                               data={{
                                 query: messages[idx - 1]?.content || '',
                                 answer: msg.content,
@@ -762,7 +785,7 @@ const LetaWorkspace: React.FC = () => {
           </div>
 
           {/* CHAT INPUT AREA (Sticky at bottom, inherits width constraint) */}
-          <div className="p-6 md:px-10 py-6 border-t border-white/[0.04] bg-[#000000] flex-shrink-0 relative z-20">
+          <div className="p-6 md:px-10 py-6 border-t border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 relative z-20">
             <div className="max-w-[920px] mx-auto relative">
               
               {/* Soft overlay file picker display */}
@@ -772,7 +795,7 @@ const LetaWorkspace: React.FC = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="absolute -top-12 left-4 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#4FB7C5]/30 bg-[#0F1722] z-30"
+                    className="absolute -top-12 left-4 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#4FB7C5]/30 bg-[#000000] z-30"
                   >
                     <Paperclip size={11} className="text-[#4FB7C5]" />
                     <span className="text-[11px] font-mono max-w-[150px] truncate text-white">
@@ -794,7 +817,7 @@ const LetaWorkspace: React.FC = () => {
                 value={query}
                 onChange={e => { setQuery(e.target.value); autoResize(); }}
                 placeholder={domainConfig.placeholder}
-                className="w-full p-4 pr-40 pb-14 font-body text-xs leading-relaxed outline-none resize-none transition-all duration-200 bg-[#0F1722] border border-white/[0.04] rounded-2xl text-[#F4F7FA] overflow-y-auto"
+                className="w-full p-4 pr-40 pb-14 font-body text-xs leading-relaxed outline-none resize-none transition-all duration-200 bg-[#000000] border border-[#4FB7C5]/15 rounded-2xl text-[#F4F7FA] overflow-y-auto"
                 style={{ minHeight: '90px', maxHeight: '300px' }}
                 onFocus={e => {
                   e.currentTarget.style.borderColor = 'rgba(79,183,197,0.3)';
@@ -830,21 +853,31 @@ const LetaWorkspace: React.FC = () => {
                   <Paperclip size={15} />
                 </button>
 
-                <button
-                  onClick={() => handleAsk()}
-                  disabled={(!query.trim() && !selectedFile) || isLoading}
-                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl font-sans font-semibold text-[10px] uppercase tracking-wider text-black transition-all duration-200"
-                  style={{
-                    background: (!query.trim() && !selectedFile) || isLoading
-                      ? 'rgba(79,183,197,0.1)'
-                      : '#4FB7C5',
-                    opacity: (!query.trim() && !selectedFile) || isLoading ? 0.4 : 1,
-                    cursor: (!query.trim() && !selectedFile) || isLoading ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  <Send size={11} />
-                  Analyze Query
-                </button>
+                {isStreaming ? (
+                  <button
+                    onClick={handleStop}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl font-sans font-semibold text-[10px] uppercase tracking-wider transition-all duration-200 border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                  >
+                    <Square size={11} fill="currentColor" />
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleAsk()}
+                    disabled={(!query.trim() && !selectedFile) || isLoading}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl font-sans font-semibold text-[10px] uppercase tracking-wider text-black transition-all duration-200"
+                    style={{
+                      background: (!query.trim() && !selectedFile) || isLoading
+                        ? 'rgba(79,183,197,0.1)'
+                        : '#4FB7C5',
+                      opacity: (!query.trim() && !selectedFile) || isLoading ? 0.4 : 1,
+                      cursor: (!query.trim() && !selectedFile) || isLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <Send size={11} />
+                    Analyze Query
+                  </button>
+                )}
               </div>
 
             </div>
@@ -853,7 +886,7 @@ const LetaWorkspace: React.FC = () => {
         </section>
 
         {/* 3. RIGHT PANEL: Live Statutory Context, related drafts or active document PDF (Fixed, flex-shrink: 0) */}
-        <aside className="w-[340px] h-full border-l border-white/[0.04] bg-[#0F1722] flex-shrink-0 flex flex-col overflow-hidden relative z-10">
+        <aside className="w-[340px] h-full border-l border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 flex flex-col overflow-hidden relative z-10">
           
           {openDocuments.length > 0 ? (
             // SPLIT VIEW: Dynamic interactive Document PDF viewer replaces right workspace context on open
@@ -898,7 +931,7 @@ const LetaWorkspace: React.FC = () => {
                 <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#6B7280] block mb-3">
                   Workspace Context
                 </span>
-                <div className="p-4 rounded-xl border border-white/[0.03] bg-white/[0.01] space-y-3">
+                <div className="p-4 rounded-xl border border-[#4FB7C5]/12 bg-white/[0.01] space-y-3">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-[#6B7280]">Active Domain:</span>
                     <span className="font-mono text-white text-[11px] font-bold">
@@ -931,7 +964,7 @@ const LetaWorkspace: React.FC = () => {
                       <div 
                         key={idx}
                         onClick={() => handleDocumentClick({ url: src.url, page: src.page_num, title: src.title })}
-                        className="p-3 rounded-lg border border-white/[0.03] bg-white/[0.01] hover:border-[#4FB7C5]/30 transition-all cursor-pointer flex items-start gap-2.5"
+                        className="p-3 rounded-lg border border-[#4FB7C5]/12 bg-white/[0.01] hover:border-[#4FB7C5]/35 transition-all cursor-pointer flex items-start gap-2.5"
                       >
                         <Scale size={13} className="text-[#4FB7C5] mt-0.5 flex-shrink-0" />
                         <div>
@@ -962,7 +995,7 @@ const LetaWorkspace: React.FC = () => {
                     {domainConfig.drafts.map((draft, idx) => (
                       <div 
                         key={idx}
-                        className="p-3 rounded-lg border border-white/[0.03] bg-[#0F1722]/50 hover:border-white/[0.08] flex items-center justify-between"
+                        className="p-3 rounded-lg border border-[#4FB7C5]/10 bg-[#000000]/50 hover:border-[#4FB7C5]/25 flex items-center justify-between"
                       >
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-[#A7B3C2] truncate max-w-[200px]">

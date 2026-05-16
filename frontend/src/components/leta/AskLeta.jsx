@@ -48,8 +48,8 @@ const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
     <div
       className="rounded-2xl overflow-hidden"
       style={{
-        background: '#10141B',
-        border: '1px solid rgba(255,255,255,0.04)',
+        background: '#000000',
+        border: '1px solid rgba(255,255,255,0.06)',
         boxShadow: '0 40px 80px rgba(0,0,0,0.55)',
       }}
     >

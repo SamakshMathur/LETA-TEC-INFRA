@@ -31,7 +31,9 @@ async def startup_event():
     else:
         logger.info("Configuration validated successfully")
         
-    # Lazy loading models on first request (prevents startup hangs)
+    # Eager-load all models at startup so the first query is instant
+    from app.dependencies import preload_all_models
+    preload_all_models()
 
 
 if __name__ == "__main__":

@@ -56,7 +56,7 @@ const GST: React.FC = () => {
         <div className="lg:col-span-4 space-y-6">
 
           {/* Recent Synthesis Panel */}
-          <div className="rounded-leta overflow-hidden bg-[#151922] border border-white/[0.06] shadow-2xl">
+          <div className="rounded-leta overflow-hidden bg-[#000000] border border-white/[0.06] shadow-2xl">
             <div className="px-5 py-4 flex items-center justify-between border-b border-white/[0.06]">
               <h3 className="font-black text-[10px] tracking-[0.2em] flex items-center gap-2 uppercase font-mono text-[#F5F7FA]">
                 <TrendingUp size={14} className="text-[#67E8F9]" />
@@ -93,7 +93,7 @@ const GST: React.FC = () => {
           </div>
 
           {/* Compliance Protocol Panel */}
-          <div className="p-6 rounded-leta relative overflow-hidden group border border-white/[0.06] bg-[#151922] shadow-2xl">
+          <div className="p-6 rounded-leta relative overflow-hidden group border border-white/[0.06] bg-[#000000] shadow-2xl">
             <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
               <AlertCircle size={48} className="text-[#67E8F9]" />
             </div>

@@ -1,29 +1,27 @@
 import re
 from app.routing.intent_classifier import _keyword_classify
 
+_HC_SC = ["High Court Case Laws", "Supreme Court Case Laws", "AAR"]
+
 # ─── Domain path mappings ─────────────────────────────────────────────────────
-# Maps query signals to sub-folders inside RAG_INFORMATION_DATABASE.
-# Keeps retrieval targeted; empty list = no path restriction (search all).
 _DOMAIN_PATHS: dict[str, list[str]] = {
-    "itc":          ["Rules", "Act", "Circulars", "CGST", "IGST", "Notification"],
-    "rule4x":       ["Rules", "Act", "Circulars"],
-    "refund":       ["Act", "Rules", "Circulars", "Notification", "Forms"],
-    "rate_hsn":     ["Act", "Notification", "IGST", "Forms"],
-    "export":       ["Export", "Act", "Notification", "Circulars"],
-    "eway":         ["Rules", "Circulars", "Notification"],
-    "appeal":       ["Act", "Rules", "High Court Case Laws"],
-    "annual":       ["Rules", "Forms", "Circulars"],
-    "registration": ["Act", "Rules", "Circulars"],
-    "audit":        ["Act", "Rules", "Circulars"],
+    "itc":          ["Rules", "Act", "Circulars", "CGST", "IGST", "Notification"] + _HC_SC,
+    "rule4x":       ["Rules", "Act", "Circulars"] + _HC_SC,
+    "refund":       ["Act", "Rules", "Circulars", "Notification", "Forms"] + _HC_SC,
+    "rate_hsn":     ["Act", "Notification", "IGST", "Forms"] + _HC_SC,
+    "export":       ["Export", "Act", "Notification", "Circulars"] + _HC_SC,
+    "eway":         ["Rules", "Circulars", "Notification"] + _HC_SC,
+    "appeal":       ["Act", "Rules"] + _HC_SC,
+    "annual":       ["Rules", "Forms", "Circulars"] + _HC_SC,
+    "registration": ["Act", "Rules", "Circulars"] + _HC_SC,
+    "audit":        ["Act", "Rules", "Circulars"] + _HC_SC,
+    "penalty":      ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
+    "scn":          ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
+    "draft":        ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
 }
 
 
 def _detect_domain_paths(question: str) -> list[str]:
-    """
-    Return the list of RAG_INFORMATION_DATABASE sub-folder names most
-    relevant to this query. An empty list signals 'no restriction'.
-    Runs in microseconds — pure regex, no LLM call.
-    """
     q = question.lower()
     paths: set[str] = set()
 
@@ -57,14 +55,25 @@ def _detect_domain_paths(question: str) -> list[str]:
     if re.search(r'\baudit\b|gst\s+audit|gstr.?9c', q):
         paths.update(_DOMAIN_PATHS["audit"])
 
+    if re.search(r'penalty|penalt|section\s*12[2-9]|sec\s*12[2-9]', q):
+        paths.update(_DOMAIN_PATHS["penalty"])
+
+    if re.search(r'scn|show\s*cause|notice|drc.?0?1|section\s*7[34]|sec\s*7[34]', q):
+        paths.update(_DOMAIN_PATHS["scn"])
+
+    if re.search(r'draft|reply|response|representation|appeal\s+letter|submission', q):
+        paths.update(_DOMAIN_PATHS["draft"])
+
+    # Always include HC/SC for any query — case laws improve every answer
+    paths.update(_HC_SC)
+
     return list(paths)  # empty = no restriction
 
 
 def route_query(question: str) -> dict:
     """
     Fast keyword-only routing — no LLM call needed.
-    Returns use_sources (file extensions), mode, and domain_paths
-    (RAG_INFORMATION_DATABASE sub-folder names to restrict retrieval).
+    Returns use_sources (file extensions), mode, and domain_paths.
     """
     intent_info = _keyword_classify(question.lower().strip())
     intent = intent_info["intent"]
