@@ -6,7 +6,7 @@ from app.config import (
     # Claude
     ANTHROPIC_API_KEY, CLAUDE_MAIN_MODEL, CLAUDE_UTILITY_MODEL,
     CLAUDE_THINKING_BUDGET, CLAUDE_MAX_TOKENS, MAX_RESPONSE_POINTS,
-    MAX_INPUT_TOKENS, HAIKU_COMPLEXITY_THRESHOLD,
+    HAIKU_COMPLEXITY_THRESHOLD,
     BRIEF_RESPONSE_THRESHOLD, STANDARD_RESPONSE_THRESHOLD, SONNET_THINKING_THRESHOLD,
 )
 from app.generation.prompt import SYSTEM_PROMPT, BRIEF_PROMPT, STANDARD_PROMPT, DRAFTING_PROMPT
@@ -165,6 +165,7 @@ def _stream_claude(
     use_haiku: bool = False,
     use_thinking: bool = False,
     max_tokens_override: int = None,
+    is_draft: bool = False,
 ):
     """
     3-tier model routing:
@@ -251,7 +252,7 @@ def _stream_claude(
                         ):
                             text = event.delta.text
                             if text:
-                                if full_content.count("[POINT") > MAX_RESPONSE_POINTS:
+                                if not is_draft and full_content.count("[POINT") > MAX_RESPONSE_POINTS:
                                     break
                                 full_content += text
                                 yield text
@@ -358,7 +359,7 @@ def synthesize_answer_stream(question: str, context: str):
         prompt_template = DRAFTING_PROMPT
         use_haiku = False
         use_thinking = False  # Thinking disabled — DRAFTING_PROMPT is self-sufficient; all tokens go to output
-        max_tokens = 16000   # 16 000 output tokens ≈ 11 000–12 000 words — enough for any legal draft
+        max_tokens = 12000   # Legal text ~1.4 tokens/word → 5000 words needs ~7000 tokens; 12000 gives full buffer
     else:
         mode_name, prompt_template, max_tokens = _select_response_mode(complexity)
         use_haiku = complexity < HAIKU_COMPLEXITY_THRESHOLD
@@ -378,6 +379,7 @@ def synthesize_answer_stream(question: str, context: str):
             use_haiku=use_haiku,
             use_thinking=use_thinking,
             max_tokens_override=max_tokens,
+            is_draft=is_draft,
         )
     else:
         logger.info(

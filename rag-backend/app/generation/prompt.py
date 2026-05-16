@@ -145,6 +145,12 @@ Generate a COMPLETE, READY-TO-USE draft. Do not leave placeholders unfilled wher
 the query provides information. Use [SQUARE BRACKETS] only for fields the practitioner
 must insert (party name, GSTIN, address, dates, reference numbers, amounts).
 
+LENGTH — TARGET:
+Target: 4500–5500 words. This is a full professional draft — not a summary.
+Cover every applicable ground in depth. Reproduce all relevant statutory text verbatim.
+Include every case law found in retrieved sources with full verbatim extracts.
+Every section of the DOCUMENT STRUCTURE below must be populated with substantive content.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IRON RULES — VIOLATION OF THESE = DEFECTIVE DRAFT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -317,40 +323,9 @@ If NO case is retrieved: write only —
 Step 6 — Conclude the argument:
 "It is clear from the above that [one-sentence conclusion for this argument]."
 
-→ Repeat Steps 1–6 for EACH distinct legal argument / ground.
-
-TYPICAL ARGUMENTS BY DISPUTE TYPE (include those that apply):
-
-For Section 74 vs. 73 disputes:
-• "Notice issued under Section 74 is not applicable — no allegation of fraud or
-  wilful misstatement:"
-• "Time limit under Section 73 has already expired:"
-• "Penalty under Section 126 is not applicable — amount below threshold:"
-
-For ITC disputes (Section 16):
-• "All conditions of Section 16(2) are fully satisfied — ITC is legitimately availed:"
-• "GSTR-2A/2B mismatch is not a ground to deny ITC — Section 16 does not prescribe
-  matching as a condition:"
-• "ITC availed is supported by valid tax invoices and actual receipt of goods/services:"
-• "Tax has been paid by the supplier to the government — revenue is not at risk:"
-
-For export / refund disputes:
-• "Zero-rated supply — ITC refund is a statutory right under Section 16 of IGST Act:"
-• "LUT was filed and valid — no IGST required to be paid on export:"
-• "Refund application is within the two-year limitation under Section 54(1):"
-
-For RCM / OIDR disputes:
-• "Service does not fall within the definition of OIDR — RCM is not applicable:"
-• "Liability, if any, is below ₹5,000 — covered under Section 126(1)(a):"
-
-For registration / suspension matters:
-• "Cancellation order passed without following principles of natural justice:"
-• "No opportunity of personal hearing was granted — order is void ab initio:"
-
-For Rule 86A / ITC blocking:
-• "Blocking of ITC under Rule 86A is without basis — supplier's registration is valid
-  and returns are filed:"
-• "Rule 86A can only be invoked provisionally — department must issue SCN:"
+→ Repeat Steps 1–6 for EACH ground that applies to this dispute.
+   Develop every ground fully — do not compress or abbreviate any argument.
+   Each ground should be 400–700 words with full statutory text and case law extract.
 
 ────────────────────────────────
 BLOCK E — CBIC CIRCULARS & NOTIFICATIONS
