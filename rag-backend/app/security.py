@@ -2,72 +2,165 @@ from datetime import datetime, timedelta, timezone
 import os
 import logging
 import jwt
+
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status
+
 from typing import Optional
+
+from app.database import get_user_collection
 
 logger = logging.getLogger(__name__)
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-insecure-key-do-not-use-in-production")
+# ─────────────────────────────────────────────────────────────────────────────
+# JWT CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "dev-only-insecure-key-do-not-use-in-production"
+)
+
 ALGORITHM = "HS256"
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-# ── JWT helpers ────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# TOKEN GENERATION
+# ─────────────────────────────────────────────────────────────────────────────
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    data: dict,
+    expires_delta: Optional[timedelta] = None
+) -> str:
+
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire, "type": "access"})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    to_encode.update({
+        "exp": expire,
+        "type": "access"
+    })
+
+    return jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
 
 def create_refresh_token(data: dict) -> str:
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def verify_token(token: str, token_type: str = "access") -> dict:
+    to_encode = data.copy()
+
+    expire = datetime.now(timezone.utc) + timedelta(
+        days=REFRESH_TOKEN_EXPIRE_DAYS
+    )
+
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh"
+    })
+
+    return jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TOKEN VERIFICATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+def verify_token(
+    token: str,
+    token_type: str = "access"
+) -> dict:
+
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+
         if payload.get("type") != token_type:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid token type. Expected {token_type}",
+                detail=f"Invalid token type. Expected {token_type}"
             )
+
         return payload
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
+            detail="Token has expired"
         )
+
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail="Invalid token"
         )
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
-    payload = verify_token(token, "access")
-    username = payload.get("sub")
-    if username is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
-    
-    # In a real app, fetch from database:
-    # user = get_user_collection().find_one({"username": username})
-    # if not user: raise ...
-    
-    return {
-        "username": username,
-        "email": f"{username}@example.com",
-        "role": "admin",
-        "verified": True
-    }
+# ─────────────────────────────────────────────────────────────────────────────
+# CURRENT USER
+# ─────────────────────────────────────────────────────────────────────────────
 
-async def get_current_admin(current_user: dict = Depends(get_current_user)) -> dict:
+async def get_current_user(
+    token: str = Depends(oauth2_scheme)
+) -> dict:
+
+    payload = verify_token(token, "access")
+
+    username = payload.get("sub")
+
+    if username is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload"
+        )
+
+    users_col = get_user_collection()
+
+    if users_col is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Database connection failed"
+        )
+
+    user = users_col.find_one(
+        {"username": username},
+        {"_id": 0}
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+
+    return user
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADMIN AUTH
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def get_current_admin(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+
     if current_user.get("role") != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin clearance required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin clearance required"
+        )
+
     return current_user
