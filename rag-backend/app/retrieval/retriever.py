@@ -18,6 +18,26 @@ from app.retrieval.provision_graph import ProvisionGraphRetriever
 
 logger = logging.getLogger(__name__)
 
+# ─── Pool classification — folder patterns per document category ───────────
+_CASE_LAW_FOLDERS  = {"high court case laws", "supreme court case laws", "aar", "other app result"}
+_STATUTE_FOLDERS   = {"act", "rules", "cgst", "igst", "utgst", "notification", "notifications", "export"}
+_CIRCULAR_FOLDERS  = {"circulars", "circular", "icai", "brochures", "faqs"}
+
+
+def _chunk_category(chunk: dict) -> str:
+    path = (chunk.get("rel_path") or chunk.get("source") or
+            chunk.get("metadata", {}).get("rel_path", "")).lower().replace("\\", "/")
+    for folder in _CASE_LAW_FOLDERS:
+        if f"/{folder}/" in path or path.startswith(folder + "/"):
+            return "case_law"
+    for folder in _CIRCULAR_FOLDERS:
+        if f"/{folder}/" in path or path.startswith(folder + "/"):
+            return "circular"
+    for folder in _STATUTE_FOLDERS:
+        if f"/{folder}/" in path or path.startswith(folder + "/"):
+            return "statute"
+    return "other"
+
 # ─── Thread-safe embedding model singleton ─────────────────────────────────
 _model = None
 _model_lock = threading.Lock()
@@ -142,6 +162,24 @@ class Retriever:
         self.index = faiss.read_index(str(index_path))
         logger.info(f"FAISS index loaded: {self.index.ntotal} vectors, dim={self.index.d}")
 
+        # Merge sidecar index if it exists (produced by incremental ingest scripts)
+        sidecar_path = index_path.parent / "index_sidecar.faiss"
+        if sidecar_path.exists():
+            try:
+                sidecar = faiss.read_index(str(sidecar_path))
+                if sidecar.d == self.index.d and sidecar.ntotal > 0:
+                    # Merge: extract all vectors from sidecar and add to main index
+                    all_vecs = faiss.rev_swig_ptr(sidecar.get_xb(), sidecar.ntotal * sidecar.d)
+                    import numpy as _np
+                    all_vecs = _np.array(all_vecs).reshape(sidecar.ntotal, sidecar.d).astype('float32')
+                    self.index.add(all_vecs)
+                    # Persist merged index and remove sidecar
+                    faiss.write_index(self.index, str(index_path))
+                    sidecar_path.unlink()
+                    logger.info(f"Sidecar merged: +{sidecar.ntotal} vectors → main index now {self.index.ntotal}")
+            except Exception as e:
+                logger.warning(f"Sidecar merge failed (non-fatal): {e}")
+
         # Validate dimension
         if self.index.d != VECTOR_DIM:
             logger.error(f"FAISS dimension mismatch: index has {self.index.d}, config expects {VECTOR_DIM}")
@@ -191,7 +229,57 @@ class Retriever:
 
         logger.info("Retriever initialized: 3-Layer Architecture + Provision Graph + MMR")
 
-    def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None):
+    def _enforce_pool_quotas(self, pool: list, query: str, quotas: dict) -> list:
+        """
+        Guarantee minimum chunks from each document category.
+        When a category is underrepresented in the semantic pool, fills it
+        with targeted BM25 results restricted to that category's folders.
+        quotas = {"statute": N, "case_law": N, "circular": N}
+        """
+        by_cat = {"statute": [], "case_law": [], "circular": [], "other": []}
+        for chunk in pool:
+            by_cat[_chunk_category(chunk)].append(chunk)
+
+        seen_ids = {c.get("chunk_id") for c in pool}
+        result = list(pool)  # start with the full pool
+
+        if self.bm25:
+            tokenized_query = tokenize_text(query)
+            bm25_scores = self.bm25.get_scores(tokenized_query)
+
+            for cat, quota in quotas.items():
+                have = len(by_cat[cat])
+                if have >= quota:
+                    continue  # already enough — no action needed
+
+                needed = quota - have
+                # Build sorted list of (chunk_index, score) for this category
+                cat_indices = [
+                    (i, bm25_scores[i])
+                    for i, c in enumerate(self.chunks)
+                    if _chunk_category(c) == cat
+                ]
+                cat_indices.sort(key=lambda x: x[1], reverse=True)
+
+                added = 0
+                for idx, score in cat_indices:
+                    if added >= needed:
+                        break
+                    chunk = self.chunks[idx].copy()
+                    cid = chunk.get("chunk_id")
+                    if cid and cid not in seen_ids:
+                        chunk["_targeted_fill"] = True
+                        chunk["_fill_category"] = cat
+                        result.append(chunk)
+                        seen_ids.add(cid)
+                        added += 1
+
+                if added:
+                    logger.info(f"Pool quota fill: +{added} {cat} chunks (had {have}, needed {quota})")
+
+        return result
+
+    def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False):
         if not query or not query.strip():
             logger.warning("search() called with empty query")
             return []
@@ -295,8 +383,17 @@ class Retriever:
                     f"domain_paths filter too aggressive ({len(filtered)} results) — skipping"
                 )
 
-        # Merge layers: Statute-First > Graph Expanded > Semantic
-        # Cap statute results to top 50 to avoid memory explosion in reranker
+        # ── Phase 2A: Enforce pool quotas — guarantee case law + circulars ──────
+        # Drafts need: statute ≥10, case_law ≥10, circular ≥5
+        # Q&A needs:   statute ≥8,  case_law ≥6,  circular ≥4
+        _quotas = (
+            {"statute": 10, "case_law": 10, "circular": 5}
+            if is_draft else
+            {"statute": 8,  "case_law": 6,  "circular": 4}
+        )
+        candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
+
+        # Merge layers: Statute-First > Graph Expanded > Semantic (+quota fills)
         combined_results = statute_results[:50] + graph_results[:30]
         existing_ids = {r.get("chunk_id") for r in combined_results}
         for r in candidate_pool:
@@ -329,7 +426,7 @@ class Retriever:
                 reranked_results = reranker_input
 
         # --- Layer 3: Legal Reranking (Composite Scoring) ---
-        reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic)
+        reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic, is_draft=is_draft)
 
         # --- Layer 4: MMR Deduplication ---
         reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k)

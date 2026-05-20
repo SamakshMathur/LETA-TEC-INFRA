@@ -4,6 +4,12 @@ from app.retrieval.source_priority import source_priority
 
 logger = logging.getLogger(__name__)
 
+_CASE_LAW_FOLDERS = {"high court case laws", "supreme court case laws", "aar", "other app result"}
+
+def _is_case_law(rel_path: str) -> bool:
+    path = rel_path.lower().replace("\\", "/")
+    return any(f"/{folder}/" in path or path.startswith(folder + "/") for folder in _CASE_LAW_FOLDERS)
+
 # Topic aliases for fuzzy matching (common variations → canonical name)
 _TOPIC_ALIASES = {
     "input tax credit": "itc",
@@ -36,7 +42,7 @@ class LegalReranker:
     """
 
     @staticmethod
-    def rerank(query: str, chunks: List[Dict[str, Any]], query_topic: Optional[str] = None) -> List[Dict[str, Any]]:
+    def rerank(query: str, chunks: List[Dict[str, Any]], query_topic: Optional[str] = None, is_draft: bool = False) -> List[Dict[str, Any]]:
         if not chunks:
             return []
 
@@ -74,6 +80,10 @@ class LegalReranker:
             # Composite scoring
             # Base components sum to 1.0, layer1_boost is additive for statute priority
             final_score = (0.5 * semantic_score) + (0.3 * legal_weight) + (0.2 * topic_match) + layer1_boost
+
+            # Phase 2C: Draft mode — boost case law 1.3× so judgments compete with statutes
+            if is_draft and _is_case_law(rel_path):
+                final_score *= 1.3
 
             chunk["_is_statute_first"] = chunk.get("_is_statute_first", False)
             chunk["_final_legal_score"] = final_score

@@ -7,28 +7,21 @@ from pathlib import Path
 # Uses exact path-segment matching to prevent false positives like:
 #   "practice.pdf" triggering "act" rule, or "abstract.pdf" matching "act".
 _AUTHORITY_MAP = [
-    # Weight 5 — Primary Statute (Act)
-    # Folder names: Act, CGST, IGST
-    (5, ["act", "cgst", "igst", "utgst", "sgst"]),
+    # Weight 5 — Primary Statute + Supreme Court (both are highest authority)
+    (5, ["act", "cgst", "igst", "utgst", "sgst", "supreme court case laws"]),
 
-    # Weight 4 — Subordinate Legislation (Rules)
-    # Folder names: Rules, rule
-    (4, ["rules", "rule"]),
+    # Weight 4 — Rules + High Court judgments
+    (4, ["rules", "rule", "high court case laws", "tribunal", "judgement", "judgment"]),
 
-    # Weight 3 — Quasi-Judicial / Administrative (Notifications, Case Law, AAR)
-    # Folder names: Notification, AAR, High Court Case Laws, Supreme Court Case Laws
-    (3, ["notification", "notifications", "aar", "advance ruling",
-         "high court case laws", "supreme court case laws",
-         "tribunal", "judgement", "judgment", "export"]),
+    # Weight 3 — AAR / Notifications / Export
+    (3, ["notification", "notifications", "aar", "advance ruling", "other app result", "export"]),
 
-    # Weight 2 — Clarificatory (Circulars, Instructions, Trade Notices)
-    # Folder names: Circulars
+    # Weight 2 — Circulars, Instructions, ICAI
     (2, ["circulars", "circular", "instruction", "trade notice", "press release", "icai"]),
 
     # Weight 1 — Forms, Brochures, FAQs, Misc
-    # Folder names: Forms, Brochures, FAQs, Other APP Result, Responses, generated_reports
     (1, ["forms", "form", "brochures", "brochure", "faqs", "faq", "flyer",
-         "other app result", "excel", ".xlsx", "responses", "response",
+         "excel", ".xlsx", "responses", "response",
          "generated_reports", "generated_report"]),
 ]
 

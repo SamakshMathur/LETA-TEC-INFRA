@@ -84,44 +84,66 @@ def preprocess_image(image):
 
     return Image.fromarray(thresh)
 
-def extract_text_from_scanned_pdf(path):
+def extract_text_from_scanned_pdf(path, low_memory: bool = False, ultralow_memory: bool = False):
     """
     Uses PyMuPDF (fitz) to rasterize PDF pages to images, then runs Tesseract OCR.
-    Replaces pdf2image to avoid Poppler dependency.
+
+    ultralow_memory=True: 1× zoom (72 DPI), grayscale, per-page GC — for very large PDFs.
+    low_memory=True:      2× zoom (144 DPI), grayscale, no stamp removal.
+    low_memory=False:     4× zoom (288 DPI), full stamp removal (default, highest quality).
     """
+    import gc
+
     doc = fitz.open(path)
     pages = []
 
-    # Iterate over pages
-    for page_num, page in enumerate(doc):
-        # 300 DPI is usually sufficient for OCR. matrix(2,2) ~ 144 DPI (72*2).
-        # We want higher quality as requested. matrix(4,4) ~ 288 DPI.
-        mat = fitz.Matrix(4, 4) 
-        pix = page.get_pixmap(matrix=mat)
-        
-        # Convert PyMuPDF Pixmap to PIL Image
-        img_data = pix.tobytes("png")
-        image = Image.open(io.BytesIO(img_data))
-        
-        # 1. Remove Stamps first (while still in color)
-        clean_image = remove_stamps(image)
-        
-        # 2. Preprocess for OCR (Grayscale, Thresholding)
-        final_image = preprocess_image(clean_image)
+    if ultralow_memory:
+        zoom = 1
+    elif low_memory:
+        zoom = 2
+    else:
+        zoom = 4
 
-        # 3. OCR with better page segmentation for legal text
+    mat = fitz.Matrix(zoom, zoom)
+    use_gray = low_memory or ultralow_memory
+
+    for page_num, page in enumerate(doc):
+        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csGRAY if use_gray else fitz.csRGB)
+
         try:
+            if use_gray:
+                # Direct grayscale → threshold → OCR (no OpenCV colour ops)
+                img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width)
+                thresh = cv2.adaptiveThreshold(
+                    img_array, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+                )
+                final_image = Image.fromarray(thresh)
+                # Free numpy arrays before OCR
+                img_array = None
+                thresh = None
+            else:
+                img_data = pix.tobytes("png")
+                image = Image.open(io.BytesIO(img_data))
+                clean_image = remove_stamps(image)
+                final_image = preprocess_image(clean_image)
+
+            # Free pixmap memory before OCR (which also needs RAM)
+            pix = None
+
             text = pytesseract.image_to_string(
                 final_image,
                 lang="eng",
                 config="--psm 3 --oem 3 -c preserve_interword_spaces=1"
             )
+            final_image = None
         except pytesseract.TesseractNotFoundError:
-             print("Tesseract not found! Please ensure Tesseract-OCR is installed and in PATH.")
-             text = ""
+            print("Tesseract not found! Please ensure Tesseract-OCR is installed and in PATH.")
+            text = ""
         except Exception as e:
             print(f"OCR Error on page {page_num+1}: {e}")
             text = ""
+        finally:
+            pix = None
 
         pages.append({
             "text": text.strip() or "[OCR_EMPTY_PAGE]",
@@ -132,6 +154,10 @@ def extract_text_from_scanned_pdf(path):
             }
         })
 
+        if ultralow_memory:
+            gc.collect()
+
+    doc.close()
     return pages
 
 def extract_text_from_image(file_bytes: bytes) -> str:

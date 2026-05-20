@@ -35,6 +35,66 @@ CATEGORY_MAP = {
 def health():
     return {"status": "ok", "service": "documents"}
 
+
+@router.get("/view_by_path")
+def view_by_path(path: str, download: bool = False):
+    """Serve a file directly by its rel_path inside RAG_INFORMATION_DATABASE."""
+    import urllib.parse
+
+    def _safe_print(msg):
+        try:
+            print(msg)
+        except Exception:
+            pass
+
+    try:
+        decoded = urllib.parse.unquote(path)
+        # Prevent path traversal
+        normalised = os.path.normpath(decoded.replace("\\", "/"))
+        if normalised.startswith("..") or ".." in normalised.split(os.sep):
+            raise HTTPException(status_code=400, detail="Invalid path")
+
+        target = BASE_DIR / normalised
+        _safe_print(f"view_by_path: {target}")
+
+        if not target.exists() or not target.is_file():
+            # Fallback: try case-insensitive rglob
+            name = Path(normalised).name
+            found = list(BASE_DIR.rglob(name))
+            if not found:
+                raise HTTPException(status_code=404, detail=f"File not found: {decoded}")
+            target = found[0]
+            _safe_print(f"view_by_path fallback: {target}")
+
+        safe_name = target.name
+        ext = target.suffix.lower()
+        media_types = {
+            ".pdf": "application/pdf",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".txt": "text/plain",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        media_type = media_types.get(ext, "application/octet-stream")
+        disposition = "attachment" if download else "inline"
+
+        with open(target, "rb") as f:
+            content = f.read()
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'{disposition}; filename="{safe_name}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        _safe_print(f"view_by_path error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/categories")
 def get_categories():
     """Returns available categories and file counts."""

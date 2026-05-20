@@ -16,9 +16,12 @@ import os
 import re
 from typing import List
 
-MAX_COMPRESSED_CHARS = 9000   # ~2 250 tokens — well within 6KB TITAN target
-MAX_EXCERPT_CHARS = 600       # per-chunk window; enough for a full statutory sentence
-MAX_CHUNKS_USED = 12          # cap before we hit diminishing returns
+MAX_COMPRESSED_CHARS_QA    = 9000    # ~2 250 tokens — Q&A mode
+MAX_COMPRESSED_CHARS_DRAFT = 20000   # ~5 000 tokens — draft mode needs full statutory text
+MAX_EXCERPT_CHARS_QA       = 600     # per-chunk window Q&A
+MAX_EXCERPT_CHARS_DRAFT    = 1400    # per-chunk window draft — needs verbatim statutory paragraphs
+MAX_CHUNKS_USED_QA         = 12      # Q&A cap
+MAX_CHUNKS_USED_DRAFT      = 25      # draft uses all retrieved chunks
 
 
 def _query_tokens(query: str) -> set:
@@ -34,7 +37,7 @@ def _overlap_score(text: str, q_tokens: set) -> float:
     return len(chunk_tokens & q_tokens) / max(len(q_tokens), 1)
 
 
-def _best_window(text: str, q_tokens: set, max_chars: int = MAX_EXCERPT_CHARS) -> str:
+def _best_window(text: str, q_tokens: set, max_chars: int = MAX_EXCERPT_CHARS_QA) -> str:
     """
     Split text into sentences and return the highest-scoring 2-sentence
     window (± 1 sentence context around the best match).
@@ -54,23 +57,27 @@ def _best_window(text: str, q_tokens: set, max_chars: int = MAX_EXCERPT_CHARS) -
     return window
 
 
-def compress_context(chunks: List[dict], query: str) -> str:
+def compress_context(chunks: List[dict], query: str, is_draft: bool = False) -> str:
     """
     Build a focused, compressed context string from retrieved chunks.
 
-    Replaces the raw SOURCE DOCUMENTS block when calling the LLM.
-    The citation registry from build_context() is kept separately and
-    prepended by the caller (app.py) for hallucination grounding.
+    Draft mode uses larger limits so verbatim statutory text and full judgment
+    paragraphs fit — needed for 5000-word SCN replies.
 
     Args:
-        chunks: Retrieved chunk dicts (as returned by retriever.search)
-        query:  Original user query string
+        chunks:   Retrieved chunk dicts (as returned by retriever.search)
+        query:    Original user query string
+        is_draft: True for SCN replies / appeals / drafting mode
 
     Returns:
-        Compressed context string, max ~9 KB.
+        Compressed context string.
     """
     if not chunks:
         return "No relevant statutory documents retrieved."
+
+    max_total   = MAX_COMPRESSED_CHARS_DRAFT if is_draft else MAX_COMPRESSED_CHARS_QA
+    max_excerpt = MAX_EXCERPT_CHARS_DRAFT    if is_draft else MAX_EXCERPT_CHARS_QA
+    max_chunks  = MAX_CHUNKS_USED_DRAFT      if is_draft else MAX_CHUNKS_USED_QA
 
     q_tokens = _query_tokens(query)
 
@@ -84,22 +91,22 @@ def compress_context(chunks: List[dict], query: str) -> str:
         scored.append((combined, c))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:MAX_CHUNKS_USED]
+    top = scored[:max_chunks]
 
     parts: List[str] = []
     total = 0
 
     for rank, (score, chunk) in enumerate(top, 1):
-        if total >= MAX_COMPRESSED_CHARS:
+        if total >= max_total:
             break
 
         text = chunk.get("text", "").strip()
         source = os.path.basename(chunk.get("source", "Unknown"))
         page = chunk.get("page", "N/A")
 
-        excerpt = _best_window(text, q_tokens)
+        excerpt = _best_window(text, q_tokens, max_chars=max_excerpt)
 
-        remaining = MAX_COMPRESSED_CHARS - total
+        remaining = max_total - total
         if len(excerpt) > remaining:
             excerpt = excerpt[:remaining] + "…"
 

@@ -1,12 +1,13 @@
 import os
 import re
+from pathlib import Path
 
 # Character caps — tuned for TITAN sub-5s target.
-# MAX_CHUNK_CHARS: 1000 chars ≈ 250 tokens — enough for one full statutory paragraph.
-# MAX_CONTEXT_CHARS: 15000 chars ≈ 3750 tokens — keeps total LLM input well under 6KB.
-# (Previous values: 80 000 / 3 000 caused 12 000-18 000 token context injections.)
-MAX_CONTEXT_CHARS = 15000
-MAX_CHUNK_CHARS = 1000
+# Q&A mode: 15 000 chars. Draft mode: 30 000 chars (needed for 5000-word replies).
+MAX_CONTEXT_CHARS_QA    = 15000
+MAX_CONTEXT_CHARS_DRAFT = 30000
+MAX_CHUNK_CHARS_QA      = 1000
+MAX_CHUNK_CHARS_DRAFT   = 1800  # longer excerpts needed for verbatim statutory reproduction
 
 # ─────────────────────────────────────────────────────────────
 # Citation extraction patterns — used to build the registry
@@ -34,68 +35,129 @@ def _extract_legal_refs(text: str) -> list:
     return sorted(refs)
 
 
-def build_citation_registry(chunks: list[dict]) -> str:
+_CASE_LAW_FOLDERS = {"high court case laws", "supreme court case laws", "aar", "other app result"}
+
+# Patterns to extract case names from judgment text
+_CASE_NAME_PATTERNS = [
+    r'(?:M/s\.?\s+)?[\w\s\.\-&,\']+(?:\s+(?:Pvt\.?\s*Ltd\.?|Ltd\.?|LLP|Inc\.?|Corp\.?))?(?:\s+(?:[Vv]s?\.?|[Vv]ersus)\s+)[\w\s\.\-&,\']+(?:\s+(?:Pvt\.?\s*Ltd\.?|Ltd\.?|LLP))?',
+]
+
+
+def _extract_case_name_from_filename(filename: str) -> str:
+    """
+    Converts a case law filename to a readable case name.
+    e.g. "Esveeaar+Distilleries+Private+Limited+Vs+AC+ST+-+APHC.pdf"
+         → "Esveeaar Distilleries Private Limited Vs AC ST"
+    """
+    stem = Path(filename).stem
+    # Replace URL-encoded + with space, then clean court suffix after last " - "
+    name = stem.replace("+", " ").replace("_", " ")
+    # Strip court abbreviation at end (e.g. " - APHC", " - GUJHC")
+    name = re.sub(r'\s+-\s+[A-Z]{2,8}$', '', name)
+    return name.strip()
+
+
+def _is_case_law_source(source_path: str) -> bool:
+    path = source_path.lower().replace("\\", "/")
+    return any(f"/{f}/" in path or path.startswith(f + "/") for f in _CASE_LAW_FOLDERS)
+
+
+def build_citation_registry(chunks: list[dict], is_draft: bool = False) -> str:
     """
     Pre-extracts ALL legal citations that appear in the retrieved chunks.
-    Returns a formatted registry that locks the LLM to only verified refs.
+    For draft mode: also extracts case names from filenames so the LLM can
+    cite them verbatim without hallucinating names.
     """
     all_refs = {}  # ref -> [source filenames]
-    
+    case_names = {}  # case_name -> court type
+
     for c in chunks:
         text = c.get('text', '')
-        source = os.path.basename(c.get('source', 'Unknown'))
+        raw_source = c.get('source', '') or c.get('metadata', {}).get('source', '')
+        rel_path = c.get('rel_path', '') or c.get('metadata', {}).get('rel_path', '')
+        classify_path = rel_path if rel_path else raw_source
+        source = os.path.basename(rel_path) if rel_path else (os.path.basename(raw_source) or 'Unknown')
         refs = _extract_legal_refs(text)
         for ref in refs:
             if ref not in all_refs:
                 all_refs[ref] = []
             if source not in all_refs[ref]:
                 all_refs[ref].append(source)
-    
-    if not all_refs:
-        return "⚠️ No specific legal provisions extracted from the retrieved documents."
-    
+
+        # Phase 3: extract case names from filenames for case law sources
+        if is_draft and _is_case_law_source(classify_path):
+            case_name = _extract_case_name_from_filename(source)
+            if case_name and len(case_name) > 10:
+                path_lower = classify_path.lower()
+                if "supreme court" in path_lower:
+                    court = "Supreme Court of India"
+                elif "high court" in path_lower:
+                    court = "High Court"
+                elif "aar" in path_lower:
+                    court = "AAR"
+                else:
+                    court = "Appellate Authority"
+                case_names[case_name] = court
+
     lines = ["The following legal references were FOUND IN THE RETRIEVED DOCUMENTS.",
              "You MAY ONLY cite the references listed here. Any citation not on this list is PROHIBITED:\n"]
-    
+
     for ref, sources in sorted(all_refs.items()):
-        src_list = ", ".join(sources[:2])  # max 2 source names per ref
+        src_list = ", ".join(sources[:2])
         lines.append(f"  ✅ {ref}  [verified in: {src_list}]")
-    
+
+    if case_names:
+        lines.append("\n--- VERIFIED CASE NAMES (use these exactly in 'Reliance is placed on...' lines) ---")
+        for name, court in sorted(case_names.items()):
+            lines.append(f"  ⚖️  {name}  [{court}]")
+
+    if not all_refs and not case_names:
+        return "No specific legal provisions extracted from the retrieved documents."
+
     return "\n".join(lines)
 
 
-def build_context(chunks: list[dict]) -> str:
+def build_context(chunks: list[dict], is_draft: bool = False) -> str:
     """
     Builds a citation-ready context block from retrieved chunks.
-    Includes a VERIFIED CITATION REGISTRY and QUOTABLE SOURCE blocks.
+    Draft mode uses larger limits (30 000 chars, 1800 chars/chunk) and
+    includes the case law name registry for hallucination grounding.
     """
     if not chunks:
         return "No relevant documents found."
-    
+
+    max_context = MAX_CONTEXT_CHARS_DRAFT if is_draft else MAX_CONTEXT_CHARS_QA
+    max_chunk   = MAX_CHUNK_CHARS_DRAFT   if is_draft else MAX_CHUNK_CHARS_QA
+
     base_url = "/api/documents/view"
-    
+
     # ── Step 1: Build the Citation Registry ──────────────────
-    registry = build_citation_registry(chunks)
-    
+    registry = build_citation_registry(chunks, is_draft=is_draft)
+
     # ── Step 2: Build Quotable Source Blocks ─────────────────
     context_blocks = []
     for i, c in enumerate(chunks):
-        raw_source = c.get('source', 'Unknown')
-        filename = os.path.basename(raw_source)
-        
-        source_type = _classify_source(raw_source)
-        authority_rank = _get_authority_rank(raw_source)
-        
+        raw_source = c.get('source', '') or c.get('metadata', {}).get('source', 'Unknown')
+        rel_path = c.get('rel_path', '') or c.get('metadata', {}).get('rel_path', '')
+        # Use rel_path for the display filename — it holds the real file name.
+        # Fall back to basename(raw_source) only when rel_path is absent.
+        filename = os.path.basename(rel_path) if rel_path else (os.path.basename(raw_source) or 'Unknown')
+
+        # For path classification use rel_path when available (it has folder info)
+        classify_path = rel_path if rel_path else raw_source
+        source_type = _classify_source(classify_path)
+        authority_rank = _get_authority_rank(classify_path)
+
         safe_filename = filename.replace(" ", "%20")
         link = f"{base_url}?category=all&filename={safe_filename}"
-        
+
         rerank_score = c.get('_rerank_score', None)
         relevance_tag = f" | Relevance: {rerank_score:.3f}" if rerank_score is not None else ""
-        
+
         chunk_text = c['text'].strip()
-        if len(chunk_text) > MAX_CHUNK_CHARS:
-            chunk_text = chunk_text[:MAX_CHUNK_CHARS] + "... [truncated]"
-        
+        if len(chunk_text) > max_chunk:
+            chunk_text = chunk_text[:max_chunk] + "... [truncated]"
+
         context_blocks.append(
             f"════════════════════════════════════════\n"
             f"SOURCE [{i+1}] | {authority_rank} | {source_type}\n"
@@ -108,9 +170,9 @@ def build_context(chunks: list[dict]) -> str:
             f"\"\"\"\n"
             f"════════════════════════════════════════"
         )
-    
+
     sources_section = "\n\n".join(context_blocks)
-    
+
     # ── Step 3: Assemble Full Context ─────────────────────────
     full_context = (
         f"╔══════════════════════════════════════════╗\n"
@@ -122,10 +184,10 @@ def build_context(chunks: list[dict]) -> str:
         f"╚══════════════════════════════════════════╝\n"
         f"{sources_section}"
     )
-    
-    if len(full_context) > MAX_CONTEXT_CHARS:
-        full_context = full_context[:MAX_CONTEXT_CHARS] + "\n\n[Context truncated to stay within token limits]"
-    
+
+    if len(full_context) > max_context:
+        full_context = full_context[:max_context] + "\n\n[Context truncated to stay within token limits]"
+
     return full_context
 
 

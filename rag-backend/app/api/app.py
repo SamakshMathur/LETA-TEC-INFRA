@@ -277,16 +277,26 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             seen_src = set()
             import urllib.parse as _urlparse
             for c in chunks:
-                src_key = (c.get("source"), c.get("page", 0))
+                _dedup_rel = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "") or c.get("source", "")
+                src_key = (_dedup_rel, c.get("page", 0))
                 if src_key not in seen_src:
                     seen_src.add(src_key)
-                    _raw_src = c.get("source", "")
-                    _basename = os.path.basename(_raw_src)
+                    _raw_src = c.get("source", "") or c.get("metadata", {}).get("source", "")
+                    _rel_path = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "")
+                    # Use rel_path for display name — it holds the real filename.
+                    _basename = os.path.basename(_rel_path) if _rel_path else os.path.basename(_raw_src)
+                    _enc_path = _urlparse.quote(_rel_path.replace("\\", "/"), safe="") if _rel_path else ""
                     _enc_name = _urlparse.quote(_basename, safe="")
+                    _url = (
+                        f"/api/documents/view_by_path?path={_enc_path}"
+                        if _enc_path else
+                        f"/api/documents/view?category=all&filename={_enc_name}"
+                    )
                     unique_sources.append({
                         "title": _basename or "Document",
                         "page": c.get("page", 1),
-                        "url": f"/api/documents/view?category=all&filename={_enc_name}&page={c.get('page', 1)}",
+                        "url": _url,
+                        "rel_path": _rel_path,
                         "score": float(c.get("_rerank_score", 0))
                     })
                 if len(unique_sources) >= 8: # Limit to top 8 unique sources
@@ -490,9 +500,13 @@ async def ask_question(request: Request, req: QuestionRequest):
         if calc_result:
             yield f"__STATUS__:{json.dumps({'msg': 'Pre-computing Statutory Formula...'})}__END_STATUS__"
 
-        # ── Stage 4: Query expansion — only for deeply complex queries ────────────
-        # Blocking Haiku API call (~3-5s). Only justified at complexity ≥ 0.80.
-        if _complexity >= 0.80:
+        # ── Stage 4: Query expansion — only for deeply complex non-draft queries ────
+        # Draft queries skip Haiku expansion (Phase 2B injects rule-based sub-queries,
+        # which is faster and category-targeted — no API call needed).
+        _DRAFT_KW_EARLY = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","write a letter","write letter","prepare reply","representation","response to notice","respond to"]
+        _is_draft_early = any(k in _q for k in _DRAFT_KW_EARLY)
+
+        if _complexity >= 0.80 and not _is_draft_early:
             yield f"__STATUS__:{json.dumps({'msg': 'Deep Legal Analysis Mode — Expanding Query...'})}__END_STATUS__"
             from app.retrieval.query_refiner import generate_advanced_queries
             advanced_queries = generate_advanced_queries(question)
@@ -500,6 +514,15 @@ async def ask_question(request: Request, req: QuestionRequest):
         else:
             advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
             refined_q = question
+
+        # ── Phase 2B: Draft sub-query injection (no LLM call — rule-based) ────────
+        # Injects 3 targeted sub-queries (statute / case law / circular) so each
+        # document category gets its own vector search pass.
+        if _is_draft_early:
+            _statute_q  = refined_q + " section rule act provisions conditions eligibility liability"
+            _caselaw_q  = refined_q + " high court supreme court judgment held ruling decision AAR"
+            _circular_q = refined_q + " CBIC circular notification clarification instruction"
+            advanced_queries["queries"] = [refined_q, _statute_q, _caselaw_q, _circular_q]
 
         # ── Stage 5: Targeted hybrid retrieval ────────────────────────────────────
         domain_label = ", ".join(domain_paths[:2]) if domain_paths else "All Databases"
@@ -514,13 +537,14 @@ async def ask_question(request: Request, req: QuestionRequest):
             allowed_sources=route["use_sources"],
             advanced_queries=advanced_queries,
             domain_paths=domain_paths,
+            is_draft=_is_draft,
         )
 
         # ── Stage 6: Context assembly — citation registry + compressed excerpts ───
         # build_context() provides the citation registry (hallucination grounding).
         # compress_context() provides the focused factual text block (speed).
-        citation_block = build_context(chunks)      # ~5 KB: registry + authority metadata
-        compressed_block = compress_context(chunks, question)  # ~9 KB: focused excerpts
+        citation_block = build_context(chunks, is_draft=_is_draft)      # ~5 KB: registry + authority metadata
+        compressed_block = compress_context(chunks, question, is_draft=_is_draft)  # focused excerpts
 
         full_rag_context = (
             (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")

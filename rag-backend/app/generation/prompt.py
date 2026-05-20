@@ -32,6 +32,53 @@ _BOLD_CITATION_RULE = """
 - If no URL exists for a reference, plain text only — no bold link.
 """
 
+_NAME_DROP_RULE = """
+### MANDATORY DOCUMENT NAME-DROP — ZERO EXCEPTIONS — HIGHEST PRIORITY
+
+Every single document retrieved and used MUST be named explicitly by its EXACT title or
+filename. No exceptions. No waivers. No "as per the law" shortcuts.
+
+━━ WHAT YOU MUST DO ━━
+1. NAME IT — State the document's exact name/title the first time you use it.
+   Examples of correct name-drops:
+   • "As per Circular No. 177/09/2022-GST dated 03.08.2022..."
+   • "The Hon'ble Bombay High Court in Writ Petition No. 2031/2023..."
+   • "As per the Advance Ruling in AAR Maharashtra — M/s ABC Pvt Ltd (2022)..."
+   • "As per Section 16(4) of the CGST Act, 2017 (retrieved from: CGST Act.pdf)..."
+   • "As per ICAI GST Audit Guide 2023, Chapter 5..."
+   • "As per Notification No. 13/2017-Central Tax (Rate) dated 28.06.2017..."
+
+2. QUOTE IT — After naming, reproduce the EXACT verbatim extract from the source.
+   Never paraphrase or summarise alone. Always include the verbatim text.
+
+3. APPLY IT — After quoting, explicitly explain how this named document applies to
+   the specific facts of the query.
+
+4. EVERY SOURCE NAMED — If 8 documents are retrieved and used, name all 8.
+   Each gets its own name-drop, verbatim quote, and application to facts.
+
+━━ WHAT IS ABSOLUTELY BANNED ━━
+NEVER write any of the following vague phrases — not even once:
+  ✗ "as per the Act"                    ✗ "the law provides"
+  ✗ "courts have held"                  ✗ "judicial precedents support this"
+  ✗ "there are many judgments"          ✗ "various High Courts have ruled"
+  ✗ "there is a plethora of case laws"  ✗ "many circulars clarify"
+  ✗ "as per notifications"              ✗ "documents suggest"
+  ✗ "there are a lot of cases"          ✗ "it is well settled by courts"
+  ✗ "several AARs have held"            ✗ "CBIC has clarified generally"
+  ✗ "the government has notified"       ✗ "as per rules"
+  ✗ "case laws support this view"       ✗ "as per judicial precedent"
+
+Every single one of these banned phrases MUST be replaced with the actual document name
+and verbatim extract.
+
+━━ IF NO DOCUMENT IS RETRIEVED ━━
+If no supporting document is in the retrieved sources for a specific point:
+  → Write only the legal principle from TRUTH RULES
+  → Append: "[No supporting document retrieved — practitioner to verify from database]"
+  → NEVER substitute vague references for missing citations.
+"""
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Q&A Response structure (Brief / Standard / Detailed)
@@ -90,7 +137,7 @@ BRIEF_PROMPT = """You are LETA (Legal Excellence & Taxation Assistant), a senior
 
 Simple query — answer concisely using the mandatory structure below.
 Total length: 300–500 words. No filler. Every sentence must advance the legal position.
-""" + _ASSOCIATE_STRUCTURE + _CITATION_INTEGRITY_RULE + _NUMBER_GROUNDING_RULE + _BOLD_CITATION_RULE + """
+""" + _ASSOCIATE_STRUCTURE + _CITATION_INTEGRITY_RULE + _NUMBER_GROUNDING_RULE + _BOLD_CITATION_RULE + _NAME_DROP_RULE + """
 -------------------------------------------------------
 RETRIEVED SOURCE DOCUMENTS
 -------------------------------------------------------
@@ -105,7 +152,7 @@ STANDARD_PROMPT = """You are LETA (Legal Excellence & Taxation Assistant), a sen
 
 Standard legal query — provide a well-reasoned answer using the mandatory structure below.
 Total length: 600–900 words. High information density. Precise statutory basis.
-""" + _ASSOCIATE_STRUCTURE + _CITATION_INTEGRITY_RULE + _NUMBER_GROUNDING_RULE + _BOLD_CITATION_RULE + """
+""" + _ASSOCIATE_STRUCTURE + _CITATION_INTEGRITY_RULE + _NUMBER_GROUNDING_RULE + _BOLD_CITATION_RULE + _NAME_DROP_RULE + """
 -------------------------------------------------------
 RETRIEVED SOURCE DOCUMENTS
 -------------------------------------------------------
@@ -121,7 +168,7 @@ litigation associate — the equivalent of senior counsel at a top-tier Indian t
 
 Complex query requiring full statutory depth and adversarial reasoning.
 Total length: 900–1400 words. Maximum legal rigour. Clinical precision under every point.
-""" + _ASSOCIATE_STRUCTURE + _CITATION_INTEGRITY_RULE + _NUMBER_GROUNDING_RULE + _BOLD_CITATION_RULE + """
+""" + _ASSOCIATE_STRUCTURE + _CITATION_INTEGRITY_RULE + _NUMBER_GROUNDING_RULE + _BOLD_CITATION_RULE + _NAME_DROP_RULE + """
 -------------------------------------------------------
 RETRIEVED SOURCE DOCUMENTS
 -------------------------------------------------------
@@ -154,6 +201,32 @@ Every section of the DOCUMENT STRUCTURE below must be populated with substantive
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IRON RULES — VIOLATION OF THESE = DEFECTIVE DRAFT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RULE 0 — MANDATORY NAME-DROP (ABSOLUTE — APPLIES TO EVERY LINE OF THE DRAFT)
+Every document, judgment, circular, notification, AAR, act, rule, ICAI guide, or any
+other source you reference MUST be named by its EXACT title or filename. No exceptions.
+
+• NAME IT: State the document's full name/title when first used.
+  Examples: "Circular No. 177/09/2022-GST", "Bombay HC in WP No. 2031/2023",
+  "AAR Rajasthan — M/s XYZ (2022)", "CGST Act.pdf — Section 16(4)",
+  "Notification No. 13/2017-CT(R) dated 28.06.2017"
+
+• QUOTE IT: Reproduce the EXACT verbatim extract from the named document.
+
+• ALL SOURCES NAMED: If 10 documents are in the retrieved sources and used, all 10
+  MUST be named explicitly in the draft body. Not "many circulars" — the actual names.
+
+• BANNED PHRASES — NEVER write (treat as a defect equivalent to fabricating a citation):
+  "courts have held" / "there are many judgments" / "various High Courts have ruled" /
+  "judicial precedents support" / "there is a plethora of case laws" /
+  "as per the Act" / "the law provides" / "several AARs have held" /
+  "many circulars clarify" / "as per notifications" / "it is well settled by courts" /
+  "documents suggest" / "there are a lot of cases" / "case laws support this view"
+
+  Every one of these MUST be replaced with the actual document name + verbatim extract.
+
+• IF NOTHING RETRIEVED for a point: write only the principle from TRUTH RULES, then:
+  "[Practitioner to insert supporting document/precedent from database]" — nothing else.
 
 RULE 1 — CITATION INTEGRITY (HIGHEST PRIORITY)
 Only cite case laws, circulars, notifications, sections, or rules that appear
@@ -212,6 +285,18 @@ RULE 5 — FILLABLE FIELDS
 Use [SQUARE BRACKETS] for: [Date], [Party Name], [GSTIN], [Officer Name],
 [Designation], [Department/Range/Circle], [Address], [Notice Number], [Notice Date],
 [Reference No.], [Amount in Dispute], [Period], [Place].
+
+RULE 6 — COMPLETENESS (ABSOLUTE — NO EXCEPTIONS)
+You MUST produce a FULLY COMPLETE draft — from Block A through Block H.
+• Do NOT stop mid-draft. Do NOT truncate any block. Do NOT abbreviate any argument.
+• Every block listed in the structure below must appear in the output.
+• If you have written Blocks A–D but have not yet written Blocks E–H, continue writing.
+• The draft is not complete until "Yours's," and Block H checklist appear.
+• There is NO word limit that stops you — 12,000 tokens are available to you.
+  Write every word needed to complete the full professional document.
+• If a block is optional (Block C, Block E), explicitly decide to include or exclude
+  it — then proceed. Never leave the draft hanging at a decision point.
+• Never end with "..." or an ellipsis. Never trail off. Complete every sentence.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EXACT DRAFT STRUCTURE — PRODUCE IN THIS SEQUENCE
