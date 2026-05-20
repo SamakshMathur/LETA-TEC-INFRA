@@ -119,6 +119,32 @@ def get_categories():
             stats[key] = 0
     return stats
 
+@router.get("/list/all")
+def list_all_documents():
+    """Returns all documents across every category in one call for client-side instant search."""
+    docs = []
+    for cat_key, folder_name in CATEGORY_MAP.items():
+        folder_path = BASE_DIR / folder_name
+        if not folder_path.exists():
+            continue
+        try:
+            all_files = [
+                f for f in folder_path.rglob("*")
+                if f.is_file() and f.suffix.lower() in ['.pdf', '.png', '.jpg', '.jpeg', '.docx', '.txt']
+            ]
+            for idx, file_path in enumerate(all_files[:150]):
+                docs.append({
+                    "id": f"{cat_key}_{idx}",
+                    "title": file_path.name,
+                    "filename": file_path.name,
+                    "size": f"{round(file_path.stat().st_size / 1024, 1)} KB",
+                    "path": str(file_path.relative_to(BASE_DIR)).replace("\\", "/"),
+                    "category": cat_key,
+                })
+        except Exception as e:
+            print(f"Error scanning {folder_name}: {e}")
+    return docs
+
 @router.get("/list/{category}")
 def list_documents(category: str):
     """Lists files in a category."""
