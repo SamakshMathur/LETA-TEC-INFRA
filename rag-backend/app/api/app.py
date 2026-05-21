@@ -616,9 +616,23 @@ async def ask_question_with_file(
         extracted_text = extract_text_from_image(file_bytes)
     elif filename.endswith(".txt"):
         extracted_text = file_bytes.decode("utf-8", errors="replace")
+    elif filename.endswith(".docx"):
+        try:
+            import docx as _docx
+            from io import BytesIO as _BytesIO
+            _doc = _docx.Document(_BytesIO(file_bytes))
+            _paras = [p.text for p in _doc.paragraphs if p.text.strip()]
+            # Also extract table cell text
+            for _tbl in _doc.tables:
+                for _row in _tbl.rows:
+                    for _cell in _row.cells:
+                        if _cell.text.strip():
+                            _paras.append(_cell.text.strip())
+            extracted_text = "\n".join(_paras)
+        except Exception as _e:
+            extracted_text = f"[DOCX extraction error: {_e}]"
     else:
-        # Fallback or unsupported
-        extracted_text = "[Unsupported file format. Please upload PDF, PNG, JPG, or TXT.]"
+        extracted_text = "[Unsupported file format. Please upload PDF, DOCX, TXT, PNG, JPG, or JPEG.]"
     
     # Save User Question
     if session_id:

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Send, Sparkles, Menu, Paperclip,
   ChevronLeft, Folder, Star, Landmark, FileCheck,
-  Bookmark, Trash2, Calendar, ShieldCheck, Scale, Download, Plus, Square
+  Bookmark, Trash2, Calendar, ShieldCheck, Scale, Download, Plus, Square, Upload
 } from 'lucide-react';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
@@ -129,6 +129,7 @@ const LetaWorkspace: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   
   // Document Viewer splits
@@ -669,8 +670,64 @@ const LetaWorkspace: React.FC = () => {
         </aside>
 
         {/* 2. CENTER WORKSPACE: Main Drafting Board (Locked layout, flex-column) */}
-        <section className="flex-grow flex flex-col h-full bg-[#000000] overflow-hidden relative">
-          
+        <section
+          className="flex-grow flex flex-col h-full bg-[#000000] overflow-hidden relative"
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+          onDragEnter={e => {
+            e.preventDefault(); e.stopPropagation();
+            if (e.dataTransfer.items && e.dataTransfer.items.length > 0) setIsDragging(true);
+          }}
+          onDragLeave={e => {
+            e.preventDefault(); e.stopPropagation();
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false);
+          }}
+          onDrop={e => {
+            e.preventDefault(); e.stopPropagation();
+            setIsDragging(false);
+            const dropped = Array.from(e.dataTransfer.files).find(f =>
+              /\.(pdf|docx|txt|png|jpg|jpeg)$/i.test(f.name)
+            );
+            if (dropped) setSelectedFile(dropped);
+          }}
+        >
+          {/* ── Drag-and-drop overlay ────────────────────────────────────── */}
+          <AnimatePresence>
+            {isDragging && (
+              <motion.div
+                key="drag-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 z-50 flex flex-col items-center justify-center pointer-events-none"
+                style={{
+                  background: 'rgba(0,0,0,0.88)',
+                  border: '2px dashed rgba(79,183,197,0.55)',
+                  borderRadius: '0px',
+                }}
+              >
+                <motion.div
+                  initial={{ scale: 0.85, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.05 }}
+                  className="flex flex-col items-center gap-4"
+                >
+                  <div className="p-5 rounded-2xl" style={{ background: 'rgba(79,183,197,0.1)', border: '1px solid rgba(79,183,197,0.25)' }}>
+                    <Upload size={36} style={{ color: '#4FB7C5' }} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-mono font-bold text-sm tracking-widest uppercase" style={{ color: '#4FB7C5' }}>
+                      Drop to Analyze
+                    </p>
+                    <p className="font-mono text-xs mt-1.5" style={{ color: '#475569' }}>
+                      PDF · DOCX · TXT · Image
+                    </p>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Collapse sidebar trigger */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -842,13 +899,13 @@ const LetaWorkspace: React.FC = () => {
                   ref={fileInputRef} 
                   onChange={e => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); }} 
                   className="hidden" 
-                  accept=".pdf,.txt,.png,.jpg,.jpeg" 
+                  accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLoading}
                   className="p-2.5 rounded-lg text-[#475569] hover:text-white hover:bg-white/[0.02] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  title="Attach statutory notice or invoice (PDF/Image)"
+                  title="Attach document — PDF, DOCX, TXT or Image (or drag & drop)"
                 >
                   <Paperclip size={15} />
                 </button>
