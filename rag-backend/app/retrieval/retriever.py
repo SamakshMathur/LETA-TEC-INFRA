@@ -41,25 +41,49 @@ def _chunk_category(chunk: dict) -> str:
 # ─── Thread-safe embedding model singleton ─────────────────────────────────
 _model = None
 _model_lock = threading.Lock()
+_model_device = "auto"   # tracks where the model was loaded; "cpu" after GPU fallback
 
 
-def get_model():
-    """Returns the embedding model, loading it once with thread safety."""
-    global _model
-    if _model is None:
+def get_model(force_cpu: bool = False):
+    """Returns the embedding model, loading it once with thread safety.
+
+    If force_cpu=True the existing model is discarded and reloaded on CPU.
+    This is called automatically after a CUDA error to recover from GPU
+    context loss caused by a system sleep / resume cycle.
+    """
+    global _model, _model_device
+    if _model is None or force_cpu:
         with _model_lock:
-            if _model is None:  # double-check after acquiring lock
+            if _model is None or force_cpu:
                 from sentence_transformers import SentenceTransformer
-                logger.info(f"Loading embedding model: {EMBEDDING_MODEL}")
-                _model = SentenceTransformer(EMBEDDING_MODEL)
-                logger.info("Embedding model loaded successfully")
+                device = "cpu" if force_cpu else None   # None = auto-detect
+                device_label = "CPU (fallback)" if force_cpu else "auto"
+                logger.info(f"Loading embedding model: {EMBEDDING_MODEL} | device={device_label}")
+                _model = SentenceTransformer(EMBEDDING_MODEL, device=device)
+                _model_device = "cpu" if force_cpu else "auto"
+                logger.info(f"Embedding model loaded successfully on {_model_device}")
     return _model
+
+
+def _is_cuda_error(exc: Exception) -> bool:
+    """Returns True for PyTorch CUDA / GPU errors (e.g. after sleep/wake)."""
+    name = type(exc).__name__
+    msg  = str(exc).lower()
+    return (
+        "AcceleratorError" in name
+        or "CudaError" in name
+        or "cuda error" in msg
+        or "unknown error" in msg and "cuda" in msg
+    )
 
 
 def embed_query(text: str):
     """
     Embeds a single query string (normalized for cosine similarity with IndexFlatIP).
     Results are cached in Redis by SHA-256(text) — saves 200-400ms per cache hit.
+
+    Automatically recovers from CUDA errors caused by sleep/wake GPU context loss:
+    the model is reloaded on CPU and the encode is retried once.
     """
     if not text or not text.strip():
         logger.warning("embed_query called with empty text")
@@ -75,7 +99,18 @@ def embed_query(text: str):
         pass  # cache miss or unavailable — proceed to model
 
     model = get_model()
-    vec = model.encode(text, normalize_embeddings=True)
+    try:
+        vec = model.encode(text, normalize_embeddings=True)
+    except Exception as exc:
+        if _is_cuda_error(exc):
+            # GPU context lost (sleep/wake cycle) — reload on CPU and retry once
+            logger.warning(
+                f"CUDA error during embed_query — reloading model on CPU and retrying: {exc}"
+            )
+            model = get_model(force_cpu=True)
+            vec = model.encode(text, normalize_embeddings=True)
+        else:
+            raise
 
     # Store for next time
     try:

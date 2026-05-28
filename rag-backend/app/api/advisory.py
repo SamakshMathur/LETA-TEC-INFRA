@@ -18,6 +18,41 @@ from fastapi import Depends
 
 router = APIRouter()
 
+
+def _extract_subject(query: str) -> str:
+    """
+    Derive a meaningful subject line from the raw query text.
+    Priority:
+      1. First line that contains "advisory on" / "GST implication" / "provide advisory"
+      2. First sentence that mentions a recognisable legal keyword
+      3. Fallback: first 120 chars of the query
+    """
+    import re
+
+    lines = [l.strip() for l in query.splitlines() if l.strip()]
+
+    # Look for lines that state the topic directly
+    topic_patterns = [
+        r"advisory (?:services )?on (.{10,120})",
+        r"GST implication[s]? on (.{10,120})",
+        r"analyzing (.{10,120})",
+        r"provide (?:advisory|opinion|comments) on (.{10,120})",
+    ]
+    for line in lines[:8]:
+        for pat in topic_patterns:
+            m = re.search(pat, line, re.IGNORECASE)
+            if m:
+                subject = m.group(1).rstrip(".,;:")
+                return subject[:160]
+
+    # Fallback: first non-trivial line, capped at 160 chars
+    for line in lines:
+        if len(line) > 20:
+            return line[:160]
+
+    return "GST Implications on the Specified Transaction"
+
+
 class AdvisoryRequest(BaseModel):
     query: str # The core question or facts
     context_text: Optional[str] = None # Optional: If frontend already has context/answer
@@ -31,19 +66,17 @@ async def create_advisory(req: AdvisoryRequest, current_user: dict = Depends(get
         # If no context provided/manual case -> Retrieve fresh context (Standard RAG)
         # Even for manual cases, we want to find relevant LAW.
         if not context_to_use or len(context_to_use) < 50:
-             # 1. Retrieve relevant law based on the query/facts
+            # Retrieve fresh statutory context.
+            # Advisory queries are often long multi-issue queries — use top_k=30
+            # to pull provisions, circulars, rules, and case law for every issue.
             retriever = get_retriever()
-            # If manual case, maybe query is long. We might need to extract keywords.
-            # For now, let's use the query as is.
-            chunks = retriever.search(query=req.query, top_k=20) 
-            context_to_use = build_context(chunks)
 
-        subject_line = "GST Applicability and Compliance" 
-        # Trivial subject extraction, can be improved.
-        if len(req.query) < 50:
-            subject_line = req.query
-        else:
-            subject_line = "Query regarding GST implications on specified transaction"
+            # For very long queries (full facts pasted), extract a compact search
+            # string from the first 500 chars to keep embedding quality high.
+            search_query = req.query[:500] if len(req.query) > 500 else req.query
+
+            chunks = retriever.search(query=search_query, top_k=30)
+            context_to_use = build_context(chunks)
 
         # Generate! (Run in threadpool to avoid blocking event loop)
         from fastapi.concurrency import run_in_threadpool
@@ -51,7 +84,7 @@ async def create_advisory(req: AdvisoryRequest, current_user: dict = Depends(get
             generate_legal_advisory,
             user_input=req.query,
             context=context_to_use,
-            subject=subject_line
+            subject=_extract_subject(req.query),   # used for PDF filename / cache key only
         )
         
         return {

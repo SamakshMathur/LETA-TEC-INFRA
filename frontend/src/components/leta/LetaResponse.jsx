@@ -267,18 +267,21 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
           />
         )}
 
-        {/* Main answer */}
-        <div className="prose prose-sm md:prose-base max-w-none leading-relaxed" style={{ color: '#CBD5E1' }}>
+        {/* Main answer — body: Times New Roman, headings: Bookman Old Style */}
+        <div
+          className="prose prose-sm md:prose-base max-w-none leading-relaxed"
+          style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }}
+        >
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              h1: p => <h1 className="text-xl font-bold mt-6 mb-4 text-white" {...p} />,
-              h2: p => <h2 className="text-lg font-bold mt-5 mb-3 text-white" {...p} />,
-              h3: p => <h3 className="text-base font-bold mt-4 mb-2 text-white" {...p} />,
+              h1: p => <h1 className="text-xl font-bold mt-6 mb-4 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
+              h2: p => <h2 className="text-lg font-bold mt-5 mb-3 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
+              h3: p => <h3 className="text-base font-bold mt-4 mb-2 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
               ul: p => <ul className="list-disc list-outside ml-5 mb-4 space-y-2" {...p} />,
               ol: p => <ol className="list-decimal list-outside ml-5 mb-4 space-y-2" {...p} />,
-              li: p => <li className="pl-1" style={{ color: '#CBD5E1' }} {...p} />,
-              p:  p => <p className="mb-4" style={{ color: '#CBD5E1' }} {...p} />,
+              li: p => <li className="pl-1" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
+              p:  p => <p className="mb-4" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
               strong: p => <strong className="font-bold" style={{ color: '#67E8F9' }} {...p} />,
               table: p => (
                 <div className="overflow-x-auto my-6">

@@ -1,0 +1,77 @@
+{
+  "family": "gst-rag-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "2048",
+  "memory": "8192",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn":      "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "gst-rag-backend",
+      "image": "YOUR_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/gst-rag-backend:latest",
+      "portMappings": [
+        { "containerPort": 8080, "protocol": "tcp" }
+      ],
+      "essential": true,
+      "environment": [
+        { "name": "LLM_PROVIDER",             "value": "anthropic" },
+        { "name": "CLAUDE_MAIN_MODEL",        "value": "claude-sonnet-4-6" },
+        { "name": "CLAUDE_UTILITY_MODEL",     "value": "claude-haiku-4-5-20251001" },
+        { "name": "CLAUDE_THINKING_BUDGET",   "value": "1500" },
+        { "name": "CLAUDE_MAX_TOKENS",        "value": "8000" },
+        { "name": "EMBEDDING_PROVIDER",       "value": "local" },
+        { "name": "EMBEDDING_MODEL",          "value": "BAAI/bge-large-en-v1.5" },
+        { "name": "MONGO_DB_NAME",            "value": "leta_history" },
+        { "name": "PORT",                     "value": "8080" },
+        { "name": "WORKERS",                  "value": "1" },
+        { "name": "ENVIRONMENT",              "value": "production" },
+        { "name": "VECTOR_SEARCH_TOP_K",      "value": "40" },
+        { "name": "BM25_TOP_K",              "value": "35" },
+        { "name": "SONNET_THINKING_THRESHOLD","value": "0.65" },
+        { "name": "HAIKU_COMPLEXITY_THRESHOLD","value": "0.20" }
+      ],
+      "secrets": [
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "valueFrom": "arn:aws:ssm:ap-south-1:YOUR_ACCOUNT_ID:parameter/gst-rag/ANTHROPIC_API_KEY"
+        },
+        {
+          "name": "MONGO_URI",
+          "valueFrom": "arn:aws:ssm:ap-south-1:YOUR_ACCOUNT_ID:parameter/gst-rag/MONGO_URI"
+        },
+        {
+          "name": "SECRET_KEY",
+          "valueFrom": "arn:aws:ssm:ap-south-1:YOUR_ACCOUNT_ID:parameter/gst-rag/SECRET_KEY"
+        },
+        {
+          "name": "ADMIN_MASTER_SECRET",
+          "valueFrom": "arn:aws:ssm:ap-south-1:YOUR_ACCOUNT_ID:parameter/gst-rag/ADMIN_MASTER_SECRET"
+        },
+        {
+          "name": "S3_DATA_BUCKET",
+          "valueFrom": "arn:aws:ssm:ap-south-1:YOUR_ACCOUNT_ID:parameter/gst-rag/S3_DATA_BUCKET"
+        },
+        {
+          "name": "ALLOWED_ORIGINS",
+          "valueFrom": "arn:aws:ssm:ap-south-1:YOUR_ACCOUNT_ID:parameter/gst-rag/ALLOWED_ORIGINS"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/gst-rag-backend",
+          "awslogs-region":        "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8080/api/health || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 5,
+        "startPeriod": 180
+      }
+    }
+  ]
+}

@@ -30,6 +30,7 @@ from app.config import (
     CACHE_MIN_CONFIDENCE,
     CACHE_TTL_SECONDS,
     VECTOR_DIM,
+    PROMPT_VERSION,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,16 +80,16 @@ def _get_redis():
 def _exact_key(query: str) -> str:
     normalized = " ".join(query.lower().strip().split())
     digest = hashlib.sha256(normalized.encode()).hexdigest()
-    return f"leta:exact:{digest}"
+    return f"leta:{PROMPT_VERSION}:exact:{digest}"
 
 
 def _embedding_key(query: str) -> str:
     digest = hashlib.sha256(query.lower().strip().encode()).hexdigest()
-    return f"leta:emb:{digest}"
+    return f"leta:{PROMPT_VERSION}:emb:{digest}"
 
 
 def _semantic_index_key() -> str:
-    return "leta:semantic:index"
+    return f"leta:{PROMPT_VERSION}:semantic:index"
 
 
 # ── Vector serialization (compact binary, no extra deps) ────────────────────

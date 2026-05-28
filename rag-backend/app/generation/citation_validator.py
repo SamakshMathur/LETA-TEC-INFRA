@@ -36,7 +36,7 @@ class CitationValidator:
 
         # Cross-reference
         verified = []
-        hallucinated = []
+        hallucinated = []  
         
         for cit in citations_to_verify:
             # Loose matching: if "Section 17" is checked, "Section 17(5)" in available is a match
@@ -46,22 +46,15 @@ class CitationValidator:
             else:
                 hallucinated.append(cit)
 
-        # Build Report
-        report = "\n\n" + "="*40 + "\n"
-        report += "LETA LEGAL VERIFICATION REPORT\n"
-        report += "="*40 + "\n"
-        
-        if not citations_to_verify:
-            report += "STATUS: NO CITATIONS DETECTED FOR VALIDATION.\n"
-        elif not hallucinated:
-            report += "STATUS: ALL CITATIONS VERIFIED AGAINST RECORDED STATUTES.\n"
-            report += f"VERIFIED: {', '.join(verified)}\n"
+        # Log internally — never append to user-facing output
+        import logging
+        _cv_logger = logging.getLogger("citation_validator")
+        if hallucinated:
+            _cv_logger.warning(
+                f"Unverified citations: {hallucinated} | Verified: {verified}"
+            )
         else:
-            report += "STATUS: WARNING - UNVERIFIED CITATIONS DETECTED.\n"
-            report += f"VERIFIED: {', '.join(verified) if verified else 'None'}\n"
-            report += f"Hallucinated/Unverified: {', '.join(hallucinated)}\n"
-            report += "CAUTION: Please cross-reference unverified sections with official Gazette copies.\n"
-        
-        report += "="*40 + "\n"
-        
-        return answer + report
+            _cv_logger.debug(f"All citations verified: {verified}")
+
+        # Return the answer unchanged — no report appended to user output
+        return answer

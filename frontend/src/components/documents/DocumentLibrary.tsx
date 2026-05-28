@@ -33,7 +33,7 @@ interface DocItem {
 interface CategoryRow {
   id: string;
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
   colorClass: string;
   accentClass: string;
 }
@@ -144,7 +144,7 @@ const DocumentRow: React.FC<{
     <div className={cn('documentRow')}>
       <div className={cn('rowHeader')}>
         <h3 className={cn('rowTitle')}>
-          <category.icon size={14} className={cn(category.colorClass)} />
+          <category.icon size={14} className={cn(category.colorClass as any)} />
           {category.label}
           <span className={cn('rowCount')}>[{filteredDocs.length}]</span>
         </h3>
@@ -257,19 +257,8 @@ export const DocumentLibrary: React.FC = () => {
     }).filter(group => group.rows.length > 0);
   };
 
-  const getFilteredAiResults = () => {
-    if (selectedFilter === 'all') return aiResults;
-    
-    return aiResults.filter(doc => {
-      const cat = doc.category || doc.id.split('_')[0];
-      if (selectedFilter === 'rules') return cat === 'acts' || cat === 'rules';
-      if (selectedFilter === 'circulars') return cat === 'circulars' || cat === 'cgst' || cat === 'igst';
-      if (selectedFilter === 'case-laws') return cat === 'highcourt' || cat === 'supremecourt';
-      if (selectedFilter === 'aar') return cat === 'aars';
-      if (selectedFilter === 'forms') return cat === 'forms' || cat === 'brochures' || cat === 'flyers';
-      return true;
-    });
-  };
+  // true when user has typed a search query
+  const isSearching = searchQuery.trim().length > 0;
 
   return (
     <div className={cn('container')}>
@@ -403,7 +392,7 @@ export const DocumentLibrary: React.FC = () => {
         isOpen={!!selectedDoc}
         docMetadata={selectedDoc}
         onClose={() => setSelectedDoc(null)}
-        onDownload={handleDownload}
+        onDownload={() => selectedDoc && handleDownload(selectedDoc)}
       />
     </div>
   );

@@ -60,6 +60,20 @@ app = FastAPI(
     description="In-house GST knowledge assistant",
 )
 
+@app.on_event("startup")
+async def _seed_feed_store():
+    """Pre-populate the in-memory event log from the filesystem on startup."""
+    try:
+        from app.api.documents import get_activity_feed  # existing REST helper
+        from app.feed_store import _event_log
+        items = get_activity_feed()      # returns list, newest first
+        for item in reversed(items):    # insert oldest first so deque order is correct
+            _event_log.append(item)
+        logger.info(f"Feed store seeded with {len(items)} events from filesystem")
+    except Exception as e:
+        logger.warning(f"Feed store seed failed (non-fatal): {e}")
+
+
 @app.get("/")
 async def root():
     return {
@@ -194,6 +208,12 @@ app.include_router(templates.router, prefix="/api/templates", tags=["Templates"]
 from app.api import admin
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
+from app.api import feed
+app.include_router(feed.router, prefix="/api/feed", tags=["Feed"])
+
+from app.api import transcribe
+app.include_router(transcribe.router, prefix="/api", tags=["Transcribe"])
+
 # ---------- Request / Response ----------
 class QuestionRequest(BaseModel):
     question: str
@@ -252,7 +272,7 @@ async def health_check():
 
     return health_status
 
-async def stream_and_save(generator, session_id, user_query, chunks=None, context="", truth_rules_text="", query_vec=None):
+async def stream_and_save(generator, session_id, user_query, chunks=None, context="", truth_rules_text="", query_vec=None, is_draft_session: bool = False):
     """
     Wrapper that streams the LLM response AND runs post-generation
     accuracy layers before saving to DB.
@@ -316,9 +336,14 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             yield chunk
 
         if chunks and full_answer.strip():
-            # Detect drafting intent to bypass the accuracy pipeline
-            _DRAFT_KW_CHECK = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","write a letter","write letter","prepare reply","representation","response to notice","respond to"]
-            is_draft = any(kw in user_query.lower() for kw in _DRAFT_KW_CHECK)
+            # Use the session-level draft flag passed in — do not re-detect from
+            # user_query alone, which breaks on follow-up/correction messages.
+            is_draft = is_draft_session or any(kw in user_query.lower() for kw in [
+                "draft","notice","reply","appeal","submission","advisory","scn",
+                "show cause","drc-01","drc 01","asmt-10","our understanding",
+                "gst implications","provide opinion","our comments","tax position",
+                "advise on","legal opinion","our client is","we are engaged in",
+            ])
             
             if not is_draft:
                 # --- Parallel Accuracy Pipeline ---
@@ -367,22 +392,13 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                     _logger.warning("Post-generation validators timed out — skipping")
                     results = (full_answer, "")
 
-                annotated_answer, hallu_warn = results
-                verify_warn = None
+                _, hallu_warn = results
 
-                if annotated_answer and len(annotated_answer) > len(full_answer):
-                    report = annotated_answer[len(full_answer):]
-                    full_answer = annotated_answer
-                    yield report
-                
-                if verify_warn:
-                    full_answer += verify_warn
-                    yield verify_warn
-                
+                # Log internally — validator output is NEVER streamed to the user.
+                # Citation validator already logs its own warnings.
                 if hallu_warn:
-                    full_answer += hallu_warn
-                    yield hallu_warn
-                
+                    _logger.warning(f"Hallucination guard: {hallu_warn[:300]}")
+
                 # template_block intentionally not streamed — surfaced via /api/templates instead
 
     except Exception as e:
@@ -455,8 +471,8 @@ async def ask_question(request: Request, req: QuestionRequest):
             _init_msg = "Computing Rule 43 Capital Goods Reversal..."
         elif any(k in _q for k in ["itc", "input tax credit", "section 16", "section 17"]):
             _init_msg = "Analyzing ITC Eligibility Provisions..."
-        elif any(k in _q for k in ["draft","notice","reply","appeal","submission","scn","show cause","drc-01","drc 01","asmt-10","representation"]):
-            _init_msg = "Initializing Statutory Drafting Engine..."
+        elif any(k in _q for k in ["draft","notice","reply","appeal","submission","scn","show cause","drc-01","drc 01","asmt-10","representation","advisory","our understanding","gst implications","provide opinion","our comments","tax position","advise on"]):
+            _init_msg = "Initializing Advisory & Drafting Engine..."
         elif any(k in _q for k in ["refund", "export", "lut"]):
             _init_msg = "Checking Refund & Export Provisions..."
         elif any(k in _q for k in ["interest", "section 50", "penalty"]):
@@ -468,6 +484,7 @@ async def ask_question(request: Request, req: QuestionRequest):
 
         # 1. Fetch session history
         history_context = ""
+        _session_is_draft = False  # becomes True if history shows ongoing advisory/draft session
         if session_id:
             collection = get_session_collection()
             if collection is not None:
@@ -476,6 +493,23 @@ async def ask_question(request: Request, req: QuestionRequest):
                     recent = session["messages"][:-1][-6:]
                     for msg in recent:
                         history_context += f"{msg['role'].upper()}: {msg['content']}\n"
+                    # If any recent message contains draft/advisory signals, keep the session
+                    # in draft mode — this ensures follow-up messages (clarifications, corrections,
+                    # "re-analyze" requests) continue routing through DRAFTING_PROMPT.
+                    _HISTORY_DRAFT_KW = [
+                        "advisory","our understanding","gst implications","gst implication",
+                        "provide opinion","our comments","tax position","gst treatment",
+                        "advise on","legal opinion","our client","we are engaged",
+                        "facts of the case","b)  our comments","our comments from gst",
+                        "draft","notice","reply","appeal","scn","show cause",
+                        "drc-01","drc-07","asmt-10","representation",
+                        # LETA's own advisory/analysis output markers
+                        "our comments from gst perspective",
+                        "i've reviewed your","issue raised","section invoked",
+                        "to draft a strong reply",
+                    ]
+                    _hist_lower = history_context.lower()
+                    _session_is_draft = any(k in _hist_lower for k in _HISTORY_DRAFT_KW)
 
         # ── Stage 2: Cache lookup (L1 exact + L2 semantic) ───────────────────────
         from app.cache import cache_lookup
@@ -501,13 +535,11 @@ async def ask_question(request: Request, req: QuestionRequest):
             yield f"__STATUS__:{json.dumps({'msg': 'Pre-computing Statutory Formula...'})}__END_STATUS__"
 
         # ── Stage 4: Query expansion — only for deeply complex non-draft queries ────
-        # Draft queries skip Haiku expansion (Phase 2B injects rule-based sub-queries,
-        # which is faster and category-targeted — no API call needed).
-        _DRAFT_KW_EARLY = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","write a letter","write letter","prepare reply","representation","response to notice","respond to"]
-        _is_draft_early = any(k in _q for k in _DRAFT_KW_EARLY)
+        _DRAFT_KW_EARLY = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","drc-07","drc 07","drc-03","drc 03","write a letter","write letter","prepare reply","representation","response to notice","respond to","our understanding","gst implications","gst implication","provide opinion","provide advisory","our comments","tax position","gst treatment of","advise on","legal opinion","our client is","we are engaged in","facts of the case"]
+        _is_draft_early = _session_is_draft or any(k in _q for k in _DRAFT_KW_EARLY)
 
-        if _complexity >= 0.80 and not _is_draft_early:
-            yield f"__STATUS__:{json.dumps({'msg': 'Deep Legal Analysis Mode — Expanding Query...'})}__END_STATUS__"
+        if _complexity >= 0.35 and not _is_draft_early:
+            yield f"__STATUS__:{json.dumps({'msg': 'Expanding Query for Precision Retrieval...'})}__END_STATUS__"
             from app.retrieval.query_refiner import generate_advanced_queries
             advanced_queries = generate_advanced_queries(question)
             refined_q = advanced_queries.get("queries", [question])[0]
@@ -516,8 +548,6 @@ async def ask_question(request: Request, req: QuestionRequest):
             refined_q = question
 
         # ── Phase 2B: Draft sub-query injection (no LLM call — rule-based) ────────
-        # Injects 3 targeted sub-queries (statute / case law / circular) so each
-        # document category gets its own vector search pass.
         if _is_draft_early:
             _statute_q  = refined_q + " section rule act provisions conditions eligibility liability"
             _caselaw_q  = refined_q + " high court supreme court judgment held ruling decision AAR"
@@ -528,9 +558,9 @@ async def ask_question(request: Request, req: QuestionRequest):
         domain_label = ", ".join(domain_paths[:2]) if domain_paths else "All Databases"
         yield f"__STATUS__:{json.dumps({'msg': f'Querying Statutory Provisions ({domain_label})...'})}__END_STATUS__"
         retriever = get_retriever()
-        _DRAFT_KW = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","write a letter","write letter","prepare reply","representation","response to notice","respond to"]
-        _is_draft = any(k in _q for k in _DRAFT_KW)
-        _retrieval_top_k = 25 if _is_draft else (20 if _complexity >= 0.60 else 15)
+        _DRAFT_KW = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","drc-07","drc 07","drc-03","drc 03","write a letter","write letter","prepare reply","representation","response to notice","respond to","our understanding","gst implications","gst implication","provide opinion","provide advisory","our comments","tax position","gst treatment of","advise on","legal opinion","our client is","we are engaged in","facts of the case"]
+        _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW)
+        _retrieval_top_k = 30 if _is_draft else (25 if _complexity >= 0.60 else 20)
         chunks = retriever.search(
             query=refined_q,
             top_k=_retrieval_top_k,
@@ -559,7 +589,7 @@ async def ask_question(request: Request, req: QuestionRequest):
 
         # ── Stage 7: Streaming LLM synthesis ──────────────────────────────────────
         if _is_draft:
-            _synth_msg = "Drafting Statutory Reply..."
+            _synth_msg = "Synthesizing Advisory & Drafting..."
         elif _complexity >= 0.60:
             _synth_msg = "Synthesizing Legal Position & Precedents..."
         else:
@@ -568,12 +598,14 @@ async def ask_question(request: Request, req: QuestionRequest):
         yield f"__STATUS__:{json.dumps({'msg': _synth_msg})}__END_STATUS__"
 
         from app.generation.synthesizer import synthesize_answer_stream
-        response_stream = synthesize_answer_stream(question, full_rag_context)
+        response_stream = synthesize_answer_stream(
+            question, full_rag_context, session_is_draft=_is_draft
+        )
 
         async for chunk in stream_and_save(
             response_stream, session_id, question,
             chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
-            query_vec=query_vec,
+            query_vec=query_vec, is_draft_session=_is_draft,
         ):
             yield chunk
 

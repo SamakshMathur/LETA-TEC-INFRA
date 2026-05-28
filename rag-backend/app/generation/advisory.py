@@ -9,7 +9,8 @@ from app.config import (
     LLM_MODEL,
     CLAUDE_MAIN_MODEL,
     CACHE_DIR,
-    DATA_DIR
+    DATA_DIR,
+    PROMPT_VERSION,
 )
 from app.generation.prompts.advisory_prompt import ADVISORY_SYSTEM_PROMPT
 from app.generation.pdf_report import PDFReportGenerator
@@ -47,7 +48,7 @@ def generate_legal_advisory(user_input: str, context: str, subject: str = "GST Q
     # 1. Check Cache (Speed Engine)
     # Create a unique key based on the input
     query_hash = hashlib.md5((user_input + context[:100]).encode()).hexdigest()
-    cache_key = f"advisory_{query_hash}"
+    cache_key = f"advisory_{PROMPT_VERSION}_{query_hash}"
     
     if cache_key in cache:
         print(f"Serving from Cache: {cache_key}")
@@ -64,36 +65,58 @@ def generate_legal_advisory(user_input: str, context: str, subject: str = "GST Q
         from .rules_engine import rules_engine
         rules_text = rules_engine.get_all_rules_as_text()
 
-        # Select Template - Always use the full detailed Advisory template as requested by the user
-        base_prompt = ADVISORY_SYSTEM_PROMPT.format(
-            subject=subject,
-            rules_context=rules_text
-        )
-        
-        system_prompt = base_prompt
-        
+        # The prompt no longer uses {subject} — strip it cleanly
+        system_prompt = ADVISORY_SYSTEM_PROMPT.format(rules_context=rules_text)
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"CONTEXT:\n{context}\n\nUSER QUERY:\n{user_input}"}
         ]
-        
-        # 3. Call LLM (Intelligence Engine)
+
+        # 3. Build the user message.
+        # The client already provided section (a) — their understanding of the transaction.
+        # We only produce section (b): "Our comments from GST perspective."
+        # Keep the retrieved context tight (first 6000 chars) so the model focuses
+        # on what's directly relevant rather than scanning a wall of text.
+        trimmed_context = context[:6000] if len(context) > 6000 else context
+
+        user_message = (
+            "RETRIEVED STATUTORY CONTEXT (cite ONLY directly relevant provisions from here):\n"
+            f"{trimmed_context}\n\n"
+            "══════════════════════════════════════════════════════\n"
+            "CLIENT'S QUERY — INCLUDING THEIR FACTUAL UNDERSTANDING:\n"
+            "══════════════════════════════════════════════════════\n"
+            f"{user_input}\n\n"
+            "══════════════════════════════════════════════════════\n"
+            "Produce ONLY section b) — 'Our comments from GST perspective:'\n"
+            "• One bullet per distinct GST issue, in logical sequence.\n"
+            "• Address every issue completely and correctly — do not truncate.\n"
+            "• Drop every sentence that does not carry a legal point.\n"
+            "• Use a markdown table where a comparison or eligibility matrix is clearer than prose.\n"
+            "• End with a ready-to-use draft GST/tax clause or compliance checklist.\n"
+            "• Do NOT re-state the facts — the client already wrote section (a).\n"
+            "• Cite only provisions directly on point — no tangential padding."
+        )
+
+        # 4. Call LLM
+        # Token budget: enough for a complete multi-issue advisory without
+        # artificial truncation — the prompt enforces conciseness, not a hard cap.
         client = _get_client()
         if LLM_PROVIDER == "anthropic":
-            print(f"Calling Claude ({CLAUDE_MAIN_MODEL}) for {query_type}...")
+            print(f"Calling Claude ({CLAUDE_MAIN_MODEL}) for advisory ({query_type})...")
             response = client.messages.create(
                 model=CLAUDE_MAIN_MODEL,
-                max_tokens=4000,
+                max_tokens=5000,
                 system=system_prompt,
-                messages=[{"role": "user", "content": f"CONTEXT:\n{context}\n\nUSER QUERY:\n{user_input}"}],
+                messages=[{"role": "user", "content": user_message}],
             )
             advisory_content = response.content[0].text.strip()
         else:
-            print(f"Calling OpenAI ({LLM_MODEL}) for {query_type}...")
+            print(f"Calling OpenAI ({LLM_MODEL}) for advisory ({query_type})...")
+            messages.append({"role": "user", "content": user_message})
             response = client.chat.completions.create(
                 model=LLM_MODEL,
                 messages=messages,
-                max_completion_tokens=4000,
+                max_completion_tokens=5000,
             )
             advisory_content = response.choices[0].message.content.strip()
 
@@ -128,10 +151,10 @@ def generate_legal_advisory(user_input: str, context: str, subject: str = "GST Q
                 if LLM_PROVIDER == "anthropic":
                     response_v2 = client.messages.create(
                         model=CLAUDE_MAIN_MODEL,
-                        max_tokens=4000,
+                        max_tokens=5000,
                         system=system_prompt,
                         messages=[
-                            {"role": "user", "content": f"CONTEXT:\n{context}\n\nUSER QUERY:\n{user_input}"},
+                            {"role": "user", "content": user_message},
                             {"role": "assistant", "content": advisory_content},
                             {"role": "user", "content": correction_prompt},
                         ],
@@ -143,7 +166,7 @@ def generate_legal_advisory(user_input: str, context: str, subject: str = "GST Q
                     response_v2 = client.chat.completions.create(
                         model=LLM_MODEL,
                         messages=messages,
-                        max_completion_tokens=4000,
+                        max_completion_tokens=5000,
                     )
                     advisory_content = response_v2.choices[0].message.content.strip()
                 print(">> Auto-Correction Complete. Using V2 Draft.")
