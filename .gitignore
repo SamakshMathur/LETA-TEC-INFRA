@@ -21,6 +21,26 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.log
+*.log.err
+backend.log
+backend_err.log
+frontend.log
+frontend_err.log
+rag-backend/*.log
+rag-backend/*.log.err
+frontend/*.log
+frontend/*.log.err
+
+# Debug / scratch output files
+rag-backend/output_answer.txt
+rag-backend/retrieval_output.txt
+rag-backend/leta_answer.md
+rag-backend/scratch/
+rag-backend/accuracy_test_report.md
+rag-backend/audit_debug*
+rag-backend/sleep_inhibitor_status.txt
+frontend/diagnose_imports.cjs
+frontend/restore_motion.cjs
 
 # OS
 Thumbs.db

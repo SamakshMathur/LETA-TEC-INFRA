@@ -266,7 +266,6 @@ def verify_cache_hit(query: str, cached_metadata: dict) -> bool:
             
     return True
 
-import re
 
 def get_semantic(query_vec: np.ndarray, query_text: str = ""):
     """
