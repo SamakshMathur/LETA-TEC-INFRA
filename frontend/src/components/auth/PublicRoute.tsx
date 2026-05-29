@@ -7,7 +7,7 @@ export const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children 
 
   if (!isInitialised) return null;
 
-  if (isLoggedIn) {
+  if (isLoggedIn && location.pathname === "/login") {
     return <Navigate to="/dashboard" replace />;
   }
 

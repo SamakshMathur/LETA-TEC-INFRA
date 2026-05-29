@@ -5,23 +5,30 @@ const ACCESS_TOKEN_KEY = 'leta_access_token';
 const REFRESH_TOKEN_KEY = 'leta_refresh_token';
 
 export const saveSession = (session: Session) => {
-  if (session?.tokens?.access_token) {
+  console.log('SAVING SESSION:', session);
+
+  if (session?.tokens?.accessToken) {
     localStorage.setItem(
       ACCESS_TOKEN_KEY,
-      session.tokens.access_token
+      session.tokens.accessToken
     );
   }
 
-  if (session?.tokens?.refresh_token) {
+  if (session?.tokens?.refreshToken) {
     localStorage.setItem(
       REFRESH_TOKEN_KEY,
-      session.tokens.refresh_token
+      session.tokens.refreshToken
     );
   }
 
   localStorage.setItem(
     'leta_session',
     JSON.stringify(session)
+  );
+
+  console.log(
+    'ACCESS TOKEN AFTER SAVE:',
+    localStorage.getItem(ACCESS_TOKEN_KEY)
   );
 };
 
@@ -91,6 +98,11 @@ export const verifyOtpApi = async (
       contact,
       otp
     }
+  );
+
+  console.log(
+    'VERIFY OTP RESPONSE:',
+    JSON.stringify(res.data, null, 2)
   );
 
   const {
