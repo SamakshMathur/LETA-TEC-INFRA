@@ -342,14 +342,18 @@
   flex-direction: column;
   justify-content: space-between;
   cursor: pointer;
-  transition: all 0.3s ease;
   background-color: var(--color-bg-card);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  will-change: transform;
 }
 
 .docCard:hover {
-  transform: translateY(-3px);
   border-color: var(--color-border-cyan);
-  background-color: rgba(19, 29, 43, 0.2);
+  box-shadow:
+    0 16px 40px rgba(0,0,0,0.7),
+    0 4px 16px rgba(0,0,0,0.5),
+    0 0 30px rgba(79,183,197,0.10);
 }
 
 .cardHeader {

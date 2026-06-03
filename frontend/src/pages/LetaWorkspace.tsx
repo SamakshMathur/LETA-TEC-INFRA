@@ -517,6 +517,7 @@ const LetaWorkspace: React.FC = () => {
         content: msg.content,
         confidence: 1.0,
         citations: [],
+        consulted_sources: msg.sources || [],
         isHistory: true,
       })));
       setIsLoading(false);
@@ -553,6 +554,8 @@ const LetaWorkspace: React.FC = () => {
     releaseWakeLock();
     setIsStreaming(false);
     setIsLoading(false);
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // ─── Main ask handler ─────────────────────────────────────────────────────────
@@ -720,6 +723,7 @@ const LetaWorkspace: React.FC = () => {
 
       setIsStreaming(false);
       setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       abortControllerRef.current = null;
       isActiveQueryRef.current = false;
       pendingRetryRef.current = null;
@@ -748,6 +752,8 @@ const LetaWorkspace: React.FC = () => {
       });
       setIsLoading(false);
       setIsStreaming(false);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -820,6 +826,14 @@ const LetaWorkspace: React.FC = () => {
       {/* ── TOP HEADER NAVBAR ──────────────────────────────────────────────────── */}
       <header className="h-[72px] flex-shrink-0 flex items-center justify-between px-6 bg-[#000000] border-b border-[#4FB7C5]/10 relative z-20">
         <div className="flex items-center gap-4">
+          {/* Brand mark */}
+          <img
+            src="/LETA_WHITE_ON_BLACK_4K.png"
+            alt="LETA"
+            className="h-8 w-8 object-contain flex-shrink-0"
+            style={{ mixBlendMode: 'screen' }}
+          />
+          <div className="h-4 w-[1px] bg-white/[0.06]" />
           <Link
             to={`/${domainId}`}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.05] bg-white/[0.01] text-xs hover:text-white hover:border-[#4FB7C5]/30 transition-colors"
@@ -1463,7 +1477,7 @@ const LetaWorkspace: React.FC = () => {
                       {selectedFile.name}
                     </span>
                     <button
-                      onClick={() => setSelectedFile(null)}
+                      onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
                       className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-1"
                     >
                       <X size={12} />

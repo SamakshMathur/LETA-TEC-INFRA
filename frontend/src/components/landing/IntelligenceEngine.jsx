@@ -95,7 +95,7 @@ const IntelligenceEngine = () => {
 
           {/* Horizontally Expanding Stepper Container */}
           <div className="space-y-6">
-            <div className="relative flex flex-col md:flex-row justify-between items-center gap-6 p-8 rounded-leta bg-[#10141B] border border-white/[0.04]">
+            <div className="relative flex flex-col md:flex-row justify-between items-center gap-6 p-8 rounded-leta premium-card">
               
               {/* Connected Line Backdrop */}
               <div className="absolute top-[50%] left-10 right-10 h-[1.5px] bg-white/[0.04] hidden md:block pointer-events-none" />

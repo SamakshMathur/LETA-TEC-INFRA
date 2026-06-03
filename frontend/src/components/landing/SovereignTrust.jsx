@@ -53,7 +53,7 @@ const SovereignTrust = () => {
             return (
               <div
                 key={index}
-                className="p-8 rounded-leta bg-[#0F1722] border border-white/[0.04] flex flex-col justify-between hover:border-[#4FB7C5]/15 transition-all duration-300 min-h-[280px]"
+                className="p-8 rounded-leta premium-card flex flex-col justify-between transition-all duration-300 min-h-[280px]"
               >
                 <div>
                   {/* Icon Badge */}

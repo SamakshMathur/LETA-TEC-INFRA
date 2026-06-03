@@ -78,19 +78,27 @@ const Navbar = () => {
 
         {/* ── Logo ─────────────────────────────────────────────────────────── */}
         <div className="flex-1 flex justify-start">
-          <Link to="/" className="flex items-center gap-2 group flex-shrink-0">
-            <span
-              className="font-display font-bold text-2xl tracking-[0.04em]"
-              style={{ color: '#F4F7FA' }}
-            >
-              LETA
-            </span>
-            <span
-              className="font-display font-bold text-2xl tracking-[0.04em]"
-              style={{ color: '#4FB7C5' }}
-            >
-              TITAN
-            </span>
+          <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
+            <img
+              src="/LETA_WHITE_ON_BLACK_4K.png"
+              alt="LETA"
+              className="h-9 w-9 object-contain"
+              style={{ mixBlendMode: 'screen' }}
+            />
+            <div className="flex flex-col leading-none">
+              <span
+                className="font-display font-bold text-2xl tracking-[0.06em]"
+                style={{ color: '#F4F7FA', lineHeight: 1 }}
+              >
+                LETA
+              </span>
+              <span
+                className="font-mono text-[9px] font-semibold tracking-[0.22em] uppercase"
+                style={{ color: '#4FB7C5', marginTop: '2px', opacity: 0.85 }}
+              >
+                TEC AI
+              </span>
+            </div>
           </Link>
         </div>
 

@@ -415,7 +415,12 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         collection.update_one,
                         {"session_id": session_id},
                         {
-                            "$push": {"messages": {"role": "assistant", "content": full_answer, "timestamp": datetime.now()}},
+                            "$push": {"messages": {
+                                "role": "assistant",
+                                "content": full_answer,
+                                "sources": unique_sources,
+                                "timestamp": datetime.now(),
+                            }},
                             "$set": {"updated_at": datetime.now()},
                         },
                     )

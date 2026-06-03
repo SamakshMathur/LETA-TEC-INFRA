@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useRef } from 'react';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FileText, Landmark, Globe, Briefcase, ChevronRight, Activity } from 'lucide-react';
 
@@ -56,6 +56,80 @@ const MODULES = [
   },
 ];
 
+// ── 3D tilt card wrapper ────────────────────────────────────────────────────
+const Card3D = ({ children, className, isLive }) => {
+  const ref = useRef(null);
+
+  const rawX = useMotionValue(0);
+  const rawY = useMotionValue(0);
+  const rawGlowX = useMotionValue(50);
+  const rawGlowY = useMotionValue(50);
+  const rawScale = useMotionValue(1);
+
+  const springConfig = { stiffness: 280, damping: 28, mass: 0.6 };
+  const rotateX = useSpring(useTransform(rawY, [-0.5, 0.5], [10, -10]), springConfig);
+  const rotateY = useSpring(useTransform(rawX, [-0.5, 0.5], [-10, 10]), springConfig);
+  const scale   = useSpring(rawScale, { stiffness: 300, damping: 25 });
+  const glowX   = useSpring(rawGlowX, { stiffness: 200, damping: 30 });
+  const glowY   = useSpring(rawGlowY, { stiffness: 200, damping: 30 });
+
+  const handleMouseMove = (e) => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = (e.clientX - rect.left) / rect.width  - 0.5;
+    const y = (e.clientY - rect.top)  / rect.height - 0.5;
+    rawX.set(x);
+    rawY.set(y);
+    rawGlowX.set(((e.clientX - rect.left) / rect.width)  * 100);
+    rawGlowY.set(((e.clientY - rect.top)  / rect.height) * 100);
+  };
+
+  const handleMouseEnter = () => rawScale.set(1.035);
+  const handleMouseLeave = () => {
+    rawX.set(0);
+    rawY.set(0);
+    rawGlowX.set(50);
+    rawGlowY.set(50);
+    rawScale.set(1);
+  };
+
+  const specularBg = useTransform(
+    [glowX, glowY],
+    ([x, y]) =>
+      `radial-gradient(circle at ${x}% ${y}%, rgba(255,255,255,0.07) 0%, transparent 60%)`
+  );
+
+  return (
+    <motion.div
+      ref={ref}
+      style={{
+        rotateX,
+        rotateY,
+        scale,
+        transformStyle: 'preserve-3d',
+        transformPerspective: 900,
+      }}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className={className}
+    >
+      {children}
+      {/* Specular highlight follows cursor */}
+      <motion.div
+        style={{
+          background: specularBg,
+          position: 'absolute',
+          inset: 0,
+          borderRadius: 'inherit',
+          pointerEvents: 'none',
+          zIndex: 20,
+        }}
+      />
+    </motion.div>
+  );
+};
+
 const StatutoryDomains = () => {
   return (
     <section className={cn('section')}>
@@ -81,72 +155,76 @@ const StatutoryDomains = () => {
             return (
               <motion.div
                 key={mod.num}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 24 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: i * 0.07 }}
-                className={cn('bentoCard', mod.wide ? 'cardWide' : 'cardNarrow', isLive && 'cardLive')}
+                transition={{ duration: 0.65, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
               >
-                {/* Corner brackets */}
-                <span className={cn('cornerTL')} />
-                <span className={cn('cornerBR')} />
+                <Card3D
+                  isLive={isLive}
+                  className={cn('bentoCard', mod.wide ? 'cardWide' : 'cardNarrow', isLive && 'cardLive')}
+                >
+                  {/* Corner brackets */}
+                  <span className={cn('cornerTL')} />
+                  <span className={cn('cornerBR')} />
 
-                {/* Watermark icon */}
-                <div className={cn('cardIconWatermark')}>
-                  <Icon size={mod.wide ? 240 : 180} strokeWidth={1} />
-                </div>
-
-                {/* Top accent line — live cards only */}
-                {isLive && <div className={cn('topAccentLine')} />}
-
-                {/* Header row */}
-                <div className={cn('cardHeader')}>
-                  <div className={cn('headerLeft')}>
-                    <span className={cn('moduleNumber')}>{mod.num}</span>
-                    <div className={cn('iconWrapper', isLive && 'iconWrapperLive')}>
-                      <Icon size={22} strokeWidth={1.5} style={{ color: isLive ? 'var(--color-brand)' : 'var(--color-text-muted)' }} />
-                    </div>
-                  </div>
-                  {isLive ? (
-                    <span className={cn('activeBadge')}>
-                      <span className={cn('badgePulseDot')} />
-                      Active Node
-                    </span>
-                  ) : (
-                    <span className={cn('comingSoonBadge')}>Coming Soon</span>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className={cn('cardBody')}>
-                  <h3 className={cn('cardTitle')}>{mod.title}</h3>
-                  <p className={cn('cardDesc', !isLive && 'cardDescMuted')}>{mod.desc}</p>
-                </div>
-
-                {/* Footer */}
-                <div className={cn('cardFooter')}>
-                  <div className={cn('progressContainer')}>
-                    <div className={cn('progressMeta')}>
-                      <span>{mod.indexLabel}</span>
-                      <span className={cn(isLive ? 'progressValueLive' : 'progressValueMuted')}>{mod.indexValue}</span>
-                    </div>
-                    <div className={cn('progressTrack')}>
-                      <motion.div
-                        initial={{ width: 0 }}
-                        whileInView={{ width: mod.indexWidth }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 1.4, ease: 'easeOut', delay: 0.3 }}
-                        className={cn(isLive ? 'progressThumb' : 'progressThumbMuted')}
-                      />
-                    </div>
+                  {/* Watermark icon */}
+                  <div className={cn('cardIconWatermark')}>
+                    <Icon size={mod.wide ? 240 : 180} strokeWidth={1} />
                   </div>
 
-                  {isLive && (
-                    <Link to={mod.href} className={cn('initializeBtn')}>
-                      Initialize Workspace <ChevronRight size={13} />
-                    </Link>
-                  )}
-                </div>
+                  {/* Top accent line — live cards only */}
+                  {isLive && <div className={cn('topAccentLine')} />}
+
+                  {/* Header row */}
+                  <div className={cn('cardHeader')}>
+                    <div className={cn('headerLeft')}>
+                      <span className={cn('moduleNumber')}>{mod.num}</span>
+                      <div className={cn('iconWrapper', isLive && 'iconWrapperLive')}>
+                        <Icon size={22} strokeWidth={1.5} style={{ color: isLive ? 'var(--color-brand)' : 'var(--color-text-muted)' }} />
+                      </div>
+                    </div>
+                    {isLive ? (
+                      <span className={cn('activeBadge')}>
+                        <span className={cn('badgePulseDot')} />
+                        Active Node
+                      </span>
+                    ) : (
+                      <span className={cn('comingSoonBadge')}>Coming Soon</span>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className={cn('cardBody')}>
+                    <h3 className={cn('cardTitle')}>{mod.title}</h3>
+                    <p className={cn('cardDesc', !isLive && 'cardDescMuted')}>{mod.desc}</p>
+                  </div>
+
+                  {/* Footer */}
+                  <div className={cn('cardFooter')}>
+                    <div className={cn('progressContainer')}>
+                      <div className={cn('progressMeta')}>
+                        <span>{mod.indexLabel}</span>
+                        <span className={cn(isLive ? 'progressValueLive' : 'progressValueMuted')}>{mod.indexValue}</span>
+                      </div>
+                      <div className={cn('progressTrack')}>
+                        <motion.div
+                          initial={{ width: 0 }}
+                          whileInView={{ width: mod.indexWidth }}
+                          viewport={{ once: true }}
+                          transition={{ duration: 1.4, ease: 'easeOut', delay: 0.3 }}
+                          className={cn(isLive ? 'progressThumb' : 'progressThumbMuted')}
+                        />
+                      </div>
+                    </div>
+
+                    {isLive && (
+                      <Link to={mod.href} className={cn('initializeBtn')}>
+                        Initialize Workspace <ChevronRight size={13} />
+                      </Link>
+                    )}
+                  </div>
+                </Card3D>
               </motion.div>
             );
           })}

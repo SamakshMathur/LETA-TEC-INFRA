@@ -1,178 +1,98 @@
-﻿import React from 'react';
-import { Database, Folder, Shield, ArrowRight, ChevronRight, HelpCircle, FileText } from 'lucide-react';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { ChevronRight } from 'lucide-react';
+import workspaceImg from '../../pages/IMAGES/ElevenLabs_image_nano-banana-2_AI BOT DRAFT..._2026-05-29T12_57_11.png';
 
 const SimulatedWorkspace = () => {
   return (
-    <section className="py-[80px] bg-[#000000] relative overflow-hidden border-b border-white/[0.03]">
-      <div className="max-w-[1600px] mx-auto px-10 lg:px-20 relative z-10">
-        
+    <section className="py-[100px] bg-[#000000] relative overflow-hidden border-b border-white/[0.03]">
+      <div className="max-w-[1400px] mx-auto px-10 lg:px-20 relative z-10">
+
         {/* Section Header */}
-        <div className="mb-16 text-center max-w-3xl mx-auto">
-          <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.15em] text-[#4FB7C5] mb-3">
-            Realist Operations Sandbox
+        <div className="mb-14 text-center max-w-2xl mx-auto">
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] mb-3" style={{ color: '#4FB7C5' }}>
+            Live Product Preview
           </p>
-          <h2 className="font-display font-bold text-3xl md:text-5xl text-white uppercase tracking-tight">
-            Operational Intelligence Workspace
+          <h2 className="font-display font-bold text-3xl md:text-5xl text-white uppercase tracking-tight leading-none mb-4">
+            The Workspace
           </h2>
-          <p className="font-body text-[#A7B3C2] text-sm md:text-base mt-4 leading-relaxed font-light">
-            A realistic preview of the production-ready LETA operational workspace used by legal, advisory, and compliance teams.
+          <p className="text-[#6C7A99] text-sm md:text-base leading-relaxed font-light" style={{ fontFamily: "'Times New Roman', serif" }}>
+            A production-ready statutory intelligence console — query, cite, draft and research, all in one place.
           </p>
         </div>
 
-        {/* Workspace Shell */}
-        <div className="rounded-leta border border-white/[0.05] bg-[#0F1722] shadow-[0_10px_50px_rgba(0,0,0,0.18)] overflow-hidden">
-          
-          {/* Top Bar */}
-          <div className="px-6 py-4 bg-white/[0.01] border-b border-white/[0.04] flex justify-between items-center">
-            <div className="flex items-center gap-3">
+        {/* Screenshot frame */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          className="relative premium-card overflow-hidden"
+          style={{
+            boxShadow: `
+              inset 0 1px 0 rgba(255,255,255,0.09),
+              inset 0 -1px 0 rgba(0,0,0,0.5),
+              0 0 80px rgba(79,183,197,0.12),
+              0 0 160px rgba(79,183,197,0.05),
+              0 40px 80px rgba(0,0,0,0.9)
+            `,
+          }}
+        >
+          {/* Fake chrome bar */}
+          <div
+            className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(10,15,26,0.95)' }}
+          >
+            <div className="flex items-center gap-4">
               <div className="flex gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500/20" />
-                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/20" />
-                <span className="w-2.5 h-2.5 rounded-full bg-green-500/20" />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'rgba(239,68,68,0.35)' }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'rgba(245,158,11,0.35)' }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'rgba(34,197,94,0.35)' }} />
               </div>
-              <span className="font-sans text-[11px] font-semibold text-[#6C7A99] ml-4 tracking-wider uppercase">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: '#475569' }}>
                 LETA Interactive Workspace
               </span>
             </div>
-            <div className="flex items-center gap-4">
-              <span className="font-sans text-[10px] text-emerald-400 flex items-center gap-1.5 bg-emerald-400/5 px-2.5 py-1 rounded border border-emerald-400/10 font-semibold tracking-wider">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#22C55E' }} />
+              <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: '#4FB7C5' }}>
                 PORT_CONNECTED
               </span>
             </div>
           </div>
 
-          {/* Core Shell Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[580px] text-xs">
-            
-            {/* LEFT BAR: Navigation & Modules */}
-            <div className="lg:col-span-3 border-r border-white/[0.04] p-6 space-y-6 bg-white/[0.005]">
-              <div className="space-y-2">
-                <p className="font-sans text-[10px] font-semibold uppercase text-[#6C7A99] tracking-wider mb-3">
-                  STATUTORY FILESYSTEM
-                </p>
-                <div className="flex items-center gap-2.5 p-2 rounded-lg text-[#4FB7C5] bg-[#4FB7C5]/5 font-sans font-medium">
-                  <Folder size={14} />
-                  <span>CGST_Act_2017</span>
-                </div>
-                <div className="flex items-center gap-2.5 p-2 rounded-lg text-[#A7B3C2] hover:text-white transition-colors cursor-pointer font-sans pl-6">
-                  <FileText size={14} />
-                  <span>Section_17_5_Exemptions</span>
-                </div>
-                <div className="flex items-center gap-2.5 p-2 rounded-lg text-[#A7B3C2] hover:text-white transition-colors cursor-pointer font-sans pl-6">
-                  <FileText size={14} />
-                  <span>Circular_177_09_2022</span>
-                </div>
-                <div className="flex items-center gap-2.5 p-2 rounded-lg text-[#A7B3C2] hover:text-white transition-colors cursor-pointer font-sans">
-                  <Folder size={14} />
-                  <span>FEMA_Regulations</span>
-                </div>
-                <div className="flex items-center gap-2.5 p-2 rounded-lg text-[#A7B3C2] hover:text-white transition-colors cursor-pointer font-sans">
-                  <Folder size={14} />
-                  <span>Income_Tax_Directives</span>
-                </div>
-              </div>
+          {/* The real screenshot */}
+          <img
+            src={workspaceImg}
+            alt="LETA Workspace"
+            className="w-full block"
+            style={{ display: 'block' }}
+          />
 
-              <div className="pt-6 border-t border-white/[0.04] space-y-2">
-                <p className="font-sans text-[10px] font-semibold uppercase text-[#6C7A99] tracking-wider mb-3">
-                  SYSTEM TELEMETRY
-                </p>
-                <div className="flex justify-between font-sans text-[11px] text-[#6C7A99]">
-                  <span>Active Query Nodes</span>
-                  <span className="text-[#4FB7C5] font-semibold">1,243</span>
-                </div>
-                <div className="flex justify-between font-sans text-[11px] text-[#6C7A99]">
-                  <span>Avg Latency Target</span>
-                  <span className="text-white font-semibold">2.3s</span>
-                </div>
-              </div>
-            </div>
-
-            {/* CENTER BAR: Legal Query Console */}
-            <div className="lg:col-span-5 p-8 flex flex-col justify-between space-y-8">
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 font-sans text-[10px] font-semibold uppercase text-[#6C7A99]">
-                  <Database size={12} className="text-[#4FB7C5]" />
-                  <span>Statutory_Query_Input</span>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="font-sans text-[10px] font-semibold uppercase text-[#6C7A99] tracking-wide">
-                    Interrogate Compliance Database
-                  </label>
-                  <div className="p-4 rounded-xl bg-white/[0.01] border border-white/[0.04] font-body text-[#A7B3C2] text-xs leading-relaxed">
-                    &gt; Is input tax credit (ITC) available for the construction of a pipeline under works contract if used strictly for direct commercial output?
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2.5">
-                  <span className="px-2.5 py-1 rounded bg-[#4FB7C5]/5 border border-[#4FB7C5]/10 text-[#4FB7C5] font-sans text-[10px] uppercase font-bold">
-                    CGST_Act
-                  </span>
-                  <span className="px-2.5 py-1 rounded bg-white/[0.01] border border-white/[0.05] text-[#A7B3C2] font-mono text-[10px] uppercase">
-                    Section_17_5_c
-                  </span>
-                  <span className="px-2.5 py-1 rounded bg-white/[0.01] border border-white/[0.05] text-[#A7B3C2] font-mono text-[10px] uppercase">
-                    Circular_172
-                  </span>
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-white/[0.04] flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[#6C7A99] font-sans text-[10px]">
-                  <Shield size={12} className="text-[#4FB7C5]" />
-                  <span>Encrypted Sandbox Environment</span>
-                </div>
-                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-black font-semibold font-sans text-[12px] bg-[#4FB7C5] hover:bg-[#3EA6B4] transition-all">
-                  Execute Query <ArrowRight size={12} />
-                </button>
-              </div>
-            </div>
-
-            {/* RIGHT BAR: AI Response & Citation Breakdown */}
-            <div className="lg:col-span-4 border-l border-white/[0.04] p-8 flex flex-col justify-between bg-white/[0.005]">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between font-sans text-[10px] font-semibold uppercase text-[#6C7A99] border-b border-white/[0.03] pb-4">
-                  <span>Structured_Reasoning_Output</span>
-                  <span className="text-[#4FB7C5] font-bold">CONFIDENCE 94.2%</span>
-                </div>
-
-                <div className="space-y-4 font-body text-[#A7B3C2]">
-                  <div className="p-4 rounded-xl bg-emerald-500/[0.01] border border-emerald-500/15 space-y-2">
-                    <p className="text-emerald-400 font-bold text-xs uppercase tracking-wide">
-                      ✔ ADVISORY SUMMARY
-                    </p>
-                    <p className="text-xs leading-relaxed font-light">
-                      ITC is generally blocked under Section 17(5)(c) for construction except where the pipeline falls under the definition of "plant and machinery".
-                    </p>
-                  </div>
-
-                  <div className="space-y-3 pt-2">
-                    <p className="text-[#6C7A99] text-[9px] uppercase tracking-wider">Citations Found (3)</p>
-                    <div className="p-3 rounded-lg bg-white/[0.01] border border-white/[0.04] flex items-center justify-between cursor-pointer hover:bg-white/[0.02]">
-                      <span className="font-semibold text-white">CGST Section 17(5)(c)</span>
-                      <ChevronRight size={12} className="text-[#6C7A99]" />
-                    </div>
-                    <div className="p-3 rounded-lg bg-white/[0.01] border border-white/[0.04] flex items-center justify-between cursor-pointer hover:bg-white/[0.02]">
-                      <span className="font-semibold text-white">Circular No. 177/09/2022</span>
-                      <ChevronRight size={12} className="text-[#6C7A99]" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-white/[0.03] flex items-center justify-between font-sans text-[11px] text-[#6C7A99]">
-                <span className="flex items-center gap-1">
-                  <HelpCircle size={10} />
-                  Citation fidelity
-                </span>
-                <span className="text-[#4FB7C5] font-semibold">100% EXPLICIT MAP</span>
-              </div>
-            </div>
-
+          {/* Bottom CTA overlay */}
+          <div
+            className="absolute bottom-0 left-0 right-0 flex items-end justify-center pb-10"
+            style={{
+              background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 40%, transparent 100%)',
+              paddingTop: '80px',
+            }}
+          >
+            <Link to="/gst">
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="flex items-center gap-2.5 px-7 py-3.5 font-semibold text-sm text-black transition-all"
+                style={{
+                  background: '#4FB7C5',
+                  boxShadow: '0 0 40px rgba(79,183,197,0.4), 0 4px 16px rgba(0,0,0,0.4)',
+                }}
+              >
+                Open Workspace <ChevronRight size={15} />
+              </motion.button>
+            </Link>
           </div>
-
-        </div>
+        </motion.div>
 
       </div>
     </section>
