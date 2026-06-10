@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Search, Scale } from 'lucide-react';
 import { SimpleSearchLoader } from '../effects';
 import LetaResponse from './LetaResponse';
+import { BASE_URL } from '../../config/api';
 
 const SAMPLE_PROMPTS = [
   'Is ITC available on works contract for factory construction?',
@@ -22,26 +23,37 @@ const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
     el.style.height = Math.min(el.scrollHeight, 320) + 'px';
   }, []);
 
-  const handleAsk = () => {
+  const handleAsk = async () => {
     if (!query.trim()) return;
     setIsLoading(true);
     setResponse(null);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const res = await fetch(`${BASE_URL}/ask-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: query, session_id: null, intent: 'general' }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
       setResponse({
         query,
-        confidence: 0.95,
-        answer: `**[CONSULTATION BRIEF]**\n\nBased on the relevant provisions of the ${domain.toUpperCase()} Act, the query regarding "${query.substring(0, 45)}..." interprets as follows:\n\n**Section 17(5)(c)** of the CGST Act, 2017 restricts input tax credit on works contract services when supplied for construction of an immovable property (other than plant and machinery), even where the same would be treated as plant and machinery.\n\n*This draft analysis has been synthesized using verified statutory notifications.*`,
-        reasoning: {
-          interpretation: `Analysis of advisory query within ${domain.toUpperCase()} statutory context.`,
-          provisions: [`Section 17(5) of ${domain.toUpperCase()} Act`, 'Notification 45/2024'],
-          deduction: 'The statutory reading suggests compliance is mandatory under given conditions.',
-          limitations: 'General professional advisory format only.',
-        },
-        citations: [`${domain.toUpperCase()} Act, Section 12`, 'Statutory Notification 45/2024'],
+        confidence: 0.92,
+        answer: data.answer || 'No answer returned.',
+        citations: (data.sources || []).map(s => s.title).filter(Boolean),
       });
-    }, 2000);
+    } catch (err) {
+      setResponse({
+        query,
+        confidence: 0,
+        answer: `**[Connection Error]**\n\nUnable to reach the advisory engine: ${err.message}. Please check your connection and try again.`,
+        citations: [],
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
