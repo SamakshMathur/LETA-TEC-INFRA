@@ -34,10 +34,13 @@ class ErrorBoundary extends React.Component<
       return (
         <div style={{ background: '#000000', color: '#EF4444', minHeight: '100vh',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexDirection: 'column', gap: '1rem', fontFamily: 'monospace' }}>
+          flexDirection: 'column', gap: '1rem', fontFamily: 'monospace', padding: '2rem' }}>
           <h2>Something went wrong</h2>
-          <pre style={{ color: '#A1AAB8', fontSize: '0.8rem', maxWidth: '80vw', overflow: 'auto' }}>
+          <pre style={{ color: '#A1AAB8', fontSize: '0.75rem', maxWidth: '80vw', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
             {this.state.error.message}
+          </pre>
+          <pre style={{ color: '#6B7280', fontSize: '0.65rem', maxWidth: '80vw', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+            {this.state.error.stack}
           </pre>
           <button onClick={() => window.location.href = '/'}
             style={{ color: '#67E8F9', border: '1px solid rgba(103,232,249,0.4)',

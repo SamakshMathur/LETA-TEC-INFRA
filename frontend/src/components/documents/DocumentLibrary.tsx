@@ -160,7 +160,7 @@ const DocumentRow: React.FC<{
   useEffect(() => {
     fetch(`${API_BASE}/list/${category.id}`)
       .then(r => r.json())
-      .then(data => { setDocs(data); setLoading(false); })
+      .then(data => { setDocs(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [category.id]);
 
@@ -236,7 +236,7 @@ export const DocumentLibrary: React.FC = () => {
   useEffect(() => {
     fetch(`${API_BASE}/list/all`)
       .then(r => r.json())
-      .then(data => { setAllDocs(data); setAllDocsLoading(false); })
+      .then(data => { setAllDocs(Array.isArray(data) ? data : []); setAllDocsLoading(false); })
       .catch(() => setAllDocsLoading(false));
   }, []);
 
