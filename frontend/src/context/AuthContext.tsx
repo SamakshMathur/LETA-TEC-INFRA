@@ -16,15 +16,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const BYPASS_SESSION: Session = {
   tokens: {
-    accessToken: 'dev-bypass-token',
-    refreshToken: 'dev-bypass-refresh',
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    refreshTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZXZfODYxOTI1Njg1MSIsInR5cGUiOiJhY2Nlc3MiLCJleHAiOjE4MTI2MzUzMjd9.3Stvcl2qJHtii31xT9aAafoZ5Pu__Jq7Fjg_zKc51AM',
+    refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZXZfODYxOTI1Njg1MSIsInR5cGUiOiJyZWZyZXNoIiwiZXhwIjoxODEyNjM1MzI3fQ.-sXmErI9_BlM8LMIn9du13nkV2TxyVS4NNFReMCkzdo',
+    expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    refreshTokenExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
     tokenType: 'bearer',
-    expiresIn: 604800,
-    refreshTokenExpiresIn: 2592000,
+    expiresIn: 31536000,
+    refreshTokenExpiresIn: 31536000,
   },
-  user: { id: 'dev-user', email: 'dev@letatec.com', firstName: 'Dev', lastName: 'User', role: 'user' },
+  user: { id: 'dev_8619256851', email: 'dev@letatec.com', firstName: 'Samaksh', lastName: 'Mathur', role: 'user' },
   memberships: [{ organizationId: 'org_default', role: 'user' }],
   organizationId: 'org_default',
 };
