@@ -14,15 +14,26 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const BYPASS_SESSION: Session = {
+  tokens: {
+    accessToken: 'dev-bypass-token',
+    refreshToken: 'dev-bypass-refresh',
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    refreshTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    tokenType: 'bearer',
+    expiresIn: 604800,
+    refreshTokenExpiresIn: 2592000,
+  },
+  user: { id: 'dev-user', email: 'dev@letatec.com', firstName: 'Dev', lastName: 'User', role: 'user' },
+  memberships: [{ organizationId: 'org_default', role: 'user' }],
+  organizationId: 'org_default',
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(BYPASS_SESSION);
   const [isInitialised, setIsInitialised] = useState(false);
 
   useEffect(() => {
-    const stored = getStoredAuthSession();
-    if (stored) {
-      setSession(stored);
-    }
     setIsInitialised(true);
   }, []);
 
