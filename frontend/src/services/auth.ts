@@ -11,8 +11,9 @@ export const registerApi = async (userData: {
   await AXIOS_INSTANCE.post('/api/auth/register', userData);
 };
 
-export const sendOtpApi = async (contact: string, method: 'email' | 'phone'): Promise<void> => {
-  await AXIOS_INSTANCE.post('/api/auth/send-otp', { contact, method });
+export const sendOtpApi = async (contact: string, method: 'email' | 'phone'): Promise<{ otp_preview?: string }> => {
+  const res = await AXIOS_INSTANCE.post('/api/auth/send-otp', { contact, method });
+  return res.data;
 };
 
 export const verifyOtpApi = async (contact: string, otp: string): Promise<Session> => {

@@ -244,10 +244,29 @@ async def send_otp(req: SendOTPRequest):
     if users_col is not None:
         field = "email" if req.method == "email" else "phone"
         if not users_col.find_one({field: req.contact}):
-            raise HTTPException(
-                status_code=404,
-                detail=f"No account found with that {req.method}. Please register first."
-            )
+            if _DEV_MODE:
+                # Auto-create a test user so dev login works without registration
+                username = f"dev_{req.contact.replace('@','_').replace('.','_')[-10:]}"
+                users_col.update_one(
+                    {field: req.contact},
+                    {"$setOnInsert": {
+                        "username": username,
+                        "full_name": "Dev User",
+                        "phone": req.contact if req.method == "phone" else "",
+                        "email": req.contact if req.method == "email" else None,
+                        "profession": "Other",
+                        "gender": "Prefer not to say",
+                        "verified": False,
+                        "role": "user",
+                        "created_at": datetime.now(),
+                    }},
+                    upsert=True,
+                )
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No account found with that {req.method}. Please register first."
+                )
 
     # Rate limit: max 3 OTPs per contact per hour
     one_hour_ago = datetime.now() - timedelta(hours=1)
