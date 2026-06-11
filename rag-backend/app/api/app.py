@@ -682,21 +682,21 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     ]
     _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW)
 
-    if _complexity >= 0.35 and not _is_draft:
-        from app.retrieval.query_refiner import generate_advanced_queries
-        advanced_queries = generate_advanced_queries(question)
-        refined_q = advanced_queries.get("queries", [question])[0]
+    # Skip LLM-based query expansion in sync mode — saves ~10-15s from the extra Sonnet call.
+    # Use rule-based multi-query for drafts only (no LLM needed).
+    refined_q = question
+    if _is_draft:
+        advanced_queries = {
+            "queries": [
+                refined_q,
+                refined_q + " section rule act provisions conditions eligibility liability",
+                refined_q + " high court supreme court judgment held ruling decision AAR",
+                refined_q + " CBIC circular notification clarification instruction",
+            ],
+            "hyde_document": "", "topic": "General", "subtopic": None,
+        }
     else:
         advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
-        refined_q = question
-
-    if _is_draft:
-        advanced_queries["queries"] = [
-            refined_q,
-            refined_q + " section rule act provisions conditions eligibility liability",
-            refined_q + " high court supreme court judgment held ruling decision AAR",
-            refined_q + " CBIC circular notification clarification instruction",
-        ]
 
     retriever = get_retriever()
     # Reduced top_k vs /ask to keep context small and stay within API Gateway's 29s timeout
