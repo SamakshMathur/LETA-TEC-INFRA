@@ -61,17 +61,32 @@ app = FastAPI(
 )
 
 @app.on_event("startup")
-async def _seed_feed_store():
-    """Pre-populate the in-memory event log from the filesystem on startup."""
+async def _startup_tasks():
+    """Seed feed store and pre-warm AI models in background."""
+    import asyncio as _asyncio
+
+    # 1. Seed in-memory event log
     try:
-        from app.api.documents import get_activity_feed  # existing REST helper
+        from app.api.documents import get_activity_feed
         from app.feed_store import _event_log
-        items = get_activity_feed()      # returns list, newest first
-        for item in reversed(items):    # insert oldest first so deque order is correct
+        items = get_activity_feed()
+        for item in reversed(items):
             _event_log.append(item)
         logger.info(f"Feed store seeded with {len(items)} events from filesystem")
     except Exception as e:
         logger.warning(f"Feed store seed failed (non-fatal): {e}")
+
+    # 2. Pre-load embedding model + FAISS index so the first /ask-sync request
+    #    doesn't pay the ~15-20s cold-start cost and timeout at API Gateway.
+    async def _warmup():
+        try:
+            from app.dependencies import preload_all_models
+            await _asyncio.to_thread(preload_all_models)
+            logger.info("Startup model warmup complete")
+        except Exception as e:
+            logger.warning(f"Startup warmup failed (non-fatal): {e}")
+
+    _asyncio.ensure_future(_warmup())
 
 
 @app.get("/")
