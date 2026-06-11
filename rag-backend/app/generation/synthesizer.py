@@ -350,7 +350,12 @@ def _stream_openai(question: str, system_prompt: str, response_mode: str = "deta
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
-def synthesize_answer_stream(question: str, context: str, session_is_draft: bool = False):
+def synthesize_answer_stream(
+    question: str,
+    context: str,
+    session_is_draft: bool = False,
+    force_haiku: bool = False,
+):
     """
     Public API: Generates a streaming answer.
     Decides between Anthropic and OpenAI based on configuration,
@@ -360,6 +365,9 @@ def synthesize_answer_stream(question: str, context: str, session_is_draft: bool
     draft/advisory conversation, so follow-up messages (corrections, re-analysis
     requests) keep routing through DRAFTING_PROMPT even if the follow-up text
     alone doesn't contain draft keywords.
+
+    force_haiku: force Haiku model regardless of complexity (used by /ask-sync
+    to stay within API Gateway's 29-second integration timeout).
     """
     complexity = _estimate_complexity(question)
     # Keywords that route through DRAFTING_PROMPT (notices, drafts, and advisory opinions)
@@ -382,13 +390,15 @@ def synthesize_answer_stream(question: str, context: str, session_is_draft: bool
 
     if is_draft:
         prompt_template = DRAFTING_PROMPT
-        use_haiku = False
+        use_haiku = force_haiku  # allow override even for draft in sync mode
         use_thinking = False  # Thinking disabled — DRAFTING_PROMPT is self-sufficient; all tokens go to output
-        max_tokens = 12000   # Legal text ~1.4 tokens/word → 5000 words needs ~7000 tokens; 12000 gives full buffer
+        max_tokens = 3000 if force_haiku else 12000
     else:
         mode_name, prompt_template, max_tokens = _select_response_mode(complexity)
-        use_haiku = complexity < HAIKU_COMPLEXITY_THRESHOLD
+        use_haiku = force_haiku or (complexity < HAIKU_COMPLEXITY_THRESHOLD)
         use_thinking = (not use_haiku) and (complexity >= SONNET_THINKING_THRESHOLD)
+        if force_haiku:
+            max_tokens = min(max_tokens, 2200)
 
     truth_rules_text = rules_engine.get_all_rules_as_text()
     system_prompt = prompt_template.format(context=context, truth_rules=truth_rules_text)

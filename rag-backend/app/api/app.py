@@ -699,7 +699,8 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         ]
 
     retriever = get_retriever()
-    _top_k = 30 if _is_draft else (25 if _complexity >= 0.60 else 20)
+    # Reduced top_k vs /ask to keep context small and stay within API Gateway's 29s timeout
+    _top_k = 15 if _is_draft else (12 if _complexity >= 0.60 else 10)
     chunks = retriever.search(
         query=refined_q,
         top_k=_top_k,
@@ -719,8 +720,10 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         + compressed_block
     )
 
+    # force_haiku=True: use Claude Haiku (~5-10s) instead of Sonnet (~30-40s)
+    # to stay within API Gateway's hard 29-second integration timeout
     answer = await _asyncio.to_thread(
-        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft))
+        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=True))
     )
 
     unique_sources: list = []
