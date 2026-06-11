@@ -714,7 +714,8 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
 
     retriever = get_retriever()
-    # Reduced top_k vs /ask to keep context small and stay within API Gateway's 29s timeout
+    # Reduced top_k + skip_rerank: FlashRank with ms-marco-MiniLM-L-12-v2 takes
+    # 30-50s on 100+ candidates — must bypass it to fit inside API Gateway's 29s timeout.
     _top_k = 15 if _is_draft else (12 if _complexity >= 0.60 else 10)
     chunks = retriever.search(
         query=refined_q,
@@ -723,6 +724,7 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         advanced_queries=advanced_queries,
         domain_paths=domain_paths,
         is_draft=_is_draft,
+        skip_rerank=True,
     )
 
     citation_block = build_context(chunks, is_draft=_is_draft)
