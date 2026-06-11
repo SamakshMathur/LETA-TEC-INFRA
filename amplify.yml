@@ -10,6 +10,8 @@ applications:
         build:
           commands:
             - npm run build
+            - echo "=== dist contents ===" && ls -la dist/
+            - echo "=== dist/assets ===" && ls -la dist/assets/ | head -10
       artifacts:
         baseDirectory: dist
         files:
