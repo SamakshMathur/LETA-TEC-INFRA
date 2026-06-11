@@ -604,9 +604,13 @@ const LetaWorkspace: React.FC = () => {
           else if (lower.includes('appeal')) title = 'CIT(Appeals) Assessment Protest';
         }
 
-        const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title });
-        activeSessionId = sessionRes.data.session_id;
-        setCurrentSessionId(activeSessionId);
+        try {
+          const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title });
+          activeSessionId = sessionRes.data.session_id;
+          setCurrentSessionId(activeSessionId);
+        } catch {
+          // Session creation failed (CORS or backend unreachable) — proceed without session tracking
+        }
       }
 
       if (selectedFile) {
