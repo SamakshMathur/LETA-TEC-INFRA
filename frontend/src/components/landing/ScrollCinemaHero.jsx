@@ -66,11 +66,6 @@ const ScrollCinemaHero = () => {
             opacity: 1, willChange: 'opacity, transform',
           }}
         >
-          <p className="cinema-eyebrow">
-            <span className="cinema-pulse-dot" />
-            Statutory Intelligence Engine V2.4 — Active
-          </p>
-
           <h1 className="cinema-h1">
             <span className="cinema-line-wrap">
               <span className="cinema-line" style={{ animationDelay: '0.10s' }}>Intelligence</span>

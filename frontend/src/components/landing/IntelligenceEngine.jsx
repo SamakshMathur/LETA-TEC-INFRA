@@ -87,7 +87,6 @@ const IntelligenceEngine = () => {
           viewport={{ once: true, margin: '-60px' }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
         >
-          <p className="section-eyebrow">// Operational Architecture</p>
           <h2 className="section-headline">Statutory Intelligence<br />Engine</h2>
           <p className="section-subhead">
             Tracking LETA's high-fidelity reasoning, contextual cross-referencing,
