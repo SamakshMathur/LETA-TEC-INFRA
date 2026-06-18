@@ -87,10 +87,10 @@ const IntelligenceEngine = () => {
           viewport={{ once: true, margin: '-60px' }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
         >
-          <h2 className="section-headline">Statutory Intelligence<br />Engine</h2>
+          <h2 className="section-headline">How LETA<br />Answers Your Query</h2>
           <p className="section-subhead">
-            Tracking LETA's high-fidelity reasoning, contextual cross-referencing,
-            and structural statutory mapping pipelines.
+            From your question to a cited, actionable answer — here's exactly
+            what LETA does between your query and the reply.
           </p>
         </motion.div>
 

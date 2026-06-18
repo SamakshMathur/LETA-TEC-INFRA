@@ -7,24 +7,24 @@ const AI_IMAGE = '/magnific_frontfacing-futuristic-ai_XtA30onBfo.png';
 
 const MODULES = [
   {
-    num: '01', icon: FileText, title: 'GST Intelligence',
-    desc: 'Domain-trained for Indian GST — Acts, Rules, Notifications, Circulars, and judicial clarifications with citation fidelity.',
-    status: 'live', value: '98.4%', width: '98.4%', metric: 'Statutory Index', href: '/gst', position: 'tl',
+    num: '01', icon: FileText, title: 'GST',
+    desc: 'GSTR-1 to GSTR-9, ITC reconciliation, SCN replies, DRC-01 drafts, place of supply, e-invoicing, and appeal preparation.',
+    status: 'live', value: '98.4%', width: '98.4%', metric: 'Coverage', href: '/gst', position: 'tl',
   },
   {
     num: '02', icon: Landmark, title: 'Income Tax',
-    desc: 'Structured intelligence for compliance and automated statutory audit verification under Direct Tax.',
-    status: 'soon', value: '35%', width: '35%', metric: 'Index Status', position: 'tr',
+    desc: 'ITR filing, TDS compliance, capital gains, tax planning, scrutiny notices, and audit support under the Income Tax Act.',
+    status: 'soon', value: '35%', width: '35%', metric: 'Coming Soon', position: 'tr',
   },
   {
-    num: '03', icon: Globe, title: 'FEMA Advisory',
-    desc: 'Specialized compliance workflows, foreign exchange intelligence, regulatory transaction mapping.',
-    status: 'soon', value: '22%', width: '22%', metric: 'Build Progress', position: 'bl',
+    num: '03', icon: Globe, title: 'FEMA & RBI',
+    desc: 'FDI/ODI compliance, inward remittances, compounding applications, ECB advisory, and RBI reporting requirements.',
+    status: 'soon', value: '22%', width: '22%', metric: 'Coming Soon', position: 'bl',
   },
   {
     num: '04', icon: Briefcase, title: 'Company Law',
-    desc: 'Corporate governance, filing validations, and procedural guidance for the Companies Act, 2013.',
-    status: 'soon', value: '41%', width: '41%', metric: 'Pipeline Status', position: 'br',
+    desc: 'Annual filings, board resolutions, charge creation, ROC compliance, share transfers, and MOA/AOA amendments.',
+    status: 'soon', value: '41%', width: '41%', metric: 'Coming Soon', position: 'br',
   },
 ];
 
@@ -260,13 +260,13 @@ const StatutoryDomains = () => (
       >
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
           <div>
-            <p className="section-eyebrow">// Intelligence Modules</p>
-            <h2 className="section-headline">Statutory Intelligence<br />Modules</h2>
+            <p className="section-eyebrow">// Practice Coverage</p>
+            <h2 className="section-headline">Every Practice Area.<br />One Platform.</h2>
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)', flexShrink: 0 }}>
             <Activity size={11} style={{ color: '#4FB7C5' }} className="animate-pulse" />
             <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#4FB7C5' }}>
-              Jurisdiction Network: Connected
+              GST Live — Income Tax, FEMA &amp; Co. Law Coming
             </span>
           </div>
         </div>

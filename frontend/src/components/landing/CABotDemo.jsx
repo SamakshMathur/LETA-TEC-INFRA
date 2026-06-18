@@ -1,140 +1,113 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Scale, BadgeCheck, BookOpen, Briefcase, ChevronRight } from 'lucide-react';
+import { Scale } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import legalImg from '../../pages/IMAGES/magnific_futuristic-ai-data-pipeli_9Rx1osxNYZ.jpeg';
 
-const CREDENTIALS = [
-  { icon: BadgeCheck, label: 'Chartered Accountant',  sub: 'ICAI Certified' },
-  { icon: Scale,      label: 'GST & Indirect Tax',    sub: '42,000+ Provisions Indexed' },
-  { icon: BookOpen,   label: 'Judicial Precedents',   sub: '1,400+ HC / SC Judgments' },
-  { icon: Briefcase,  label: 'Litigation Advisory',   sub: 'SCN · DRC · Appeal Drafting' },
-];
-
-// Demo conversation — realistic CA-style exchange
 const CONVERSATION = [
   {
     role: 'user',
-    text: 'As per my understanding, the intermediary services provided by our Indian company to a foreign principal should qualify as export of service under Section 2(6) of the IGST Act. Please advise.',
+    text: 'My client provides support services to a US company. They got an SCN saying this isn\'t export — is that correct?',
     delay: 0,
   },
+  { role: 'bot', isTyping: true, delay: 900, text: null },
   {
     role: 'bot',
-    isTyping: true,
-    delay: 1200,
-    text: null,
-  },
-  {
-    role: 'bot',
-    delay: 3200,
+    delay: 2500,
     label: 'POSITION',
-    text: "Your understanding requires correction. Intermediary services do **not** qualify as export of service — the place of supply is India under Section 13(8)(b) of the IGST Act, irrespective of where the foreign principal is located.",
-    chips: ['Section 13(8)(b) IGST Act', 'Circular 159/15/2021', 'Section 2(6) IGST Act'],
-    confidence: '⚠️ High Litigation Exposure',
-    confColor: '#F59E0B',
+    text: 'The SCN is correct. If your client is an **intermediary** (arranging services between the US co. and a third party), place of supply is India under §13(8)(b) — it\'s taxable GST, not export.',
+    chips: ['§13(8)(b) IGST', 'Circular 159/15/2021'],
+    confidence: '⚠ High Litigation Exposure',
+    confType: 'warn',
   },
   {
     role: 'user',
-    text: 'Can you give me the detailed advisory and also draft a reply to the SCN we received on this issue?',
-    delay: 5800,
+    text: 'Can you draft the DRC-01 reply for us? Hearing is next week.',
+    delay: 4600,
   },
+  { role: 'bot', isTyping: true, delay: 5600, text: null },
   {
     role: 'bot',
-    isTyping: true,
-    delay: 7000,
-    text: null,
-  },
-  {
-    role: 'bot',
-    delay: 8800,
-    label: 'DETAILED ADVISORY',
-    text: "Under Section 13(8)(b), for intermediary services the place of supply is the location of the supplier — i.e., India. CBIC Circular 159/15/2021 expressly clarified that intermediaries cannot claim the 'place of supply = location of recipient' benefit. The Hon'ble Bombay High Court in **Dharmendra M. Jani v. UOI** upheld this position. Your GST liability stands; ITC claimed as if zero-rated may be recoverable.",
-    chips: ['DRC-01 Reply', 'Block A→H Draft', 'Circular 159/15/2021'],
-    confidence: '✅ Settled — High Court Confirmed',
-    confColor: '#22C55E',
+    delay: 7200,
+    label: 'ADVISORY',
+    text: "Done. DRC-01 reply drafted across Blocks A–H — citing Circular 159/15/2021 and **Bombay HC in Dharmendra M. Jani v. UOI**. Ground: taxpayer classified as intermediary, §13(8)(b) applies.",
+    chips: ['DRC-01 Draft Ready', 'Circular 159/2021'],
+    confidence: '✓ Settled — HC Confirmed',
+    confType: 'ok',
   },
 ];
 
 const TypingDots = () => (
-  <div className="flex items-center gap-1 px-4 py-3">
+  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px' }}>
     {[0, 1, 2].map(i => (
-      <motion.div
-        key={i}
-        className="w-1.5 h-1.5 rounded-full"
-        style={{ background: '#4FB7C5' }}
-        animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
-        transition={{ duration: 0.9, delay: i * 0.18, repeat: Infinity }}
+      <motion.div key={i}
+        style={{ width: 4, height: 4, borderRadius: '50%', background: '#4FB7C5' }}
+        animate={{ opacity: [0.2, 1, 0.2] }}
+        transition={{ duration: 0.9, delay: i * 0.2, repeat: Infinity }}
       />
     ))}
   </div>
 );
 
 const Chip = ({ label }) => (
-  <span
-    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono font-semibold uppercase tracking-wider cursor-default"
-    style={{ background: 'rgba(79,183,197,0.1)', border: '1px solid rgba(79,183,197,0.25)', color: '#67E8F9' }}
-  >
-    {label}
-  </span>
+  <span style={{
+    padding: '2px 7px', fontSize: 7.5,
+    fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700,
+    textTransform: 'uppercase', letterSpacing: '0.1em',
+    border: '1px solid rgba(79,183,197,0.2)', color: 'rgba(79,183,197,0.7)',
+  }}>{label}</span>
 );
 
 const Message = ({ msg }) => {
   const isUser = msg.role === 'user';
 
-  if (msg.isTyping) {
-    return (
-      <div className="flex items-end gap-2">
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: 'rgba(79,183,197,0.12)', border: '1px solid rgba(79,183,197,0.2)' }}>
-          <Scale size={13} style={{ color: '#4FB7C5' }} />
-        </div>
-        <div className="rounded-2xl rounded-bl-sm" style={{ background: '#0F1722', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <TypingDots />
-        </div>
+  if (msg.isTyping) return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+      <div style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid rgba(79,183,197,0.18)' }}>
+        <Scale size={10} style={{ color: '#4FB7C5' }} />
       </div>
-    );
-  }
-
-  if (isUser) {
-    return (
-      <div className="flex justify-end">
-        <div
-          className="max-w-[75%] px-4 py-3 rounded-2xl rounded-br-sm text-sm leading-relaxed"
-          style={{ background: 'rgba(79,183,197,0.1)', border: '1px solid rgba(79,183,197,0.18)', color: '#E2E8F0', fontFamily: "'Times New Roman', serif" }}
-        >
-          {msg.text}
-        </div>
+      <div style={{ background: 'rgba(4,8,14,0.7)', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <TypingDots />
       </div>
-    );
-  }
+    </div>
+  );
 
-  // Bot message
+  if (isUser) return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <p style={{
+        maxWidth: '72%', margin: 0, padding: '9px 13px',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        fontSize: 12, lineHeight: 1.65, color: 'rgba(203,213,225,0.8)',
+        fontFamily: "'Inter', sans-serif",
+      }}>{msg.text}</p>
+    </div>
+  );
+
   return (
-    <div className="flex items-end gap-2">
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 flex-shrink-0"
-        style={{ background: 'rgba(79,183,197,0.12)', border: '1px solid rgba(79,183,197,0.2)' }}>
-        <Scale size={13} style={{ color: '#4FB7C5' }} />
+    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+      <div style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid rgba(79,183,197,0.18)', marginTop: 2 }}>
+        <Scale size={10} style={{ color: '#4FB7C5' }} />
       </div>
-      <div
-        className="max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-3 space-y-2"
-        style={{ background: '#0F1722', border: '1px solid rgba(255,255,255,0.06)' }}
-      >
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
         {msg.label && (
-          <span className="text-[9px] font-mono font-bold uppercase tracking-[0.18em]" style={{ color: '#4FB7C5' }}>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 7, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.22em', color: '#4FB7C5', opacity: 0.7 }}>
             {msg.label}
           </span>
         )}
-        <p className="text-sm leading-relaxed" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', serif" }}
-          dangerouslySetInnerHTML={{ __html: msg.text.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#F1F5F9">$1</strong>') }}
+        <p style={{ fontSize: 12.5, lineHeight: 1.75, color: 'rgba(148,163,184,0.9)', fontFamily: "'Inter', sans-serif", margin: 0 }}
+          dangerouslySetInnerHTML={{ __html: msg.text.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#e2e8f0;font-weight:600">$1</strong>') }}
         />
         {msg.chips && (
-          <div className="flex flex-wrap gap-1.5 pt-1">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {msg.chips.map((c, i) => <Chip key={i} label={c} />)}
           </div>
         )}
         {msg.confidence && (
-          <p className="text-[10px] font-mono font-semibold pt-0.5" style={{ color: msg.confColor }}>
-            {msg.confidence}
-          </p>
+          <p style={{
+            fontFamily: "'IBM Plex Mono', monospace", fontSize: 8, fontWeight: 600, margin: 0, letterSpacing: '0.08em',
+            color: msg.confType === 'ok' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.32)',
+          }}>{msg.confidence}</p>
         )}
       </div>
     </div>
@@ -143,27 +116,19 @@ const Message = ({ msg }) => {
 
 const CABotDemo = () => {
   const [visible, setVisible] = useState([]);
-  const [started, setStarted]  = useState(false);
-  const bottomRef  = useRef(null);
-  const scrollRef  = useRef(null);
+  const scrollRef = useRef(null);
 
-  // Scroll only inside the chat box — never the page
   useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    container.scrollTop = container.scrollHeight;
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [visible]);
 
-  // Start replaying on mount / loop
   useEffect(() => {
     let timers = [];
     const play = () => {
       setVisible([]);
-      setStarted(true);
       CONVERSATION.forEach((msg, i) => {
         const t = setTimeout(() => {
           setVisible(prev => {
-            // Replace typing bubble with real message when next bot msg arrives
             if (!msg.isTyping && i > 0 && CONVERSATION[i - 1]?.isTyping) {
               return [...prev.slice(0, -1), msg];
             }
@@ -172,134 +137,131 @@ const CABotDemo = () => {
         }, msg.delay);
         timers.push(t);
       });
-      // Loop after last message
-      const loopDelay = CONVERSATION[CONVERSATION.length - 1].delay + 6000;
-      const loop = setTimeout(play, loopDelay);
-      timers.push(loop);
+      timers.push(setTimeout(play, CONVERSATION[CONVERSATION.length - 1].delay + 7000));
     };
     play();
     return () => timers.forEach(clearTimeout);
   }, []);
 
   return (
-    <section style={{ padding: '80px 0', background: '#000000', position: 'relative', overflow: 'hidden', borderTop: '1px solid rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+    <section style={{
+      position: 'relative', overflow: 'hidden',
+      borderTop: '1px solid rgba(255,255,255,0.04)',
+      backgroundImage: `url(${legalImg})`,
+      backgroundAttachment: 'fixed',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center 30%',
+    }}>
 
-      {/* Subtle background orb */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(79,183,197,0.04) 0%, transparent 65%)', filter: 'blur(60px)' }} />
+      {/* Deep overlay */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
+        background: 'linear-gradient(180deg, rgba(0,0,0,0.93) 0%, rgba(0,0,0,0.84) 55%, rgba(0,0,0,0.97) 100%)' }} />
 
-      <div className="section-container" style={{ position: 'relative', zIndex: 10 }}>
+      {/* Bottom bleed into next section */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 100, zIndex: 2, pointerEvents: 'none',
+        background: 'linear-gradient(to bottom, transparent, #000)' }} />
 
-        {/* Section header */}
-        <div className="mb-16 max-w-2xl">
-          <p className="section-eyebrow">// AI-Powered CA Advisory</p>
-          <h2 className="section-headline">
-            Your Senior CA,<br />
-            <span style={{ color: '#4FB7C5' }}>Available 24 × 7</span>
-          </h2>
-          <p className="section-subhead">
-            LETA reasons like a senior CA partner — analysing statutes, citing circulars, flagging litigation risk, and drafting replies on demand.
-          </p>
-        </div>
+      {/* Content */}
+      <div className="section-container" style={{ position: 'relative', zIndex: 10, padding: '90px 0 100px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 72, alignItems: 'center' }}>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+          {/* ── Left ─────────────────────────────────────── */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {/* Eyebrow */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+              <motion.span
+                animate={{ opacity: [1, 0.2, 1] }}
+                transition={{ duration: 2.2, repeat: Infinity }}
+                style={{ width: 5, height: 5, borderRadius: '50%', background: '#4FB7C5', flexShrink: 0, boxShadow: '0 0 8px rgba(79,183,197,0.9)', display: 'inline-block' }}
+              />
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.22em', color: '#4FB7C5' }}>
+                CA-Grade GST Advisory
+              </span>
+            </div>
 
-          {/* Left — CA credentials card */}
-          <div className="lg:col-span-4 space-y-4">
+            {/* Headline */}
+            <h2 style={{
+              fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 400,
+              fontSize: 'clamp(28px,3vw,50px)', letterSpacing: '0.01em',
+              color: '#E8DDD0', lineHeight: 1.1, margin: '0 0 16px',
+            }}>
+              Your Client Called.<br />
+              <span style={{ color: '#4FB7C5' }}>LETA Has the Answer.</span>
+            </h2>
 
-            {/* Avatar card */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.7 }}
-              className="rounded-2xl p-6 premium-card"
-              style={{ border: '1px solid rgba(79,183,197,0.22)' }}
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="relative">
-                  <div className="w-14 h-14 rounded-xl flex items-center justify-center"
-                    style={{ background: 'rgba(79,183,197,0.1)', border: '1px solid rgba(79,183,197,0.25)' }}>
-                    <Scale size={26} style={{ color: '#4FB7C5' }} />
-                  </div>
-                  {/* Online indicator */}
-                  <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#0A0F1A]"
-                    style={{ background: '#22C55E' }} />
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-white text-lg leading-none">LETA</h3>
-                  <p className="text-[11px] font-mono tracking-wider mt-1" style={{ color: '#4FB7C5' }}>TEC AI — Senior CA</p>
-                  <p className="text-[10px] font-mono mt-0.5" style={{ color: '#475569' }}>Online · Instant Response</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {CREDENTIALS.map(({ icon: Icon, label, sub }, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: -10 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: 0.1 + i * 0.08 }}
-                    className="flex items-center gap-3 p-3 rounded-xl"
-                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}
-                  >
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'rgba(79,183,197,0.08)' }}>
-                      <Icon size={13} style={{ color: '#4FB7C5' }} />
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-white leading-none">{label}</p>
-                      <p className="text-[10px] font-mono mt-0.5" style={{ color: '#475569' }}>{sub}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
+            {/* Body */}
+            <p style={{
+              fontFamily: "'Inter', sans-serif", fontSize: 13.5, fontWeight: 300,
+              lineHeight: 1.72, color: 'rgba(167,179,194,0.65)',
+              margin: '0 0 36px', maxWidth: 340,
+            }}>
+              GSTR-9 mismatch, blocked ITC, SCN on your desk, appeal deadline tomorrow — get the reply your senior partner would give, instantly.
+            </p>
 
             {/* CTA */}
-            <Link to="/gst">
+            <Link to="/gst" style={{ textDecoration: 'none' }}>
               <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm text-black transition-all"
-                style={{ background: '#4FB7C5' }}
+                whileHover={{ background: 'rgba(79,183,197,0.09)', borderColor: 'rgba(79,183,197,0.5)' }}
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  padding: '12px 24px', background: 'transparent',
+                  border: '1px solid rgba(79,183,197,0.28)', color: '#4FB7C5',
+                  fontFamily: "'IBM Plex Mono', monospace", fontSize: 9, fontWeight: 700,
+                  textTransform: 'uppercase', letterSpacing: '0.18em',
+                  cursor: 'pointer', transition: 'all 0.25s',
+                  display: 'inline-flex', alignItems: 'center', gap: 10,
+                }}
               >
-                Start Consultation <ChevronRight size={15} />
+                Start Consultation →
               </motion.button>
             </Link>
-          </div>
+          </motion.div>
 
-          {/* Right — Live chat demo */}
+          {/* ── Right: Chat ──────────────────────────────── */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 18 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.7, delay: 0.15 }}
-            className="lg:col-span-8 rounded-2xl overflow-hidden flex flex-col premium-card"
-            style={{ minHeight: '520px' }}
+            transition={{ duration: 0.85, delay: 0.14, ease: [0.16, 1, 0.3, 1] }}
+            style={{
+              background: 'rgba(2,4,8,0.8)', backdropFilter: 'blur(22px)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative',
+            }}
           >
-            {/* Chat header */}
-            <div className="flex items-center justify-between px-5 py-3.5 flex-shrink-0"
-              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(15,23,34,0.8)' }}>
-              <div className="flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#22C55E' }} />
-                <span className="text-[11px] font-mono uppercase tracking-[0.18em]" style={{ color: '#4FB7C5' }}>
-                  LETA · GST Advisory Session
+            {/* Cyan top line */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+              background: 'linear-gradient(90deg, #4FB7C5, transparent 65%)', zIndex: 2 }} />
+
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '11px 16px', borderBottom: '1px solid rgba(255,255,255,0.045)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <motion.div
+                  animate={{ opacity: [1, 0.2, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  style={{ width: 5, height: 5, borderRadius: '50%', background: '#4FB7C5', boxShadow: '0 0 5px rgba(79,183,197,0.7)' }}
+                />
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8, fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(79,183,197,0.8)' }}>
+                  LETA · GST Advisory
                 </span>
               </div>
-              <span className="text-[10px] font-mono" style={{ color: '#2a3050' }}>LIVE DEMO</span>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 7, color: 'rgba(255,255,255,0.1)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Live</span>
             </div>
 
             {/* Messages */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4" style={{ maxHeight: '460px' }}>
+            <div ref={scrollRef} style={{ overflowY: 'auto', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 16, minHeight: 300, maxHeight: 380 }}>
               <AnimatePresence>
                 {visible.map((msg, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 10 }}
+                  <motion.div key={i}
+                    initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ duration: 0.25 }}
                   >
                     <Message msg={msg} />
                   </motion.div>
@@ -307,18 +269,15 @@ const CABotDemo = () => {
               </AnimatePresence>
             </div>
 
-            {/* Fake input bar */}
-            <div className="px-5 py-3 flex-shrink-0"
-              style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-              <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
-                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <span className="text-xs flex-1" style={{ color: '#2a3050', fontFamily: "'Times New Roman', serif" }}>
-                  Ask LETA a GST or tax question...
+            {/* Input */}
+            <div style={{ padding: '9px 14px 12px', borderTop: '1px solid rgba(255,255,255,0.04)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)' }}>
+                <span style={{ flex: 1, fontSize: 11.5, fontFamily: "'Inter', sans-serif", color: 'rgba(255,255,255,0.11)' }}>
+                  Ask LETA a GST or indirect tax question…
                 </span>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#4FB7C5' }} />
-                  <span className="text-[9px] font-mono" style={{ color: '#4FB7C5' }}>AI READY</span>
-                </div>
+                <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.6, repeat: Infinity }}
+                  style={{ width: 4, height: 4, borderRadius: '50%', background: '#4FB7C5' }} />
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 7, color: 'rgba(79,183,197,0.5)', letterSpacing: '0.12em' }}>AI READY</span>
               </div>
             </div>
           </motion.div>

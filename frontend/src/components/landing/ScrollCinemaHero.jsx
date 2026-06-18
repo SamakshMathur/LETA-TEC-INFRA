@@ -140,12 +140,12 @@ const ScrollCinemaHero = () => {
         }
         .cinema-line {
           display: block;
-          font-family: 'Inter', sans-serif;
-          font-weight: 700;
+          font-family: 'Playfair Display', Georgia, serif;
+          font-weight: 400;
           font-size: clamp(32px, 4.8vw, 72px);
-          letter-spacing: -0.025em;
-          line-height: 1.10;
-          color: #ffffff;
+          letter-spacing: 0.01em;
+          line-height: 1.12;
+          color: #E8DDD0;
           padding-bottom: 0.04em;
           animation: cinema-revealUp 0.80s cubic-bezier(0.16,1,0.3,1) both;
         }

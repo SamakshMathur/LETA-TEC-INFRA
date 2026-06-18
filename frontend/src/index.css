@@ -190,14 +190,14 @@ img { image-rendering: -webkit-optimize-contrast; }
 
 /* ── Editorial section headline — consistent across all sections ─────────── */
 .section-headline {
-  font-family: 'Inter Tight', 'Inter', sans-serif;
-  font-weight: 800;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 400;
   font-size: clamp(32px, 4.5vw, 64px);
-  line-height: 1.04;
-  letter-spacing: -0.035em;
-  color: #F4F7FA;
+  line-height: 1.08;
+  letter-spacing: 0.01em;
+  color: #E8DDD0;
   margin: 0;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 /* ── Editorial section subheading ────────────────────────────────────────── */
