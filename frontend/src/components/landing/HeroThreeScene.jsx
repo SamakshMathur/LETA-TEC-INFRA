@@ -383,7 +383,7 @@ const HeroThreeScene = () => {
   return (
     <div
       ref={mountRef}
-      style={{ position: 'absolute', inset: 0, top: '80px', zIndex: 1, overflow: 'hidden', background: '#000' }}
+      style={{ position: 'absolute', inset: 0, top: '81px', zIndex: 1, overflow: 'hidden', background: '#000' }}
     />
   );
 };

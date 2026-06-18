@@ -91,7 +91,6 @@ const ScrollCinemaHero = () => {
 
         {/* Scroll cue */}
         <div ref={scrollCueRef} className="cinema-scroll-cue">
-          <p className="cinema-scroll-label">Scroll</p>
           <div className="cinema-scroll-track">
             <span className="cinema-scroll-dot" />
           </div>
