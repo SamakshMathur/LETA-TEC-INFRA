@@ -5,6 +5,10 @@ import { Navbar, SystemFooter, ScrollToTop } from './components/layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { PublicRoute }    from './components/auth/PublicRoute';
 import { authRoutes, protectedRoutes } from './routes';
+import CustomCursor from './components/effects/CustomCursor';
+import GrainOverlay from './components/effects/GrainOverlay';
+import ScrollProgress from './components/effects/ScrollProgress';
+import PageTransition from './components/effects/PageTransition';
 
 const NotFound: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-screen gap-6"
@@ -70,7 +74,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <div className="min-h-screen flex flex-col"
       style={{ background: '#000000', backgroundAttachment: 'fixed', color: '#A1AAB8' }}>
       <Navbar />
-      <main className="flex-grow">{children}</main>
+      <main className="flex-grow">
+        <PageTransition>{children}</PageTransition>
+      </main>
       <SystemFooter />
     </div>
   );
@@ -80,6 +86,9 @@ function App() {
   return (
     <ErrorBoundary>
       <Router>
+        <CustomCursor />
+        <GrainOverlay />
+        <ScrollProgress />
         <ScrollToTop />
         <Layout>
           <Routes>

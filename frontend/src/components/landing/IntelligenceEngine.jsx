@@ -1,6 +1,8 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Map, Award, BookOpen, FileCheck } from 'lucide-react';
+import PipelineThreeScene from './PipelineThreeScene';
+import pipelineImg from '../../pages/IMAGES/magnific_futuristic-horizontal-dat_iAsjqAE3uK.png';
 
 const STEPS = [
   {
@@ -10,8 +12,8 @@ const STEPS = [
     tag: 'INPUT_STREAM',
     desc: 'The user enters a complex statutory or transaction-level question (e.g., input tax credit eligibility on custom construction, corporate restructuring notifications).',
     metrics: [
-      { name: 'PARSER RATE', value: '1,200 tokens/sec' },
-      { name: 'RESOLVER ENCODING', value: 'Vector-Hashed' },
+      { name: 'Parser Rate',       value: '1,200 tokens/sec' },
+      { name: 'Resolver Encoding', value: 'Vector-Hashed' },
     ],
   },
   {
@@ -19,10 +21,10 @@ const STEPS = [
     icon: Map,
     label: 'Statute Mapping',
     tag: 'HIERARCHICAL_SEARCH',
-    desc: 'The core engine isolates target acts, sub-sections, notifications, and circulars across India’s direct and indirect tax codes.',
+    desc: "The core engine isolates target acts, sub-sections, notifications, and circulars across India's direct and indirect tax codes.",
     metrics: [
-      { name: 'MAPPING ACCURACY', value: '99.2%' },
-      { name: 'ACT CODES INDEXED', value: '14 Million+' },
+      { name: 'Mapping Accuracy',  value: '99.2%' },
+      { name: 'Act Codes Indexed', value: '14 Million+' },
     ],
   },
   {
@@ -32,8 +34,8 @@ const STEPS = [
     tag: 'CITATION_VERIFICATION',
     desc: 'Synthesizes thousands of high-level judicial decisions from High Courts, Supreme Court, and appellate authorities for current relevance.',
     metrics: [
-      { name: 'CROSS REFERENCES', value: '540,000+' },
-      { name: 'RETRIEVAL DEPTH', value: 'Cognitive Rank' },
+      { name: 'Cross References', value: '540,000+' },
+      { name: 'Retrieval Depth',  value: 'Cognitive Rank' },
     ],
   },
   {
@@ -43,8 +45,8 @@ const STEPS = [
     tag: 'LOGIC_ENGINE',
     desc: 'Evaluates contradictions between statutory wording, circular exceptions, and judicial outcomes using domain-specific legal reasoning chains.',
     metrics: [
-      { name: 'LOGIC CHAINS', value: 'Multi-Path' },
-      { name: 'BIAS FILTERING', value: 'Static-Shielded' },
+      { name: 'Logic Chains',   value: 'Multi-Path' },
+      { name: 'Bias Filtering', value: 'Static-Shielded' },
     ],
   },
   {
@@ -54,144 +56,157 @@ const STEPS = [
     tag: 'COMPLIANCE_RECON',
     desc: 'Generates a secure, highly-cited legal response containing statutory definitions, risk matrices, and actionable recommendations.',
     metrics: [
-      { name: 'LATENCY', value: '2.3 seconds' },
-      { name: 'CITATION RATE', value: '100% Verified' },
+      { name: 'Latency',       value: '2.3 seconds' },
+      { name: 'Citation Rate', value: '100% Verified' },
     ],
   },
 ];
 
+
+// ── Main component ────────────────────────────────────────────────────────────
 const IntelligenceEngine = () => {
   const [activeStep, setActiveStep] = useState(0);
 
-  // Auto cycle steps slowly to feel organic and computational
   useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveStep(prev => (prev + 1) % STEPS.length);
-    }, 4500);
+    const timer = setInterval(() => setActiveStep(prev => (prev + 1) % STEPS.length), 4500);
     return () => clearInterval(timer);
   }, []);
 
   return (
-    <section className="py-[80px] relative overflow-hidden bg-[#000000]">
+    <section style={{ padding: '80px 0', background: '#000000', position: 'relative', overflow: 'hidden', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
 
+      <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 70% 50% at 50% 50%, rgba(79,183,197,0.03) 0%, transparent 70%)' }} />
 
-      <div className="max-w-[1600px] mx-auto px-10 lg:px-20 relative z-10">
-        
-        {/* Section Header */}
-        <div className="mb-20 text-center lg:text-left">
-          <p className="font-mono text-xs uppercase tracking-[0.2em] text-[#67E8F9] mb-3">
-            Operational Architecture
+      <div className="section-container" style={{ position: 'relative', zIndex: 10 }}>
+
+        {/* Header */}
+        <motion.div
+          className="section-header"
+          initial={{ opacity: 0, y: 28 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-60px' }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <p className="section-eyebrow">// Operational Architecture</p>
+          <h2 className="section-headline">Statutory Intelligence<br />Engine</h2>
+          <p className="section-subhead">
+            Tracking LETA's high-fidelity reasoning, contextual cross-referencing,
+            and structural statutory mapping pipelines.
           </p>
-          <h2 className="font-display font-bold text-3xl md:text-5xl text-white uppercase tracking-tight">
-            Statutory Intelligence Engine
-          </h2>
-          <p className="font-body text-[#A1AAB8] text-base md:text-lg max-w-xl mt-4 leading-relaxed font-light">
-            Visually tracking LETA's high-fidelity reasoning, contextual cross-referencing, and structural statutory mapping pipelines.
-          </p>
-        </div>
+        </motion.div>
 
-        {/* The Pipeline Visualizer */}
-        <div className="grid grid-cols-1 gap-12 items-center">
+        {/* Pipeline image with Three.js overlay */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          style={{ position: 'relative', border: '1px solid rgba(79,183,197,0.12)', overflow: 'hidden', height: 340 }}
+        >
+          {/* Top accent line */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: 'linear-gradient(90deg, #4FB7C5 0%, transparent 60%)', zIndex: 10, pointerEvents: 'none' }} />
 
-          {/* Horizontally Expanding Stepper Container */}
-          <div className="space-y-6">
-            <div className="relative flex flex-col md:flex-row justify-between items-center gap-6 p-8 rounded-leta premium-card">
-              
-              {/* Connected Line Backdrop */}
-              <div className="absolute top-[50%] left-10 right-10 h-[1.5px] bg-white/[0.04] hidden md:block pointer-events-none" />
-              
-              {/* Dynamic filled connector line */}
-              <div 
-                className="absolute top-[50%] left-10 h-[1.5px] bg-[#67E8F9]/30 hidden md:block transition-all duration-1000 pointer-events-none"
-                style={{ width: `${(activeStep / (STEPS.length - 1)) * 82}%` }}
-              />
+          {/* Static pipeline image */}
+          <img
+            src={pipelineImg}
+            alt="LETA Intelligence Pipeline"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block' }}
+          />
 
-              {STEPS.map((step, index) => {
-                const IconComponent = step.icon;
-                const isActive = index === activeStep;
-                const isPassed = index < activeStep;
-
-                return (
-                  <button
-                    key={step.id}
-                    onClick={() => setActiveStep(index)}
-                    className="relative z-10 flex flex-col items-center group focus:outline-none w-full md:w-auto"
-                  >
-                    {/* Circle Indicator */}
-                    <div
-                      className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-500 border ${
-                        isActive
-                          ? 'bg-[#151922] border-[#67E8F9] text-[#67E8F9] shadow-[0_0_20px_rgba(103,232,249,0.15)] scale-110'
-                          : isPassed
-                          ? 'bg-[#10141B] border-[#67E8F9]/50 text-[#67E8F9]/80'
-                          : 'bg-[#000000] border-white/[0.05] text-[#6B7280]'
-                      } group-hover:border-[#67E8F9]/80`}
-                    >
-                      <IconComponent size={20} className="transition-transform duration-300 group-hover:scale-105" />
-                    </div>
-
-                    {/* Step label */}
-                    <span
-                      className={`mt-3 font-mono text-[10px] uppercase tracking-wider font-bold transition-all duration-300 ${
-                        isActive ? 'text-white' : 'text-[#6B7280]'
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-
-                    {/* Stage code tag */}
-                    <span className="font-mono text-[8px] opacity-40 text-[#6B7280] uppercase tracking-widest mt-1">
-                      0{index + 1} // {step.tag}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Detailed Stage Content display with Framer Motion transitions */}
-            <div className="min-h-[220px]">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeStep}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  transition={{ duration: 0.4 }}
-                  className="p-8 rounded-leta bg-[#151922] border border-white/[0.04] grid grid-cols-1 md:grid-cols-12 gap-8 items-center"
-                >
-                  <div className="md:col-span-8 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs uppercase text-[#67E8F9] tracking-widest font-bold">
-                        STAGE 0{activeStep + 1} // {STEPS[activeStep].tag}
-                      </span>
-                    </div>
-                    <h3 className="font-display font-bold text-2xl text-white">
-                      {STEPS[activeStep].label}
-                    </h3>
-                    <p className="font-body text-[#A1AAB8] text-sm leading-relaxed font-light">
-                      {STEPS[activeStep].desc}
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-4 p-5 rounded-xl bg-[#0F131A] border border-white/[0.03] space-y-4">
-                    <p className="font-mono text-[9px] uppercase tracking-wider text-[#6B7280]">
-                      System Telemetry
-                    </p>
-                    <div className="space-y-3">
-                      {STEPS[activeStep].metrics.map((m, i) => (
-                        <div key={i} className="flex justify-between items-center border-b border-white/[0.03] pb-2 last:border-0 last:pb-0">
-                          <span className="font-mono text-[9px] text-[#6B7280] tracking-wide">{m.name}</span>
-                          <span className="font-mono text-xs font-bold text-[#67E8F9]">{m.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            </div>
+          {/* Three.js glow overlay — mix-blend-mode: screen */}
+          <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
+            <PipelineThreeScene activeStep={activeStep} onStepClick={setActiveStep} overlay />
           </div>
 
+          {/* Bottom fade into black */}
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 90, background: 'linear-gradient(to top, #000 0%, transparent 100%)', pointerEvents: 'none', zIndex: 6 }} />
+        </motion.div>
+
+        {/* Step tabs */}
+        <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 0 }}>
+          {STEPS.map((step, index) => {
+            const Icon = step.icon;
+            const isActive = index === activeStep;
+            const isPassed = index < activeStep;
+            return (
+              <button
+                key={step.id}
+                onClick={() => setActiveStep(index)}
+                style={{
+                  flex: '1 1 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+                  padding: '20px 8px', background: 'none', border: 'none', cursor: 'pointer',
+                  borderBottom: `2px solid ${isActive ? '#4FB7C5' : 'transparent'}`,
+                  transition: 'border-color 0.3s',
+                  position: 'relative', top: 1,
+                }}
+              >
+                <Icon
+                  size={18}
+                  strokeWidth={1.5}
+                  style={{ color: isActive ? '#4FB7C5' : isPassed ? 'rgba(79,183,197,0.45)' : 'rgba(107,114,128,0.35)', transition: 'color 0.3s' }}
+                />
+                <span style={{
+                  fontFamily: "'IBM Plex Mono'", fontSize: 8, fontWeight: 700,
+                  textTransform: 'uppercase', letterSpacing: '0.14em', whiteSpace: 'nowrap',
+                  color: isActive ? '#F4F7FA' : isPassed ? 'rgba(167,179,194,0.4)' : 'rgba(107,114,128,0.35)',
+                  transition: 'color 0.3s',
+                }}>
+                  {step.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Step detail — open layout, no cards */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeStep}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            style={{ padding: '40px 0 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px 80px', alignItems: 'start' }}
+          >
+            {/* Left: stage info */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 'clamp(48px,5vw,72px)', fontWeight: 700, color: 'rgba(79,183,197,0.10)', lineHeight: 1, letterSpacing: '-0.04em' }}>
+                  0{activeStep + 1}
+                </span>
+                <div>
+                  <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#4FB7C5', margin: '0 0 4px' }}>
+                    {STEPS[activeStep].tag}
+                  </p>
+                  <h3 style={{ fontFamily: "'Inter Tight'", fontWeight: 700, fontSize: 'clamp(18px,2vw,26px)', letterSpacing: '-0.025em', color: '#F4F7FA', textTransform: 'uppercase', margin: 0 }}>
+                    {STEPS[activeStep].label}
+                  </h3>
+                </div>
+              </div>
+              <p style={{ fontFamily: "'Inter'", fontSize: 14, fontWeight: 300, lineHeight: 1.78, color: 'rgba(167,179,194,0.85)', margin: 0 }}>
+                {STEPS[activeStep].desc}
+              </p>
+            </div>
+
+            {/* Right: metrics as plain labeled rows, no box */}
+            <div style={{ paddingTop: 8, borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: 48 }}>
+              <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(107,114,128,0.5)', marginBottom: 24 }}>
+                — System Telemetry
+              </p>
+              {STEPS[activeStep].metrics.map((m, i) => (
+                <div key={i} style={{ marginBottom: i < STEPS[activeStep].metrics.length - 1 ? 20 : 0 }}>
+                  <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'rgba(107,114,128,0.5)', margin: '0 0 6px' }}>
+                    {m.name}
+                  </p>
+                  <p style={{ fontFamily: "'Inter Tight'", fontSize: 'clamp(18px,2vw,24px)', fontWeight: 700, letterSpacing: '-0.02em', color: '#4FB7C5', margin: 0 }}>
+                    {m.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+
       </div>
     </section>
   );

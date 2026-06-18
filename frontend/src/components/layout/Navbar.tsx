@@ -67,11 +67,18 @@ const Navbar = () => {
 
   return (
     <nav
-      className="fixed top-0 left-0 w-full z-50 transition-all duration-300"
+      className="fixed top-0 left-0 w-full z-50 transition-all duration-500"
       style={{
-        height: '80px',
-        background: '#000000',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        height: scrolled ? '68px' : '80px',
+        background: scrolled
+          ? 'rgba(0,0,0,0.82)'
+          : 'rgba(0,0,0,0)',
+        backdropFilter: scrolled ? 'blur(24px) saturate(180%)' : 'none',
+        WebkitBackdropFilter: scrolled ? 'blur(24px) saturate(180%)' : 'none',
+        borderBottom: scrolled
+          ? '1px solid rgba(79,183,197,0.1)'
+          : '1px solid rgba(255,255,255,0.0)',
+        boxShadow: scrolled ? '0 8px 40px rgba(0,0,0,0.5)' : 'none',
       }}
     >
       <div className="w-full px-10 lg:px-20 h-full flex items-center">

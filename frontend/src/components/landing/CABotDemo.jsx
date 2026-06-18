@@ -182,24 +182,22 @@ const CABotDemo = () => {
   }, []);
 
   return (
-    <section className="py-[100px] bg-[#000000] relative overflow-hidden border-b border-white/[0.03]">
+    <section style={{ padding: '80px 0', background: '#000000', position: 'relative', overflow: 'hidden', borderTop: '1px solid rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
 
       {/* Subtle background orb */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full pointer-events-none"
         style={{ background: 'radial-gradient(circle, rgba(79,183,197,0.04) 0%, transparent 65%)', filter: 'blur(60px)' }} />
 
-      <div className="max-w-[1400px] mx-auto px-10 lg:px-20 relative z-10">
+      <div className="section-container" style={{ position: 'relative', zIndex: 10 }}>
 
         {/* Section header */}
-        <div className="mb-16 text-center max-w-2xl mx-auto">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] mb-3" style={{ color: '#4FB7C5' }}>
-            AI-Powered CA Advisory
-          </p>
-          <h2 className="font-display font-bold text-3xl md:text-5xl text-white uppercase tracking-tight leading-none mb-4">
+        <div className="mb-16 max-w-2xl">
+          <p className="section-eyebrow">// AI-Powered CA Advisory</p>
+          <h2 className="section-headline">
             Your Senior CA,<br />
             <span style={{ color: '#4FB7C5' }}>Available 24 × 7</span>
           </h2>
-          <p className="text-[#6C7A99] text-sm md:text-base leading-relaxed font-light" style={{ fontFamily: "'Times New Roman', serif" }}>
+          <p className="section-subhead">
             LETA reasons like a senior CA partner — analysing statutes, citing circulars, flagging litigation risk, and drafting replies on demand.
           </p>
         </div>

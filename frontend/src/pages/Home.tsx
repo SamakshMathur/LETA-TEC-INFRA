@@ -1,6 +1,6 @@
-﻿import React from 'react';
+import React from 'react';
 import {
-  SovereignHero,
+  ScrollCinemaHero,
   IntelligenceEngine,
   IntelligenceFeed,
   StatutoryDomains,
@@ -8,15 +8,13 @@ import {
   SovereignTrust,
 } from '../components/landing';
 import CABotDemo from '../components/landing/CABotDemo';
-import { DynamicBackground } from '../components/effects';
 
 const Home: React.FC = () => {
   return (
     <div className="relative overflow-hidden bg-[#000000]">
-      <DynamicBackground />
 
-      {/* SECTION 01 — Sovereign Hero Interface */}
-      <SovereignHero />
+      {/* SECTION 01 — Cinematic scroll hero */}
+      <ScrollCinemaHero />
 
       {/* SECTION 02 — Statutory Intelligence Modules */}
       <StatutoryDomains />
@@ -35,6 +33,7 @@ const Home: React.FC = () => {
 
       {/* SECTION 07 — Sovereign Trust Layer */}
       <SovereignTrust />
+
     </div>
   );
 };

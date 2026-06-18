@@ -8,6 +8,7 @@ export { default as VideoSection } from './VideoSection';
 export { default as StatutoryHero3D } from './StatutoryHero3D';
 
 // New high-impact homepage revamp components
+export { default as ScrollCinemaHero } from './ScrollCinemaHero';
 export { default as SovereignHero } from './SovereignHero';
 export { default as IntelligenceEngine } from './IntelligenceEngine';
 export { default as IntelligenceFeed } from './IntelligenceFeed';

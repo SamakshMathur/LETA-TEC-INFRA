@@ -6,18 +6,14 @@ import workspaceImg from '../../pages/IMAGES/ElevenLabs_image_nano-banana-2_AI B
 
 const SimulatedWorkspace = () => {
   return (
-    <section className="py-[100px] bg-[#000000] relative overflow-hidden border-b border-white/[0.03]">
-      <div className="max-w-[1400px] mx-auto px-10 lg:px-20 relative z-10">
+    <section style={{ padding: '80px 0', background: '#000000', position: 'relative', overflow: 'hidden', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+      <div className="section-container" style={{ position: 'relative', zIndex: 10 }}>
 
         {/* Section Header */}
-        <div className="mb-14 text-center max-w-2xl mx-auto">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] mb-3" style={{ color: '#4FB7C5' }}>
-            Live Product Preview
-          </p>
-          <h2 className="font-display font-bold text-3xl md:text-5xl text-white uppercase tracking-tight leading-none mb-4">
-            The Workspace
-          </h2>
-          <p className="text-[#6C7A99] text-sm md:text-base leading-relaxed font-light" style={{ fontFamily: "'Times New Roman', serif" }}>
+        <div className="section-header">
+          <p className="section-eyebrow">// Live Product Preview</p>
+          <h2 className="section-headline">The Workspace</h2>
+          <p className="section-subhead">
             A production-ready statutory intelligence console — query, cite, draft and research, all in one place.
           </p>
         </div>
