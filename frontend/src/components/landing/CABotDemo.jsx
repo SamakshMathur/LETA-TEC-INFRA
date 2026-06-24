@@ -78,7 +78,7 @@ const Message = ({ msg }) => {
         maxWidth: '72%', margin: 0, padding: '9px 13px',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.07)',
-        fontSize: 12, lineHeight: 1.65, color: 'rgba(203,213,225,0.8)',
+        fontSize: 14, lineHeight: 1.65, color: 'rgba(203,213,225,0.8)',
         fontFamily: "'Inter', sans-serif",
       }}>{msg.text}</p>
     </div>
@@ -95,7 +95,7 @@ const Message = ({ msg }) => {
             {msg.label}
           </span>
         )}
-        <p style={{ fontSize: 12.5, lineHeight: 1.75, color: 'rgba(148,163,184,0.9)', fontFamily: "'Inter', sans-serif", margin: 0 }}
+        <p style={{ fontSize: 14, lineHeight: 1.75, color: 'rgba(148,163,184,0.9)', fontFamily: "'Inter', sans-serif", margin: 0 }}
           dangerouslySetInnerHTML={{ __html: msg.text.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#e2e8f0;font-weight:600">$1</strong>') }}
         />
         {msg.chips && (
@@ -147,11 +147,17 @@ const CABotDemo = () => {
     <section style={{
       position: 'relative', overflow: 'hidden',
       borderTop: '1px solid rgba(255,255,255,0.04)',
-      backgroundImage: `url(${legalImg})`,
-      backgroundAttachment: 'fixed',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center 30%',
     }}>
+
+      {/* Background image — GPU-composited layer, no fixed attachment repaints */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 0,
+        backgroundImage: `url(${legalImg})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center 30%',
+        transform: 'translateZ(0)',
+        willChange: 'transform',
+      }} />
 
       {/* Deep overlay */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
@@ -174,11 +180,7 @@ const CABotDemo = () => {
           >
             {/* Eyebrow */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-              <motion.span
-                animate={{ opacity: [1, 0.2, 1] }}
-                transition={{ duration: 2.2, repeat: Infinity }}
-                style={{ width: 5, height: 5, borderRadius: '50%', background: '#4FB7C5', flexShrink: 0, boxShadow: '0 0 8px rgba(79,183,197,0.9)', display: 'inline-block' }}
-              />
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#4FB7C5', flexShrink: 0, boxShadow: '0 0 8px rgba(79,183,197,0.9)', display: 'inline-block' }} />
               <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.22em', color: '#4FB7C5' }}>
                 CA-Grade GST Advisory
               </span>
@@ -196,7 +198,7 @@ const CABotDemo = () => {
 
             {/* Body */}
             <p style={{
-              fontFamily: "'Inter', sans-serif", fontSize: 13.5, fontWeight: 300,
+              fontFamily: "'Inter', sans-serif", fontSize: 15, fontWeight: 300,
               lineHeight: 1.72, color: 'rgba(167,179,194,0.65)',
               margin: '0 0 36px', maxWidth: 340,
             }}>
@@ -242,11 +244,7 @@ const CABotDemo = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '11px 16px', borderBottom: '1px solid rgba(255,255,255,0.045)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <motion.div
-                  animate={{ opacity: [1, 0.2, 1] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  style={{ width: 5, height: 5, borderRadius: '50%', background: '#4FB7C5', boxShadow: '0 0 5px rgba(79,183,197,0.7)' }}
-                />
+                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#4FB7C5', boxShadow: '0 0 5px rgba(79,183,197,0.7)' }} />
                 <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8, fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(79,183,197,0.8)' }}>
                   LETA · GST Advisory
                 </span>

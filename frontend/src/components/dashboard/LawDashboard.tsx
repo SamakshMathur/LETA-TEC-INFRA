@@ -39,21 +39,24 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
   };
 
   return (
-    <div
-      className="min-h-screen pb-24 text-[#F4F7FA] selection:bg-[#4FB7C5]/25 relative"
-      style={{
-        backgroundImage: `url(${workspaceBg})`,
-        backgroundAttachment: 'fixed',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center center',
-      }}
-    >
-      {/* Deep dark overlay — image stays far in background */}
+    <div className="min-h-screen pb-24 text-[#F4F7FA] selection:bg-[#4FB7C5]/25 relative">
+      {/* Background — GPU layer, avoids fixed-attachment repaints */}
+      <div
+        className="fixed inset-0 pointer-events-none"
+        style={{
+          backgroundImage: `url(${workspaceBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center center',
+          zIndex: 0,
+          transform: 'translateZ(0)',
+        }}
+      />
+      {/* Deep dark overlay */}
       <div
         className="fixed inset-0 pointer-events-none"
         style={{
           background: 'linear-gradient(180deg, rgba(0,0,0,0.97) 0%, rgba(0,0,0,0.95) 50%, rgba(0,0,0,0.98) 100%)',
-          zIndex: 0,
+          zIndex: 1,
         }}
       />
 

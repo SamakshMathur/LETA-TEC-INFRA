@@ -197,20 +197,19 @@ const PipelineThreeScene = ({ activeStep, onStepClick, overlay = false }) => {
     renderer.domElement.addEventListener('click', onClick);
 
     // ── Resize ────────────────────────────────────────────────────────────────
-    const onResize = () => {
+    const ro = new ResizeObserver(() => {
       const w = mount.clientWidth, h = mount.clientHeight;
+      if (!w || !h) return;
       camera.aspect = w / h; camera.updateProjectionMatrix();
       renderer.setSize(w, h);
-    };
-    window.addEventListener('resize', onResize);
+    });
+    ro.observe(mount);
 
     // ── Animation loop ────────────────────────────────────────────────────────
-    let raf;
     const clock = new THREE.Clock();
     const lerp  = (a, b, t) => a + (b - a) * t;
 
     const tick = () => {
-      raf = requestAnimationFrame(tick);
       const t      = clock.getElapsedTime();
       const active = activeRef.current;
       const hover  = hoverRef.current;
@@ -277,11 +276,25 @@ const PipelineThreeScene = ({ activeStep, onStepClick, overlay = false }) => {
 
       renderer.render(scene, camera);
     };
-    tick();
+    renderer.setAnimationLoop(tick);
+
+    const onVisibility = () => {
+      if (document.hidden) renderer.setAnimationLoop(null);
+      else renderer.setAnimationLoop(tick);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) renderer.setAnimationLoop(tick);
+      else renderer.setAnimationLoop(null);
+    }, { threshold: 0 });
+    io.observe(mount);
 
     return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', onResize);
+      renderer.setAnimationLoop(null);
+      document.removeEventListener('visibilitychange', onVisibility);
+      ro.disconnect();
+      io.disconnect();
       renderer.domElement.removeEventListener('mousemove', onMove);
       renderer.domElement.removeEventListener('click', onClick);
       renderer.dispose();

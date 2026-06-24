@@ -270,20 +270,19 @@ const HeroThreeScene = () => {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('click', onClick);
 
-    const onResize = () => {
+    const ro = new ResizeObserver(() => {
       const w = mount.clientWidth, h = mount.clientHeight;
+      if (!w || !h) return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
-    };
-    window.addEventListener('resize', onResize);
+    });
+    ro.observe(mount);
 
     // ── Animation loop ────────────────────────────────────────────────────────
-    let raf;
     const clock = new THREE.Clock();
 
     const tick = () => {
-      raf = requestAnimationFrame(tick);
       const t = clock.getElapsedTime();
 
       cubes.forEach((cube) => {
@@ -368,11 +367,25 @@ const HeroThreeScene = () => {
       renderer.render(scene, camera);
     };
 
-    tick();
+    renderer.setAnimationLoop(tick);
+
+    const onVisibility = () => {
+      if (document.hidden) renderer.setAnimationLoop(null);
+      else renderer.setAnimationLoop(tick);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) renderer.setAnimationLoop(tick);
+      else renderer.setAnimationLoop(null);
+    }, { threshold: 0 });
+    io.observe(mount);
 
     return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', onResize);
+      renderer.setAnimationLoop(null);
+      document.removeEventListener('visibilitychange', onVisibility);
+      ro.disconnect();
+      io.disconnect();
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('click', onClick);
       renderer.dispose();

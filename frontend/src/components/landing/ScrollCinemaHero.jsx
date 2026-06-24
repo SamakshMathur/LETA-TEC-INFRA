@@ -42,7 +42,7 @@ const ScrollCinemaHero = () => {
 
   return (
     <div ref={containerRef} style={{ height: `${SCROLL_HEIGHT_VH}vh`, position: 'relative' }}>
-      <div style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'hidden', background: '#000' }}>
+      <div style={{ position: 'sticky', top: 0, height: '100dvh', overflow: 'hidden', background: '#000' }}>
 
         {/* 3D scene — right half only, so text never overlaps */}
         <div style={{ position: 'absolute', left: '40%', right: 0, top: 0, bottom: 0, zIndex: 1 }}>
