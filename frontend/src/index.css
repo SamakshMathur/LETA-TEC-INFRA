@@ -19,14 +19,7 @@
     @apply font-body antialiased;
   }
 
-  /* Hide OS cursor on desktop — custom cursor takes over */
-  @media (hover: hover) and (pointer: fine) {
-    *, *::before, *::after {
-      cursor: none !important;
-    }
-  }
-
-  *, *::before, *::after { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
   h1, h2, h3, h4, h5, h6 { color: #F4F7FA; }
 }

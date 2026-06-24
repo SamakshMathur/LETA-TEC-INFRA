@@ -5,7 +5,6 @@ import { Navbar, SystemFooter, ScrollToTop } from './components/layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { PublicRoute }    from './components/auth/PublicRoute';
 import { authRoutes, protectedRoutes } from './routes';
-import CustomCursor from './components/effects/CustomCursor';
 import GrainOverlay from './components/effects/GrainOverlay';
 import ScrollProgress from './components/effects/ScrollProgress';
 import PageTransition from './components/effects/PageTransition';
@@ -86,7 +85,6 @@ function App() {
   return (
     <ErrorBoundary>
       <Router>
-        <CustomCursor />
         <GrainOverlay />
         <ScrollProgress />
         <ScrollToTop />
