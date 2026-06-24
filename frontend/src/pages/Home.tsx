@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ScrollCinemaHero,
-  IntelligenceEngine,
   IntelligenceFeed,
   StatutoryDomains,
   SimulatedWorkspace,
@@ -18,9 +17,6 @@ const Home: React.FC = () => {
 
       {/* SECTION 02 — Statutory Intelligence Modules */}
       <StatutoryDomains />
-
-      {/* SECTION 03 — Statutory Intelligence Engine */}
-      <IntelligenceEngine />
 
       {/* SECTION 04 — Live Legal Intelligence Feed */}
       <IntelligenceFeed />

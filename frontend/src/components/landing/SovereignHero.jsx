@@ -107,7 +107,7 @@ const SovereignHero = () => {
                 for High-Stakes
               </KineticHeading>
               <KineticHeading delay={0.44} className={cn('headingLineAccent')}>
-                Tax.
+                Legal &amp; Tax Matters.
               </KineticHeading>
             </h1>
 

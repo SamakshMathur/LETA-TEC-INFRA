@@ -74,7 +74,7 @@ const ScrollCinemaHero = () => {
               <span className="cinema-line" style={{ animationDelay: '0.26s' }}>for High-Stakes</span>
             </span>
             <span className="cinema-line-wrap">
-              <span className="cinema-line cinema-line--accent" style={{ animationDelay: '0.44s' }}>Tax.</span>
+              <span className="cinema-line cinema-line--accent" style={{ animationDelay: '0.44s' }}>Legal &amp; Tax Matters.</span>
             </span>
           </h1>
 
