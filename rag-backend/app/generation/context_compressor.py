@@ -16,11 +16,11 @@ import os
 import re
 from typing import List
 
-MAX_COMPRESSED_CHARS_QA    = 9000    # ~2 250 tokens — Q&A mode
+MAX_COMPRESSED_CHARS_QA    = 18000   # ~4 500 tokens — Q&A mode
 MAX_COMPRESSED_CHARS_DRAFT = 20000   # ~5 000 tokens — draft mode needs full statutory text
-MAX_EXCERPT_CHARS_QA       = 600     # per-chunk window Q&A
+MAX_EXCERPT_CHARS_QA       = 1200    # per-chunk window Q&A — full statutory provisions fit
 MAX_EXCERPT_CHARS_DRAFT    = 1400    # per-chunk window draft — needs verbatim statutory paragraphs
-MAX_CHUNKS_USED_QA         = 12      # Q&A cap
+MAX_CHUNKS_USED_QA         = 20      # Q&A cap
 MAX_CHUNKS_USED_DRAFT      = 25      # draft uses all retrieved chunks
 
 

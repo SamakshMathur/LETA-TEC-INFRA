@@ -91,10 +91,10 @@ const IntelligenceEngine = () => {
         </div>
 
         {/* The Pipeline Visualizer */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-          
-          {/* Horizontally Expanding Stepper Container (Left/Main Columns) */}
-          <div className="lg:col-span-8 space-y-6">
+        <div className="grid grid-cols-1 gap-12 items-center">
+
+          {/* Horizontally Expanding Stepper Container */}
+          <div className="space-y-6">
             <div className="relative flex flex-col md:flex-row justify-between items-center gap-6 p-8 rounded-leta bg-[#10141B] border border-white/[0.04]">
               
               {/* Connected Line Backdrop */}
@@ -188,34 +188,6 @@ const IntelligenceEngine = () => {
                   </div>
                 </motion.div>
               </AnimatePresence>
-            </div>
-          </div>
-
-          {/* Right Column (Aesthetics terminal illustration) */}
-          <div className="lg:col-span-4 p-8 rounded-leta bg-[#10141B] border border-white/[0.04] flex flex-col justify-between min-h-[360px]">
-            <div className="space-y-4">
-              <div className="flex justify-between items-center border-b border-white/[0.03] pb-4">
-                <span className="font-mono text-[10px] tracking-widest text-[#6B7280] uppercase font-bold">
-                  Active_Trace_Engine
-                </span>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              </div>
-
-              <div className="font-mono text-[11px] text-[#A1AAB8] space-y-3">
-                <p>&gt; Ingesting regulatory inputs...</p>
-                <p>&gt; Indexing matching statutory roots...</p>
-                <div className="pl-4 border-l border-[#67E8F9]/20 space-y-1">
-                  <p className="text-[#67E8F9]">[NODE_MAPPING] Match found on § 17(5)</p>
-                  <p className="text-[#67E8F9]">[CIRCULAR_SYNC] Sync circular 177/2022</p>
-                  <p className="text-[#67E8F9]">[AAR_VERIFICATION] Verified with current rulings</p>
-                </div>
-                <p>&gt; Processing legal logical chains...</p>
-              </div>
-            </div>
-
-            <div className="pt-6 border-t border-white/[0.03] flex items-center justify-between">
-              <span className="font-mono text-[9px] text-[#6B7280]">LATENCY METRIC</span>
-              <span className="font-mono text-sm font-bold text-[#67E8F9]">2.3s AVG</span>
             </div>
           </div>
 

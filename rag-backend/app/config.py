@@ -32,10 +32,10 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
 VECTOR_DIM = 1024 if EMBEDDING_PROVIDER == "local" else 3072
 
 # ─── Retrieval Tuning (externalized magic numbers) ─────────────────────────
-VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "25"))   # was 50
-VECTOR_EXPANDED_TOP_K = int(os.getenv("VECTOR_EXPANDED_TOP_K", "10"))  # was 15
-BM25_TOP_K = int(os.getenv("BM25_TOP_K", "20"))                        # was 30
-MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.7"))
+VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "40"))
+VECTOR_EXPANDED_TOP_K = int(os.getenv("VECTOR_EXPANDED_TOP_K", "20"))
+BM25_TOP_K = int(os.getenv("BM25_TOP_K", "35"))
+MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.72"))
 MAX_RESPONSE_POINTS = int(os.getenv("MAX_RESPONSE_POINTS", "15"))
 
 # ─── Reranking & Optimization ─────────────────────────────────────────────
@@ -50,7 +50,7 @@ MAX_INPUT_TOKENS = int(os.getenv("MAX_INPUT_TOKENS", "150000"))
 # Haiku routing: queries whose complexity score is below this threshold are
 # answered by the cheaper Haiku model instead of Sonnet.
 # Scale: 0.0 (trivial) → 1.0 (highly complex multi-section analysis)
-HAIKU_COMPLEXITY_THRESHOLD = float(os.getenv("HAIKU_COMPLEXITY_THRESHOLD", "0.4"))
+HAIKU_COMPLEXITY_THRESHOLD = float(os.getenv("HAIKU_COMPLEXITY_THRESHOLD", "0.20"))
 
 # Response-length routing thresholds (independent of model routing above):
 #   score < BRIEF_RESPONSE_THRESHOLD          → 3-point compact answer
@@ -64,7 +64,12 @@ STANDARD_RESPONSE_THRESHOLD = float(os.getenv("STANDARD_RESPONSE_THRESHOLD", "0.
 # to justify it (drafting, multi-section disputes, adversarial analysis).
 #   0.4–0.7 → Sonnet, NO thinking  (standard legal analysis, saves ~8 000 thinking tokens)
 #   >= 0.7  → Sonnet + thinking    (complex drafting / ITC disputes / SCN replies)
-SONNET_THINKING_THRESHOLD = float(os.getenv("SONNET_THINKING_THRESHOLD", "0.95"))
+SONNET_THINKING_THRESHOLD = float(os.getenv("SONNET_THINKING_THRESHOLD", "0.65"))
+
+# ─── Prompt Version (bump this whenever the prompt/output format changes) ─────
+# All cache keys include this version. Changing it instantly invalidates every
+# cached answer — old entries are bypassed (not deleted; they expire via TTL).
+PROMPT_VERSION = os.getenv("PROMPT_VERSION", "v6")
 
 # Redis Cache Config
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

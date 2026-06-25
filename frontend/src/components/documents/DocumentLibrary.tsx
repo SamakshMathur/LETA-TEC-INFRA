@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Bookmark, Download,
-  Search, Sparkles, X, Brain
+  Search, X, Brain
 } from 'lucide-react';
 import DocPreviewSidebar from './DocPreviewSidebar';
 import { BASE_URL as VITE_API_BASE } from '../../config/api';
@@ -33,7 +33,7 @@ interface DocItem {
 interface CategoryRow {
   id: string;
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
   colorClass: string;
   accentClass: string;
 }
@@ -144,7 +144,7 @@ const DocumentRow: React.FC<{
     <div className={cn('documentRow')}>
       <div className={cn('rowHeader')}>
         <h3 className={cn('rowTitle')}>
-          <category.icon size={14} className={cn(category.colorClass)} />
+          <category.icon size={14} className={cn(category.colorClass as any)} />
           {category.label}
           <span className={cn('rowCount')}>[{filteredDocs.length}]</span>
         </h3>
@@ -187,21 +187,54 @@ export const DocumentLibrary: React.FC = () => {
   const [selectedDoc, setSelectedDoc] = useState<DocItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [aiResults, setAiResults] = useState<DocItem[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('all');
 
+  // All documents loaded once on mount for instant client-side search
+  const [allDocs, setAllDocs] = useState<DocItem[]>([]);
+  const [allDocsLoading, setAllDocsLoading] = useState(true);
+
   useEffect(() => {
-    if (searchQuery.trim().length < 3) { setAiResults([]); return; }
-    const timer = setTimeout(() => {
-      setIsSearching(true);
-      fetch(`${VITE_API_BASE}/api/documents/ai_search?query=${encodeURIComponent(searchQuery)}`)
-        .then(r => r.json())
-        .then(data => { setAiResults(data); setIsSearching(false); })
-        .catch(() => setIsSearching(false));
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    fetch(`${API_BASE}/list/all`)
+      .then(r => r.json())
+      .then(data => { setAllDocs(data); setAllDocsLoading(false); })
+      .catch(() => setAllDocsLoading(false));
+  }, []);
+
+  // Instant search — scored client-side, zero latency
+  const instantResults = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return [];
+
+    const lower = q.toLowerCase().replace(/[_+]/g, ' ');
+    const words = lower.split(/\s+/).filter(w => w.length > 1);
+
+    const scored = allDocs.map(doc => {
+      const title    = (doc.title    || '').toLowerCase().replace(/[_.+]/g, ' ');
+      const filename = (doc.filename || '').toLowerCase().replace(/[_.+]/g, ' ');
+      const combined = title + ' ' + filename;
+
+      if (combined.includes(lower))
+        return { doc, score: 100 + (100 - Math.min(title.length, 100)) / 100 };
+      if (words.length > 0 && words.every(w => combined.includes(w)))
+        return { doc, score: 80 };
+      const hits = words.filter(w => combined.includes(w)).length;
+      return { doc, score: hits > 0 ? (hits / words.length) * 50 : 0 };
+    }).filter(x => x.score > 0);
+
+    scored.sort((a, b) => b.score - a.score);
+
+    const filtered = selectedFilter === 'all' ? scored : scored.filter(({ doc }) => {
+      const cat = doc.category || '';
+      if (selectedFilter === 'rules')     return cat === 'acts'      || cat === 'rules';
+      if (selectedFilter === 'circulars') return cat === 'circulars' || cat === 'cgst' || cat === 'igst';
+      if (selectedFilter === 'case-laws') return cat === 'highcourt' || cat === 'supremecourt';
+      if (selectedFilter === 'aar')       return cat === 'aars';
+      if (selectedFilter === 'forms')     return cat === 'forms'     || cat === 'brochures' || cat === 'flyers';
+      return true;
+    });
+
+    return filtered.slice(0, 60).map(x => x.doc);
+  }, [searchQuery, allDocs, selectedFilter]);
 
   const handleDownload = (doc: DocItem) => {
     const category = doc.category || doc.id.split('_')[0];
@@ -224,19 +257,8 @@ export const DocumentLibrary: React.FC = () => {
     }).filter(group => group.rows.length > 0);
   };
 
-  const getFilteredAiResults = () => {
-    if (selectedFilter === 'all') return aiResults;
-    
-    return aiResults.filter(doc => {
-      const cat = doc.category || doc.id.split('_')[0];
-      if (selectedFilter === 'rules') return cat === 'acts' || cat === 'rules';
-      if (selectedFilter === 'circulars') return cat === 'circulars' || cat === 'cgst' || cat === 'igst';
-      if (selectedFilter === 'case-laws') return cat === 'highcourt' || cat === 'supremecourt';
-      if (selectedFilter === 'aar') return cat === 'aars';
-      if (selectedFilter === 'forms') return cat === 'forms' || cat === 'brochures' || cat === 'flyers';
-      return true;
-    });
-  };
+  // true when user has typed a search query
+  const isSearching = searchQuery.trim().length > 0;
 
   return (
     <div className={cn('container')}>
@@ -301,76 +323,76 @@ export const DocumentLibrary: React.FC = () => {
         })}
       </div>
 
-      {/* ── 3. SEARCH RESULTS LISTING (AI-assisted) ───────────────────────── */}
+      {/* ── 3. INSTANT SEARCH RESULTS ─────────────────────────────────────── */}
       <AnimatePresence>
-        {(searchQuery.trim().length >= 3) && (
+        {searchQuery.trim().length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.15 }}
             className={cn('aiResultsContainer')}
           >
             <div className={cn('aiResultsHeader')}>
-              <Sparkles className={cn('sparklesIcon')} size={16} />
+              <Search className={cn('sparklesIcon')} size={16} />
               <div>
                 <h3 className={cn('aiResultsTitle')}>
-                  LETA AI Search Synthesis
+                  Document Search
                 </h3>
                 <p className={cn('aiResultsSubtitle')}>
-                  Matches found: {isSearching ? 'Analyzing references...' : `${aiResults.length} index files`}
+                  {allDocsLoading
+                    ? 'Loading document index…'
+                    : instantResults.length > 0
+                      ? `${instantResults.length} document${instantResults.length !== 1 ? 's' : ''} matched`
+                      : `No documents found for "${searchQuery}"`}
                 </p>
               </div>
             </div>
 
-            {isSearching ? (
+            {allDocsLoading ? (
               <div className={cn('aiResultsGrid')}>
-                {[1, 2, 3].map(i => (
-                  <div key={i} className={cn('aiLoadingCard')} />
-                ))}
+                {[1, 2, 3].map(i => <div key={i} className={cn('aiLoadingCard')} />)}
               </div>
-            ) : getFilteredAiResults().length > 0 ? (
+            ) : instantResults.length > 0 ? (
               <div className={cn('aiResultsGrid')}>
-                {getFilteredAiResults().map(doc => (
+                {instantResults.map(doc => (
                   <DocCard key={doc.id} doc={doc} onClick={setSelectedDoc} onDownload={handleDownload} />
                 ))}
               </div>
             ) : (
               <div className={cn('aiEmptyState')}>
-                {aiResults.length > 0 
-                  ? `No matching results for the active filter "${FILTER_OPTIONS.find(f => f.id === selectedFilter)?.label}".`
-                  : `No statutory references found matching "${searchQuery}".`} Try refining your parameters.
+                No documents matched "{searchQuery}". Try a shorter term or document number.
               </div>
             )}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── 5. BOTTOM AREA: DENSE COMPREHENSIVE ARCHIVE ROWS ──────────────── */}
-      <div className={cn('archiveSection')}>
-        {getFilteredCategoryGroups().map((group, idx) => (
-          <div key={idx} style={{ marginBottom: '16px' }}>
-            <div className={cn('archiveHeader')}>
-              <span className={cn('archiveTitle')}>
-                {group.title}
-              </span>
-              <div className={cn('archiveDivider')} />
+      {/* ── 5. CATEGORY ARCHIVE ROWS — hidden while searching ─────────────── */}
+      {!searchQuery.trim() && (
+        <div className={cn('archiveSection')}>
+          {getFilteredCategoryGroups().map((group, idx) => (
+            <div key={idx} style={{ marginBottom: '16px' }}>
+              <div className={cn('archiveHeader')}>
+                <span className={cn('archiveTitle')}>{group.title}</span>
+                <div className={cn('archiveDivider')} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {group.rows.map(row => (
+                  <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload} searchQuery="" />
+                ))}
+              </div>
             </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {group.rows.map(row => (
-                <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload} searchQuery={searchQuery} />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Preview sidebar slider panel */}
       <DocPreviewSidebar
         isOpen={!!selectedDoc}
         docMetadata={selectedDoc}
         onClose={() => setSelectedDoc(null)}
-        onDownload={handleDownload}
+        onDownload={() => selectedDoc && handleDownload(selectedDoc)}
       />
     </div>
   );

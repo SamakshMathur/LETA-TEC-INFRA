@@ -23,6 +23,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.security import get_current_admin
 from app.api.documents import BASE_DIR, CATEGORY_MAP
 from app.database import get_user_collection
+from app.feed_store import make_event, publish_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -118,6 +119,23 @@ async def upload_documents(
         saved_files.append({"path": dest, "rel_path": rel_path, "filename": dest.name})
         logger.info(f"Admin upload: {dest.name} ({len(content)/1024:.1f} KB) → {folder_name}/")
 
+        # ── Live feed event: document uploaded ──────────────────────────────
+        _type_map = {
+            "circulars": ("INDEX",    "{name} Indexed & Context-Hashed"),
+            "cgst":      ("INDEX",    "CGST Document {name} Indexed"),
+            "igst":      ("INDEX",    "IGST Notification {name} Hashed"),
+            "notifications": ("UPDATE", "Notification {name} Synced with Central Database"),
+            "highcourt": ("ANALYSIS", "High Court Judgment {name} Citation Integrated"),
+            "supremecourt": ("ANALYSIS", "Supreme Court Ruling {name} Citation Integrated"),
+            "acts":      ("UPDATE",   "Statutory Act {name} Synced with Central Database"),
+            "rules":     ("UPDATE",   "Rules Document {name} Registered"),
+            "aars":      ("NODE",     "Advance Ruling {name} Registered"),
+        }
+        _cat_key = category.lower()
+        _etype, _tmpl = _type_map.get(_cat_key, ("INDEX", "Document {name} Ingested & Indexed"))
+        _ev_text = _tmpl.format(name=dest.name)
+        await publish_event(make_event(_ev_text, _etype, filename=dest.name, category=_cat_key))
+
     if not saved_files:
         raise HTTPException(status_code=400, detail="No files were saved")
 
@@ -156,6 +174,16 @@ async def upload_documents(
             "finished_at": datetime.now().isoformat(),
         })
         logger.info(f"Job {job_id} done — {len(saved_files)} files, +{total_chunks} chunks")
+
+        # ── Live feed event: ingestion complete ──────────────────────────────
+        _names = ", ".join(f["filename"] for f in saved_files[:2])
+        _suffix = f" (+{len(saved_files)-2} more)" if len(saved_files) > 2 else ""
+        await publish_event(make_event(
+            f"Ingestion Complete — {_names}{_suffix} (+{total_chunks} vectors indexed)",
+            "ALERT",
+            filename=_names,
+            category=folder_name,
+        ))
 
     asyncio.create_task(_run_ingestion())
 

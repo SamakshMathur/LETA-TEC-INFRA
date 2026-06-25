@@ -27,6 +27,12 @@ _COMPLEX_SIGNALS = {
     "fema", "company law", "income tax", "tds", "tcs", "capital gains",
     "export", "import", "customs", "sez", "e-way bill", "refund",
     "draft", "notice", "reply", "advisory", "legal draft", "observation", "written submission",
+    "igst", "cgst", "sgst", "utgst", "intermediary", "zero rated", "export of service",
+    "place of supply", "import of service", "cross border", "inter-state", "intra-state",
+    "our understanding", "gst implications", "gst treatment", "tax position", "advise",
+    "qualifying", "characterisation", "characterization", "section 2", "section 7", "section 9",
+    "section 12", "section 13", "section 16", "section 17", "section 24", "section 74",
+    "schedule ii", "schedule iii", "schedule i",
 }
 
 _SIMPLE_SIGNALS = {
@@ -49,19 +55,23 @@ def _estimate_complexity(question: str) -> float:
     simple_hits  = sum(1 for kw in _SIMPLE_SIGNALS  if kw in q_lower)
 
     # Base score from keyword signals - ITC and Drafting have higher weight
-    base_weight = 0.15
+    base_weight = 0.18
     if "itc" in q_lower or "input tax credit" in q_lower:
         base_weight = 0.35
     if any(k in q_lower for k in ["draft", "notice", "reply", "scn", "show cause", "drc-01", "drc 01", "asmt-10", "appeal letter", "representation"]):
         base_weight = 0.35
+    if any(k in q_lower for k in ["igst", "cgst", "intermediary", "place of supply", "zero rated", "export of service", "our understanding", "gst implications", "characteris"]):
+        base_weight = max(base_weight, 0.28)
 
     score = min(1.0, complex_hits * base_weight) - min(0.3, simple_hits * 0.15)
 
     # Long questions are generally more complex
     if word_count > 40:
-        score += 0.2
+        score += 0.25
     elif word_count > 20:
-        score += 0.1
+        score += 0.15
+    elif word_count > 10:
+        score += 0.05
 
     # Multiple legal sections cited → definitely complex
     import re
@@ -85,11 +95,11 @@ def _select_response_mode(complexity: float) -> tuple:
     detailed (>= STANDARD_RESPONSE_THRESHOLD)→ prose, 700–1200 words, ~4000 tokens
     """
     if complexity < BRIEF_RESPONSE_THRESHOLD:
-        return "brief", BRIEF_PROMPT, 500
+        return "brief", BRIEF_PROMPT, 900
     elif complexity < STANDARD_RESPONSE_THRESHOLD:
-        return "standard", STANDARD_PROMPT, 1200
+        return "standard", STANDARD_PROMPT, 2200
     else:
-        return "detailed", SYSTEM_PROMPT, 1800
+        return "detailed", SYSTEM_PROMPT, 3500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -340,20 +350,35 @@ def _stream_openai(question: str, system_prompt: str, response_mode: str = "deta
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
-def synthesize_answer_stream(question: str, context: str):
+def synthesize_answer_stream(question: str, context: str, session_is_draft: bool = False):
     """
     Public API: Generates a streaming answer.
     Decides between Anthropic and OpenAI based on configuration,
     handles complexity/mode estimation, formats prompts and streams chunks.
+
+    session_is_draft: set True when session history indicates an ongoing
+    draft/advisory conversation, so follow-up messages (corrections, re-analysis
+    requests) keep routing through DRAFTING_PROMPT even if the follow-up text
+    alone doesn't contain draft keywords.
     """
     complexity = _estimate_complexity(question)
+    # Keywords that route through DRAFTING_PROMPT (notices, drafts, and advisory opinions)
     _DRAFT_KW = [
-        "draft", "notice", "reply", "appeal", "submission", "advisory",
+        # Notice / SCN / demand drafting
+        "draft", "notice", "reply", "appeal", "submission",
         "scn", "show cause", "drc-01", "drc 01", "asmt-10", "asmt 10",
+        "drc-07", "drc 07", "drc-03", "drc 03",
         "write a letter", "write letter", "prepare reply", "prepare a reply",
         "letter to", "representation", "response to notice", "respond to",
+        # Advisory / legal opinion triggers
+        "advisory", "our understanding", "gst implications", "gst implication",
+        "provide opinion", "provide advisory", "our comments", "tax position",
+        "gst treatment of", "gst on this transaction", "advise on",
+        "what would be the gst", "legal opinion", "our client is",
+        "we are engaged in", "facts of the case",
     ]
-    is_draft = any(kw in question.lower() for kw in _DRAFT_KW)
+    # Route as draft if: current message has draft keywords OR session history does
+    is_draft = session_is_draft or any(kw in question.lower() for kw in _DRAFT_KW)
 
     if is_draft:
         prompt_template = DRAFTING_PROMPT
