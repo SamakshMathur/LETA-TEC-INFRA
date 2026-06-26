@@ -18,11 +18,11 @@ const Home: React.FC = () => {
       {/* SECTION 02 — Statutory Intelligence Modules */}
       <StatutoryDomains />
 
-      {/* SECTION 04 — Live Legal Intelligence Feed */}
-      <IntelligenceFeed />
-
-      {/* SECTION 05 — AI CA Bot Demo */}
+      {/* SECTION 04 — AI CA Bot Demo */}
       <CABotDemo />
+
+      {/* SECTION 05 — Live Legal Intelligence Feed */}
+      <IntelligenceFeed />
 
       {/* SECTION 06 — Operational Intelligence Workspace */}
       <SimulatedWorkspace />

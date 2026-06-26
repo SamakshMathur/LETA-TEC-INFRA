@@ -116,7 +116,21 @@ const Message = ({ msg }) => {
 
 const CABotDemo = () => {
   const [visible, setVisible] = useState([]);
-  const scrollRef = useRef(null);
+  const scrollRef  = useRef(null);
+  const sectionRef = useRef(null);
+  const bgRef      = useRef(null);
+
+  // Counter-scroll the background so it appears fixed while the section scrolls
+  useEffect(() => {
+    const onScroll = () => {
+      if (!sectionRef.current || !bgRef.current) return;
+      const top = sectionRef.current.getBoundingClientRect().top;
+      bgRef.current.style.transform = `translateY(${-top}px)`;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -144,45 +158,42 @@ const CABotDemo = () => {
   }, []);
 
   return (
-    <section style={{
+    <section ref={sectionRef} style={{
       position: 'relative', overflow: 'hidden',
       borderTop: '1px solid rgba(255,255,255,0.04)',
     }}>
 
-      {/* Background image — GPU-composited layer, no fixed attachment repaints */}
-      <div style={{
+      {/* Background image — counter-scrolled to appear viewport-fixed */}
+      <div ref={bgRef} style={{
         position: 'absolute', inset: 0, zIndex: 0,
         backgroundImage: `url(${legalImg})`,
         backgroundSize: 'cover',
-        backgroundPosition: 'center 30%',
-        transform: 'translateZ(0)',
+        backgroundPosition: '60% 30%',
         willChange: 'transform',
       }} />
 
-      {/* Deep overlay */}
+      {/* Deep overlay — lighter on the right so the image bleeds behind the chat panel */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
-        background: 'linear-gradient(180deg, rgba(0,0,0,0.93) 0%, rgba(0,0,0,0.84) 55%, rgba(0,0,0,0.97) 100%)' }} />
+        background: 'linear-gradient(to right, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 45%, rgba(0,0,0,0.55) 100%)' }} />
+      {/* Top/bottom fade */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
+        background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.7) 100%)' }} />
 
       {/* Bottom bleed into next section */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 100, zIndex: 2, pointerEvents: 'none',
         background: 'linear-gradient(to bottom, transparent, #000)' }} />
 
       {/* Content */}
-      <div className="section-container" style={{ position: 'relative', zIndex: 10, padding: '90px 0 100px' }}>
+      <div className="section-container" style={{ position: 'relative', zIndex: 10, paddingTop: 90, paddingBottom: 100 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 72, alignItems: 'center' }}>
 
           {/* ── Left ─────────────────────────────────────── */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
-          >
+          <div>
             {/* Eyebrow */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#4FB7C5', flexShrink: 0, boxShadow: '0 0 8px rgba(79,183,197,0.9)', display: 'inline-block' }} />
               <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.22em', color: '#4FB7C5' }}>
-                CA-Grade GST Advisory
+                CA-Grade Legal &amp; Tax Advisory
               </span>
             </div>
 
@@ -193,7 +204,7 @@ const CABotDemo = () => {
               color: '#E8DDD0', lineHeight: 1.1, margin: '0 0 16px',
             }}>
               Your Client Called.<br />
-              <span style={{ color: '#4FB7C5' }}>LETA Has the Answer.</span>
+              <span style={{ color: '#4FB7C5' }}>LETA TEC Has the Answer.</span>
             </h2>
 
             {/* Body */}
@@ -202,7 +213,7 @@ const CABotDemo = () => {
               lineHeight: 1.72, color: 'rgba(167,179,194,0.65)',
               margin: '0 0 36px', maxWidth: 340,
             }}>
-              GSTR-9 mismatch, blocked ITC, SCN on your desk, appeal deadline tomorrow — get the reply your senior partner would give, instantly.
+              SCN on your desk, blocked ITC, tax scrutiny notice, appeal deadline tomorrow — get the reply your senior partner would give, instantly.
             </p>
 
             {/* CTA */}
@@ -222,14 +233,10 @@ const CABotDemo = () => {
                 Start Consultation →
               </motion.button>
             </Link>
-          </motion.div>
+          </div>
 
           {/* ── Right: Chat ──────────────────────────────── */}
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.85, delay: 0.14, ease: [0.16, 1, 0.3, 1] }}
+          <div
             style={{
               background: 'rgba(2,4,8,0.8)', backdropFilter: 'blur(22px)',
               border: '1px solid rgba(255,255,255,0.07)',
@@ -246,7 +253,7 @@ const CABotDemo = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#4FB7C5', boxShadow: '0 0 5px rgba(79,183,197,0.7)' }} />
                 <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8, fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(79,183,197,0.8)' }}>
-                  LETA · GST Advisory
+                  LETA TEC · Legal &amp; Tax Advisory
                 </span>
               </div>
               <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 7, color: 'rgba(255,255,255,0.1)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Live</span>
@@ -271,14 +278,14 @@ const CABotDemo = () => {
             <div style={{ padding: '9px 14px 12px', borderTop: '1px solid rgba(255,255,255,0.04)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)' }}>
                 <span style={{ flex: 1, fontSize: 11.5, fontFamily: "'Inter', sans-serif", color: 'rgba(255,255,255,0.11)' }}>
-                  Ask LETA a GST or indirect tax question…
+                  Ask LETA TEC a legal or tax question…
                 </span>
                 <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.6, repeat: Infinity }}
                   style={{ width: 4, height: 4, borderRadius: '50%', background: '#4FB7C5' }} />
                 <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 7, color: 'rgba(79,183,197,0.5)', letterSpacing: '0.12em' }}>AI READY</span>
               </div>
             </div>
-          </motion.div>
+          </div>
 
         </div>
       </div>

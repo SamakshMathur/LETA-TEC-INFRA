@@ -12,48 +12,59 @@ const DAMPING   = 0.62;
 const MAX_RISE  = 1.6; // cubes pop toward camera
 
 const GRID_DATA = [
+  // ── GST ──────────────────────────────────────────────────────────────────
   { label: 'GSTR-1',  sub: 'OUTWARD',    status: 'ok'      },
   { label: 'GSTR-3B', sub: 'MONTHLY',    status: 'pending' },
   { label: 'GSTR-9',  sub: 'ANNUAL',     status: 'ok'      },
-  { label: 'ITC-04',  sub: 'JOB WORK',   status: 'ok'      },
-  { label: 'GSTR-7',  sub: 'TDS',        status: 'urgent'  },
-  { label: 'GSTR-8',  sub: 'TCS',        status: 'ok'      },
-  { label: '18%',     sub: 'RATE',       status: 'ok'      },
-  { label: '12%',     sub: 'RATE',       status: 'ok'      },
-  { label: '5%',      sub: 'RATE',       status: 'ok'      },
-  { label: '28%',     sub: 'CESS',       status: 'pending' },
-  { label: '0%',      sub: 'EXEMPT',     status: 'ok'      },
-  { label: 'NULL',    sub: 'SUPPLY',     status: 'ok'      },
-  { label: '₹1.2Cr',  sub: 'ITC CLAIM',  status: 'ok'      },
-  { label: '₹45.3L',  sub: 'TURNOVER',   status: 'ok'      },
-  { label: '₹8.7L',   sub: 'REFUND',     status: 'urgent'  },
-  { label: '₹2.1Cr',  sub: 'LIABILITY',  status: 'pending' },
-  { label: '₹15.4L',  sub: 'IGST',       status: 'ok'      },
-  { label: '₹3.2Cr',  sub: 'CGST',       status: 'ok'      },
-  { label: 'ARN',     sub: 'REFERENCE',  status: 'ok'      },
-  { label: 'SCN',     sub: 'NOTICE',     status: 'urgent'  },
-  { label: 'DRC-07',  sub: 'ORDER',      status: 'ok'      },
-  { label: 'ASMT-10', sub: 'SCRUTINY',   status: 'pending' },
-  { label: 'LUT',     sub: 'EXPORT',     status: 'ok'      },
-  { label: 'RCM',     sub: 'REVERSE',    status: 'ok'      },
-  { label: 'CGST',    sub: 'CENTRAL',    status: 'ok'      },
-  { label: 'SGST',    sub: 'STATE',      status: 'ok'      },
-  { label: 'IGST',    sub: 'INTER',      status: 'ok'      },
-  { label: 'CESS',    sub: 'ADDITIONAL', status: 'ok'      },
   { label: 'ITC',     sub: 'INPUT TAX',  status: 'ok'      },
-  { label: 'HSN',     sub: 'CODE',       status: 'ok'      },
-  { label: 'Q1-FY25', sub: 'FILED',      status: 'ok'      },
-  { label: 'Q2-FY25', sub: 'FILED',      status: 'ok'      },
-  { label: 'Q3-FY25', sub: 'FILED',      status: 'ok'      },
-  { label: 'Q4-FY25', sub: 'PENDING',    status: 'pending' },
-  { label: 'ANN-FY25',sub: 'ANNUAL',     status: 'ok'      },
-  { label: 'QRMP',    sub: 'SCHEME',     status: 'ok'      },
+  { label: 'SCN',     sub: 'NOTICE',     status: 'urgent'  },
+  { label: 'RCM',     sub: 'REVERSE',    status: 'ok'      },
+  { label: 'DRC-07',  sub: 'ORDER',      status: 'ok'      },
+  { label: 'LUT',     sub: 'EXPORT',     status: 'ok'      },
+  { label: 'IGST',    sub: 'INTER',      status: 'ok'      },
+  // ── Income Tax ───────────────────────────────────────────────────────────
+  { label: 'ITR-3',   sub: 'BUSINESS',   status: 'ok'      },
+  { label: 'TDS',     sub: 'DEDUCTED',   status: 'pending' },
+  { label: 'Sec.43B', sub: 'MSME',       status: 'urgent'  },
+  { label: 'Sec.80C', sub: 'DEDUCTION',  status: 'ok'      },
+  { label: '26AS',    sub: 'STATEMENT',  status: 'ok'      },
+  { label: 'AIS',     sub: 'INCOME',     status: 'ok'      },
+  { label: '194Q',    sub: 'TDS RATE',   status: 'pending' },
+  { label: '112A',    sub: 'CAP GAINS',  status: 'ok'      },
+  { label: 'Sec.148', sub: 'REOPENING',  status: 'urgent'  },
+  // ── FEMA & RBI ───────────────────────────────────────────────────────────
+  { label: 'FDI',     sub: 'INWARD',     status: 'ok'      },
+  { label: 'ODI',     sub: 'OUTWARD',    status: 'pending' },
+  { label: 'FEMA 20', sub: 'REPORTING',  status: 'ok'      },
+  { label: 'ECB',     sub: 'ADVISORY',   status: 'ok'      },
+  { label: 'FC-GPR',  sub: 'FILING',     status: 'ok'      },
+  { label: 'LRS',     sub: 'REMIT',      status: 'ok'      },
+  // ── Company Law ──────────────────────────────────────────────────────────
+  { label: 'MGT-7',   sub: 'ANNUAL',     status: 'ok'      },
+  { label: 'AOC-4',   sub: 'FINANCIALS', status: 'ok'      },
+  { label: 'DIR-3',   sub: 'KYC',        status: 'pending' },
+  { label: 'MCA-21',  sub: 'PORTAL',     status: 'ok'      },
+  { label: 'Sec.185', sub: 'LOANS',      status: 'urgent'  },
+  { label: 'IBC',     sub: 'INSOLVENCY', status: 'ok'      },
+  { label: 'NCLT',    sub: 'TRIBUNAL',   status: 'ok'      },
+  { label: 'Sec.29A', sub: 'ELIGIBILITY',status: 'urgent'  },
+  { label: 'ROC',     sub: 'COMPLIANCE', status: 'pending' },
+  { label: 'AOA',     sub: 'ARTICLES',   status: 'ok'      },
+  { label: 'MOA',     sub: 'OBJECTS',    status: 'ok'      },
+  { label: 'Sec.186', sub: 'INVEST',     status: 'ok'      },
 ];
 
 const SYMBOLS = [
-  '₹', 'GST', 'GSTR-1', 'GSTR-3B', 'ITC', 'SCN', 'DRC', 'CGST', 'SGST', 'IGST',
-  '18%', '28%', '5%', 'ITR', 'HSN', 'GSTIN', 'Sec.16', 'Sec.17', 'ARN', 'LUT',
-  'RCM', 'QRMP', 'CESS', 'TDS', 'TCS', 'ASMT', 'AAR', 'GSTR-9', 'ITC-04', '12%',
+  // GST
+  'GST', 'ITC', 'IGST', 'CGST', 'SCN', 'DRC', '18%', '28%', '5%',
+  // Income Tax
+  'ITR', 'TDS', 'TCS', 'AIS', '26AS', '80C', '43B', '112A',
+  // FEMA
+  'FDI', 'ODI', 'ECB', 'LRS', 'FEMA',
+  // Company Law
+  'MCA', 'ROC', 'NCLT', 'IBC', 'MGT-7', 'AOC-4',
+  // Common
+  '₹', '§', '%',
 ];
 
 const STATUS_COLOR = { ok: 0x4FB7C5, pending: 0x9FE5F0, urgent: 0xFFFFFF };

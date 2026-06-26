@@ -57,7 +57,7 @@ const StatItem = ({ numeric, suffix, label, delay = 0, decimals = 0 }) => {
 };
 
 const STATS = [
-  { numeric: 2400,  suffix: '+',  label: 'GST Circulars',    delay: 1.2, decimals: 0 },
+  { numeric: 2400,  suffix: '+',  label: 'Legal Circulars',   delay: 1.2, decimals: 0 },
   { numeric: 14,    suffix: '',   label: 'HC Jurisdictions',  delay: 1.3, decimals: 0 },
   { numeric: 99.2,  suffix: '%',  label: 'Citation Accuracy', delay: 1.4, decimals: 1 },
 ];
@@ -118,8 +118,8 @@ const SovereignHero = () => {
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               transition={{ duration: 0.9, delay: 0.68, ease: [0.16, 1, 0.3, 1] }}
             >
-              Autonomous GST reconciliation and compliance engine built for
-              precision-engineered financial command.
+              AI-powered legal and tax research — GST, Income Tax, FEMA,
+              and Company Law — built for precision-engineered advisory.
             </motion.p>
 
             {/* CTAs */}

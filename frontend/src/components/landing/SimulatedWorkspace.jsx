@@ -47,7 +47,7 @@ const SimulatedWorkspace = () => {
                 <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'rgba(34,197,94,0.35)' }} />
               </div>
               <span className="font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: '#475569' }}>
-                LETA Interactive Workspace
+                LETA TEC Interactive Workspace
               </span>
             </div>
             <div className="flex items-center gap-1.5">

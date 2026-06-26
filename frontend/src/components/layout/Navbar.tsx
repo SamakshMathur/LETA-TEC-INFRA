@@ -103,7 +103,7 @@ const Navbar = () => {
                 className="font-mono text-[9px] font-semibold tracking-[0.22em] uppercase"
                 style={{ color: '#4FB7C5', marginTop: '2px', opacity: 0.85 }}
               >
-                TEC AI
+                TEC
               </span>
             </div>
           </Link>
