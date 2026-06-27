@@ -1,40 +1,35 @@
-﻿import React from 'react';
+import React from 'react';
 import {
-  SovereignHero,
-  IntelligenceEngine,
+  ScrollCinemaHero,
   IntelligenceFeed,
-  MemoryMap,
   StatutoryDomains,
   SimulatedWorkspace,
   SovereignTrust,
 } from '../components/landing';
-import { DynamicBackground } from '../components/effects';
+import CABotDemo from '../components/landing/CABotDemo';
 
 const Home: React.FC = () => {
   return (
     <div className="relative overflow-hidden bg-[#000000]">
-      <DynamicBackground />
-      
-      {/* SECTION 01 — Sovereign Hero Interface */}
-      <SovereignHero />
-      
+
+      {/* SECTION 01 — Cinematic scroll hero */}
+      <ScrollCinemaHero />
+
       {/* SECTION 02 — Statutory Intelligence Modules */}
       <StatutoryDomains />
-      
-      {/* SECTION 03 — Statutory Intelligence Engine */}
-      <IntelligenceEngine />
-      
+
       {/* SECTION 04 — Live Legal Intelligence Feed */}
       <IntelligenceFeed />
-      
-      {/* SECTION 05 — Legal Intelligence Memory Map */}
-      <MemoryMap />
-      
+
+      {/* SECTION 05 — AI CA Bot Demo */}
+      <CABotDemo />
+
       {/* SECTION 06 — Operational Intelligence Workspace */}
       <SimulatedWorkspace />
-      
+
       {/* SECTION 07 — Sovereign Trust Layer */}
       <SovereignTrust />
+
     </div>
   );
 };

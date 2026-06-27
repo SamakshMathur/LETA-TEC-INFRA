@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Bookmark, Download,
   Search, X, Brain
@@ -38,6 +38,46 @@ interface CategoryRow {
   accentClass: string;
 }
 
+// ── 3D tilt wrapper ────────────────────────────────────────────────────────
+const Card3D: React.FC<{ children: React.ReactNode; className: string; onClick?: () => void }> = ({ children, className, onClick }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const rawX = useMotionValue(0);
+  const rawY = useMotionValue(0);
+  const rawGlowX = useMotionValue(50);
+  const rawGlowY = useMotionValue(50);
+  const rawScale = useMotionValue(1);
+  const spring = { stiffness: 300, damping: 28, mass: 0.55 };
+  const rotateX = useSpring(useTransform(rawY, [-0.5, 0.5], [8, -8]),  spring);
+  const rotateY = useSpring(useTransform(rawX, [-0.5, 0.5], [-8, 8]),  spring);
+  const scale   = useSpring(rawScale, { stiffness: 320, damping: 26 });
+  const glowX   = useSpring(rawGlowX, { stiffness: 200, damping: 30 });
+  const glowY   = useSpring(rawGlowY, { stiffness: 200, damping: 30 });
+  const specular = useTransform([glowX, glowY] as any, ([x, y]: number[]) =>
+    `radial-gradient(circle at ${x}% ${y}%, rgba(255,255,255,0.08) 0%, transparent 65%)`
+  );
+  return (
+    <motion.div
+      ref={ref}
+      style={{ rotateX, rotateY, scale, transformStyle: 'preserve-3d', transformPerspective: 800, position: 'relative' }}
+      onMouseMove={(e) => {
+        const r = ref.current?.getBoundingClientRect();
+        if (!r) return;
+        rawX.set((e.clientX - r.left) / r.width  - 0.5);
+        rawY.set((e.clientY - r.top)  / r.height - 0.5);
+        rawGlowX.set(((e.clientX - r.left) / r.width)  * 100);
+        rawGlowY.set(((e.clientY - r.top)  / r.height) * 100);
+      }}
+      onMouseEnter={() => rawScale.set(1.04)}
+      onMouseLeave={() => { rawX.set(0); rawY.set(0); rawGlowX.set(50); rawGlowY.set(50); rawScale.set(1); }}
+      className={className}
+      onClick={onClick}
+    >
+      {children}
+      <motion.div style={{ background: specular, position: 'absolute', inset: 0, borderRadius: 'inherit', pointerEvents: 'none', zIndex: 10 }} />
+    </motion.div>
+  );
+};
+
 // ── Redesigned Card System (Matte, spacious, structured) ──────────────────
 const DocCard: React.FC<{
   doc: DocItem;
@@ -45,9 +85,9 @@ const DocCard: React.FC<{
   onDownload: (d: DocItem) => void;
 }> = ({ doc, onClick, onDownload }) => {
   const meta = getDocumentContext(doc.title);
-  
+
   return (
-    <motion.div
+    <Card3D
       className={cn('docCard')}
       onClick={() => onClick(doc)}
     >
@@ -102,7 +142,7 @@ const DocCard: React.FC<{
           <span>{meta.date}</span>
         </div>
       </div>
-    </motion.div>
+    </Card3D>
   );
 };
 
@@ -120,7 +160,7 @@ const DocumentRow: React.FC<{
   useEffect(() => {
     fetch(`${API_BASE}/list/${category.id}`)
       .then(r => r.json())
-      .then(data => { setDocs(data); setLoading(false); })
+      .then(data => { setDocs(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [category.id]);
 
@@ -196,7 +236,7 @@ export const DocumentLibrary: React.FC = () => {
   useEffect(() => {
     fetch(`${API_BASE}/list/all`)
       .then(r => r.json())
-      .then(data => { setAllDocs(data); setAllDocsLoading(false); })
+      .then(data => { setAllDocs(Array.isArray(data) ? data : []); setAllDocsLoading(false); })
       .catch(() => setAllDocsLoading(false));
   }, []);
 

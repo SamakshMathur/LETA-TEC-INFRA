@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 # ── Redis client (lazy, optional — app works without Redis) ──────────────────
 
 _redis_client = None
+_redis_failed_until: float = 0.0  # circuit-breaker timestamp
 
 # ── DiskCache fallback (used when Redis is unavailable) ──────────────────────
 # Works with the local filesystem — ephemeral per container session but still
@@ -59,10 +60,17 @@ def _get_disk_cache():
 
 
 def _get_redis():
-    """Returns a connected Redis client, or None if Redis is unavailable."""
-    global _redis_client
+    """Returns a connected Redis client, or None if Redis is unavailable.
+
+    Circuit-breaker: after a connection failure, waits 60 s before retrying
+    so the 2-second socket_connect_timeout is not paid on every call within
+    the same request (would add ~16 s when Redis is down).
+    """
+    global _redis_client, _redis_failed_until
     if _redis_client is not None:
         return _redis_client
+    if time.monotonic() < _redis_failed_until:
+        return None
     try:
         import redis
         client = redis.from_url(REDIS_URL, decode_responses=False, socket_connect_timeout=2)
@@ -72,6 +80,7 @@ def _get_redis():
     except Exception as e:
         logger.warning(f"Redis unavailable — falling back to DiskCache: {e}")
         _redis_client = None
+        _redis_failed_until = time.monotonic() + 60.0
     return _redis_client
 
 

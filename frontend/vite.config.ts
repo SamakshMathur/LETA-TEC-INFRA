@@ -1,9 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { workflow } from 'workflow/vite';
 
 export default defineConfig({
-  plugins: [react(), workflow()],
+  plugins: [react()],
   server: {
     proxy: {
       '/api_proxy': {

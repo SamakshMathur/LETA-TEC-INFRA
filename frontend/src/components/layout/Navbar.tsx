@@ -67,30 +67,45 @@ const Navbar = () => {
 
   return (
     <nav
-      className="fixed top-0 left-0 w-full z-50 transition-all duration-300"
+      className="fixed top-0 left-0 w-full z-50 transition-all duration-500"
       style={{
-        height: '80px',
-        background: '#000000',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        height: scrolled ? '68px' : '80px',
+        background: scrolled
+          ? 'rgba(0,0,0,0.82)'
+          : 'rgba(0,0,0,0)',
+        backdropFilter: scrolled ? 'blur(24px) saturate(180%)' : 'none',
+        WebkitBackdropFilter: scrolled ? 'blur(24px) saturate(180%)' : 'none',
+        borderBottom: scrolled
+          ? '1px solid rgba(79,183,197,0.1)'
+          : '1px solid rgba(255,255,255,0.0)',
+        boxShadow: scrolled ? '0 8px 40px rgba(0,0,0,0.5)' : 'none',
       }}
     >
       <div className="w-full px-10 lg:px-20 h-full flex items-center">
 
         {/* ── Logo ─────────────────────────────────────────────────────────── */}
         <div className="flex-1 flex justify-start">
-          <Link to="/" className="flex items-center gap-2 group flex-shrink-0">
-            <span
-              className="font-display font-bold text-2xl tracking-[0.04em]"
-              style={{ color: '#F4F7FA' }}
-            >
-              LETA
-            </span>
-            <span
-              className="font-display font-bold text-2xl tracking-[0.04em]"
-              style={{ color: '#4FB7C5' }}
-            >
-              TITAN
-            </span>
+          <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
+            <img
+              src="/LETA_WHITE_ON_BLACK_4K.png"
+              alt="LETA"
+              className="h-9 w-9 object-contain"
+              style={{ mixBlendMode: 'screen' }}
+            />
+            <div className="flex flex-col leading-none">
+              <span
+                className="font-display font-bold text-2xl tracking-[0.06em]"
+                style={{ color: '#F4F7FA', lineHeight: 1 }}
+              >
+                LETA
+              </span>
+              <span
+                className="font-mono text-[9px] font-semibold tracking-[0.22em] uppercase"
+                style={{ color: '#4FB7C5', marginTop: '2px', opacity: 0.85 }}
+              >
+                TEC AI
+              </span>
+            </div>
           </Link>
         </div>
 

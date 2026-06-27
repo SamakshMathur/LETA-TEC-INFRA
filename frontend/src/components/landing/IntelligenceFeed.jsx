@@ -157,21 +157,24 @@ const IntelligenceFeed = () => {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <section className="py-[80px] bg-[#000000] relative overflow-hidden border-t border-b border-white/[0.03]">
-      <div className="max-w-[1600px] mx-auto px-10 lg:px-20 relative z-10">
+    <section style={{
+      padding: '80px 0',
+      background: '#000000',
+      position: 'relative', overflow: 'hidden',
+      borderTop: '1px solid rgba(255,255,255,0.03)',
+      borderBottom: '1px solid rgba(255,255,255,0.03)',
+    }}>
+      <div className="section-container">
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center">
 
           {/* Left Column */}
           <div className="lg:col-span-5 flex flex-col justify-center space-y-6">
-            <div className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-[#67E8F9] font-bold">
-              <Activity size={14} className="animate-pulse" />
-              <span>Real-Time Operation Feed</span>
-            </div>
-            <h2 className="font-display font-bold text-3xl md:text-5xl text-white uppercase tracking-tight leading-tight">
-              Sovereign Legal Intelligence Feed
+            <p className="section-eyebrow">// Real-Time Operation Feed</p>
+            <h2 className="section-headline">
+              Legal Intelligence<br />Feed
             </h2>
-            <p className="font-body text-[#A1AAB8] text-base leading-relaxed font-light">
+            <p className="section-subhead">
               LETA constantly reads, hashes, and indexes India's statutory frameworks,
               updates, circulars, and dispute outcomes. Every document uploaded by the
               admin team appears here instantly.
@@ -206,7 +209,7 @@ const IntelligenceFeed = () => {
 
           {/* Right Column: Terminal Feed */}
           <div className="lg:col-span-7">
-            <div className="rounded-leta border border-white/[0.06] bg-[#10141B]/80 backdrop-blur-md overflow-hidden">
+            <div style={{ border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(10,15,24,0.8)', backdropFilter: 'blur(12px)', overflow: 'hidden' }}>
 
               {/* Header */}
               <div className="px-6 py-4 flex items-center justify-between bg-white/[0.02] border-b border-white/[0.04]">
@@ -262,6 +265,7 @@ const IntelligenceFeed = () => {
           </div>
 
         </div>
+
       </div>
     </section>
   );

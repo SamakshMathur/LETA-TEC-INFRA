@@ -314,7 +314,7 @@ class Retriever:
 
         return result
 
-    def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False):
+    def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False, skip_rerank: bool = False):
         if not query or not query.strip():
             logger.warning("search() called with empty query")
             return []
@@ -440,8 +440,9 @@ class Retriever:
         reranker_input = combined_results[:RERANK_MAX]
 
         # --- Semantic Reranking (FlashRank) ---
+        # skip_rerank=True bypasses the cross-encoder to stay within API Gateway's 29s timeout
         reranked_results = reranker_input
-        if reranker_input and self.ranker:
+        if reranker_input and self.ranker and not skip_rerank:
             try:
                 from flashrank import RerankRequest
                 passages = [

@@ -1,225 +1,174 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronRight } from 'lucide-react';
+import IsometricCubeField from '../effects/IsometricCubeField';
+import HeroMeshBackground from '../effects/HeroMeshBackground';
+import MagneticButton from '../ui/MagneticButton';
+import { useCountUp } from '../../hooks/useCountUp';
 
 import cx from 'classnames/bind';
 import styles from './SovereignHero.module.css';
 
 const cn = cx.bind(styles);
 
-const STATS = [
-  { number: '2,400+', label: 'GST Circulars' },
-  { number: '14',     label: 'HC Jurisdictions' },
-  { number: '99.2%',  label: 'Citation Accuracy' },
-];
-
-const InteractiveDotGrid = () => {
-  const canvasRef = React.useRef(null);
-  const mouseRef = React.useRef({ x: -1000, y: -1000, targetX: -1000, targetY: -1000 });
-
-  React.useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let animationFrameId;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
-
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-
-    const handleMouseMove = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      mouseRef.current.targetX = e.clientX - rect.left;
-      mouseRef.current.targetY = e.clientY - rect.top;
-    };
-
-    const handleMouseLeave = () => {
-      mouseRef.current.targetX = -1000;
-      mouseRef.current.targetY = -1000;
-    };
-
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseleave', handleMouseLeave);
-
-    const spacing = 22;
-    const interactionRadius = 140;
-
-    const render = () => {
-      ctx.clearRect(0, 0, width, height);
-      mouseRef.current.x += (mouseRef.current.targetX - mouseRef.current.x) * 0.1;
-      mouseRef.current.y += (mouseRef.current.targetY - mouseRef.current.y) * 0.1;
-
-      const mx = mouseRef.current.x;
-      const my = mouseRef.current.y;
-
-      for (let x = spacing / 2; x < width; x += spacing) {
-        for (let y = spacing / 2; y < height; y += spacing) {
-          const dx = mx - x;
-          const dy = my - y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          let dotRadius = 1.0;
-          let alpha = 0.18;
-
-          if (dist < interactionRadius) {
-            const force = (interactionRadius - dist) / interactionRadius;
-            dotRadius = 1.0 + force * 1.5;
-            alpha = 0.18 + force * 0.42;
-          }
-
-          ctx.beginPath();
-          ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(94, 206, 220, ${alpha})`;
-          ctx.fill();
-        }
-      }
-
-      animationFrameId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseleave', handleMouseLeave);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, []);
-
-  return <canvas ref={canvasRef} className={cn('interactiveDotGridCanvas')} />;
+/* ── Word-by-word kinetic reveal ───────────────────────────────────────── */
+const KineticHeading = ({ children, delay = 0, className }) => {
+  const words = String(children).split(' ');
+  return (
+    <span className={className}>
+      {words.map((word, i) => (
+        <span
+          key={i}
+          style={{ display: 'inline-block', overflow: 'hidden', verticalAlign: 'bottom', paddingBottom: '0.05em' }}
+        >
+          <motion.span
+            style={{ display: 'inline-block' }}
+            initial={{ opacity: 0, y: '105%', filter: 'blur(10px)' }}
+            animate={{ opacity: 1, y: '0%', filter: 'blur(0px)' }}
+            transition={{ duration: 0.72, delay: delay + i * 0.07, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {word}{i < words.length - 1 ? ' ' : ''}
+          </motion.span>
+        </span>
+      ))}
+    </span>
+  );
 };
 
+/* ── Stat counter ──────────────────────────────────────────────────────── */
+const StatItem = ({ numeric, suffix, label, delay = 0, decimals = 0 }) => {
+  const { count, ref } = useCountUp(numeric, 2000, decimals);
+  const displayed = decimals > 0
+    ? count.toFixed(decimals)
+    : Math.floor(count).toLocaleString();
+  return (
+    <motion.div
+      ref={ref}
+      className={cn('statItem')}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, delay, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <span className={cn('statNumber')}>{displayed}{suffix}</span>
+      <span className={cn('statLabel')}>{label}</span>
+    </motion.div>
+  );
+};
+
+const STATS = [
+  { numeric: 2400,  suffix: '+',  label: 'GST Circulars',    delay: 1.2, decimals: 0 },
+  { numeric: 14,    suffix: '',   label: 'HC Jurisdictions',  delay: 1.3, decimals: 0 },
+  { numeric: 99.2,  suffix: '%',  label: 'Citation Accuracy', delay: 1.4, decimals: 1 },
+];
+
+/* ── Main Component ─────────────────────────────────────────────────────── */
 const SovereignHero = () => {
   return (
     <section className={cn('heroSection')}>
 
-      {/* Cinematic Layered Background System */}
-      <div className={cn('bgNoiseOverlay')} />
-      <InteractiveDotGrid />
-      <div className={cn('bgRadialFalloff')} />
-      <div className={cn('bgEdgeDarkening')} />
-      <div className={cn('bgLightShaft1')} />
-      <div className={cn('bgLightShaft2')} />
-      <div className={cn('bgDepthBlurOrb1')} />
-      <div className={cn('bgDepthBlurOrb2')} />
+      {/* CSS gradient mesh — soft ambient glow */}
+      <HeroMeshBackground />
 
-      {/* Ambient Floating Dust Particles */}
-      <div className={cn('dustParticlesContainer')}>
-        <div className={cn('dustParticle', 'p1')} />
-        <div className={cn('dustParticle', 'p2')} />
-        <div className={cn('dustParticle', 'p3')} />
-        <div className={cn('dustParticle', 'p4')} />
-        <div className={cn('dustParticle', 'p5')} />
-        <div className={cn('dustParticle', 'p6')} />
-      </div>
+      {/* 3D isometric cube field */}
+      <IsometricCubeField />
+
+      {/* Dark overlay so text stays readable over cubes */}
+      <div className={cn('cubeOverlay')} aria-hidden="true" />
+
+      {/* Ambient depth orbs */}
+      <div className={cn('bgDepthBlurOrb1')} aria-hidden="true" />
+      <div className={cn('bgDepthBlurOrb2')} aria-hidden="true" />
+      <div className={cn('bgLensFlare')}     aria-hidden="true" />
 
       <div className={cn('gridContainer')}>
-        <div className={cn('grid')}>
+        <div className={cn('heroGrid')}>
+
+          {/* ── Left: text content ──────────────────────────────────────── */}
           <div className={cn('leftColumn')}>
 
-            {/* Eyebrow line — expands from center before badge */}
+            {/* Eyebrow badge */}
             <motion.div
-              className={cn('eyebrowLine')}
-              initial={{ scaleX: 0, opacity: 0 }}
-              animate={{ scaleX: 1, opacity: 1 }}
-              transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
-            />
-
-            {/* System Status Indicator */}
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              className={cn('eyebrowWrapper')}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.15 }}
-              className={cn('statusIndicator')}
+              transition={{ duration: 0.6, delay: 0.1 }}
             >
-              <span className={cn('pingDotContainer')}>
-                <span className={cn('pingDot')}></span>
-                <span className={cn('staticDot')}></span>
-              </span>
-              <span className={cn('statusText')}>
-                Enterprise Statutory Intelligence
-              </span>
+              <span className={cn('eyebrowDot')} />
+              <span className={cn('eyebrowText')}>Engine V2.4 Active</span>
             </motion.div>
 
-            {/* Hero Heading */}
-            <motion.h1
-              initial={{ opacity: 0, y: 25 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.9, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className={cn('heroHeading')}
-            >
-              Legal and TAX <br />
-              <span className={cn('headingGradient')}>
-                Assistant
-              </span>
-            </motion.h1>
+            {/* Headline */}
+            <h1 className={cn('heroHeading')}>
+              <KineticHeading delay={0.2} className={cn('headingLine')}>
+                Intelligence
+              </KineticHeading>
+              <KineticHeading delay={0.32} className={cn('headingLine')}>
+                for High-Stakes
+              </KineticHeading>
+              <KineticHeading delay={0.44} className={cn('headingLineAccent')}>
+                Legal &amp; Tax Matters.
+              </KineticHeading>
+            </h1>
 
-            {/* Supporting Copy */}
+            {/* Body copy */}
             <motion.p
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.35 }}
               className={cn('supportingCopy')}
+              initial={{ opacity: 0, y: 12, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.9, delay: 0.68, ease: [0.16, 1, 0.3, 1] }}
             >
-              Professional GST and legal advisory intelligence for compliance and litigation workflows.
-              Built with high-fidelity citations, circulars, and Indian judicial precedents.
+              Autonomous GST reconciliation and compliance engine built for
+              precision-engineered financial command.
             </motion.p>
 
-            {/* CTA Elements */}
+            {/* CTAs */}
             <motion.div
-              initial={{ opacity: 0, y: 15 }}
+              className={cn('ctaStack')}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.45 }}
-              className={cn('ctaContainer')}
+              transition={{ duration: 0.8, delay: 0.84, ease: [0.16, 1, 0.3, 1] }}
             >
-              <Link to="/gst">
-                <button className={cn('ctaButtonPrimary')}>
-                  Start Consultation
-                  <ChevronRight size={14} className={cn('chevronIcon')} />
-                </button>
-              </Link>
-              <Link to="/about">
-                <button className={cn('ctaButtonSecondary')}>
-                  Learn More
-                </button>
-              </Link>
+              <MagneticButton strength={0.22} className={cn('ctaFullWidth')}>
+                <Link to="/gst" className={cn('ctaButtonPrimary')}>
+                  <span>Enter Command Center</span>
+                  <ArrowRight size={16} />
+                  <span className={cn('ctaButtonShine')} />
+                </Link>
+              </MagneticButton>
+
+              <MagneticButton strength={0.18} className={cn('ctaFullWidth')}>
+                <Link to="/about" className={cn('ctaButtonSecondary')}>
+                  <span>View Capabilities</span>
+                  <ChevronRight size={14} style={{ opacity: 0.5 }} />
+                </Link>
+              </MagneticButton>
             </motion.div>
 
-            {/* Stat Row */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1, delay: 0.65 }}
-              className={cn('statsRow')}
-            >
-              {STATS.map((s, i) => (
-                <React.Fragment key={s.label}>
-                  <div className={cn('statItem')}>
-                    <span className={cn('statNumber')}>{s.number}</span>
-                    <span className={cn('statLabel')}>{s.label}</span>
-                  </div>
+            {/* Stats */}
+            <div className={cn('statsRow')}>
+              {STATS.map((stat, i) => (
+                <React.Fragment key={stat.label}>
+                  <StatItem {...stat} />
                   {i < STATS.length - 1 && <div className={cn('statDivider')} />}
                 </React.Fragment>
               ))}
-            </motion.div>
+            </div>
 
           </div>
+
+          {/* ── Right: cube grid lives in the absolute background ────────── */}
+          <div className={cn('rightColumn')} aria-hidden="true" />
+
         </div>
       </div>
 
-      {/* Scroll Cue */}
+      {/* Scroll cue */}
       <motion.div
         className={cn('scrollCue')}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 1, delay: 1.1 }}
+        transition={{ duration: 1, delay: 1.5 }}
       >
         <div className={cn('scrollLine')}>
           <div className={cn('scrollDot')} />

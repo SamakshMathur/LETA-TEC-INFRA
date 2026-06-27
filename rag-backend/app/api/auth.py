@@ -10,7 +10,7 @@ from typing import Literal, Optional
 import requests as _requests
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from app.database import (
     get_user_collection,
@@ -129,10 +129,51 @@ class SendOTPRequest(BaseModel):
     contact: str
     method: Literal["email", "phone"]
 
+    @model_validator(mode="after")
+    def validate_contact(self):
+        contact = self.contact.strip()
+
+        if self.method == "email":
+            contact = contact.lower()
+
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", contact):
+                raise ValueError("Invalid email")
+
+        else:
+            digits = re.sub(r"\D", "", contact)
+
+            if len(digits) < 10:
+                raise ValueError("Phone number must contain at least 10 digits")
+
+            contact = digits[-10:]
+
+        self.contact = contact
+        return self
+
 
 class VerifyOTPRequest(BaseModel):
     contact: str
     otp: str
+
+    @field_validator("contact")
+    @classmethod
+    def validate_contact(cls, v):
+        v = v.strip()
+
+        if "@" in v:
+            v = v.lower()
+
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+                raise ValueError("Invalid email")
+
+            return v
+
+        digits = re.sub(r"\D", "", v)
+
+        if len(digits) >= 10:
+            return digits[-10:]
+
+        return v
 
     @field_validator("otp")
     @classmethod
@@ -391,29 +432,67 @@ async def send_otp(req: SendOTPRequest):
     })
 
     if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found",
+        if not DEV_MODE:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No account found with that {req.method}. Please register first.",
+            )
+
+        username = f"dev_{re.sub(r'[^a-zA-Z0-9_]', '_', req.contact)[-30:]}"
+        users_col.update_one(
+            {field: req.contact},
+            {
+                "$setOnInsert": {
+                    "username": username,
+                    "full_name": "Dev User",
+                    "phone": req.contact if req.method == "phone" else "",
+                    "email": req.contact if req.method == "email" else None,
+                    "profession": "Other",
+                    "gender": "Prefer not to say",
+                    "verified": False,
+                    "role": "user",
+                    "created_at": datetime.utcnow(),
+                    "last_login": None,
+                }
+            },
+            upsert=True,
         )
+        user = users_col.find_one({
+            field: req.contact
+        })
 
-    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    now = datetime.utcnow()
+    one_hour_ago = now - timedelta(hours=1)
 
-    recent_requests = otp_col.count_documents({
-        "contact": req.contact,
-        "created_at": {
-            "$gte": one_hour_ago
-        },
+    otp_record = otp_col.find_one({
+        "contact": req.contact
     })
 
-    if recent_requests >= OTP_RATE_LIMIT_PER_HOUR:
+    rate_window_start = None
+    request_count = 0
+
+    if otp_record:
+        rate_window_start = (
+            otp_record.get("rate_window_start")
+            or otp_record.get("created_at")
+        )
+
+        if rate_window_start and rate_window_start >= one_hour_ago:
+            request_count = otp_record.get("request_count", 1)
+        else:
+            rate_window_start = None
+
+    if request_count >= OTP_RATE_LIMIT_PER_HOUR:
         raise HTTPException(
             status_code=429,
             detail="Too many OTP requests",
         )
 
     otp = _generate_otp()
+    rate_window_start = rate_window_start or now
+    request_count += 1
 
-    expires_at = datetime.utcnow() + timedelta(
+    expires_at = now + timedelta(
         minutes=OTP_EXPIRY_MINUTES
     )
 
@@ -425,8 +504,10 @@ async def send_otp(req: SendOTPRequest):
                 "method": req.method,
                 "otp": otp,
                 "verified": False,
-                "created_at": datetime.utcnow(),
+                "created_at": now,
                 "expires_at": expires_at,
+                "rate_window_start": rate_window_start,
+                "request_count": request_count,
             }
         },
         upsert=True,

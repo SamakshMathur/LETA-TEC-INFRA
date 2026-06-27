@@ -38,8 +38,15 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      await sendOtpApi(contact.trim(), method);
-      setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(30);
+      const data = await sendOtpApi(contact.trim(), method);
+      if (data?.otp_preview) {
+        // Dev mode: auto-verify immediately using the returned OTP
+        const session = await verifyOtpApi(contact.trim(), data.otp_preview);
+        login(session, false);
+        navigate(from, { replace: true });
+      } else {
+        setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(30);
+      }
     } catch (err: any) {
       const d = err.response?.data?.detail;
       setError(typeof d === 'string' ? d : 'Failed to send OTP. Please try again.');

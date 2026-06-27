@@ -61,17 +61,32 @@ app = FastAPI(
 )
 
 @app.on_event("startup")
-async def _seed_feed_store():
-    """Pre-populate the in-memory event log from the filesystem on startup."""
+async def _startup_tasks():
+    """Seed feed store and pre-warm AI models in background."""
+    import asyncio as _asyncio
+
+    # 1. Seed in-memory event log
     try:
-        from app.api.documents import get_activity_feed  # existing REST helper
+        from app.api.documents import get_activity_feed
         from app.feed_store import _event_log
-        items = get_activity_feed()      # returns list, newest first
-        for item in reversed(items):    # insert oldest first so deque order is correct
+        items = get_activity_feed()
+        for item in reversed(items):
             _event_log.append(item)
         logger.info(f"Feed store seeded with {len(items)} events from filesystem")
     except Exception as e:
         logger.warning(f"Feed store seed failed (non-fatal): {e}")
+
+    # 2. Pre-load embedding model + FAISS index so the first /ask-sync request
+    #    doesn't pay the ~15-20s cold-start cost and timeout at API Gateway.
+    async def _warmup():
+        try:
+            from app.dependencies import preload_all_models
+            await _asyncio.to_thread(preload_all_models)
+            logger.info("Startup model warmup complete")
+        except Exception as e:
+            logger.warning(f"Startup warmup failed (non-fatal): {e}")
+
+    _asyncio.ensure_future(_warmup())
 
 
 @app.get("/")
@@ -87,7 +102,7 @@ import os
 
 # CORS: Use ALLOWED_ORIGINS env var in production (comma-separated),
 # falls back to localhost dev origins when not set.
-_default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://gst-rag-95li.vercel.app"
+_default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://gst-rag-95li.vercel.app,https://main.d1q7i80dk455hq.amplifyapp.com"
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
@@ -415,7 +430,12 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         collection.update_one,
                         {"session_id": session_id},
                         {
-                            "$push": {"messages": {"role": "assistant", "content": full_answer, "timestamp": datetime.now()}},
+                            "$push": {"messages": {
+                                "role": "assistant",
+                                "content": full_answer,
+                                "sources": unique_sources,
+                                "timestamp": datetime.now(),
+                            }},
                             "$set": {"updated_at": datetime.now()},
                         },
                     )
@@ -611,6 +631,158 @@ async def ask_question(request: Request, req: QuestionRequest):
 
     from fastapi.responses import StreamingResponse
     return StreamingResponse(rag_pipeline_orchestrator(), media_type="text/event-stream")
+
+
+@app.post("/ask-sync")
+@limiter.limit("20/minute")
+async def ask_question_sync(request: Request, req: QuestionRequest):
+    """Non-streaming version of /ask — returns complete JSON response.
+    Required for AWS API Gateway HTTP_PROXY compatibility (no SSE streaming support)."""
+    import asyncio as _asyncio
+    import urllib.parse as _urlparse
+    from fastapi.responses import JSONResponse as _JSONResponse
+    from app.routing.router import route_query as _route_query
+    from app.generation.synthesizer import _estimate_complexity, synthesize_answer_stream as _synth_stream
+    from app.generation.calculation_engine import detect_and_calculate, format_for_context
+    from app.generation.context_compressor import compress_context
+    from app.cache import cache_lookup
+    from app.retrieval.retriever import embed_query
+
+    question = req.question.strip()
+    session_id = req.session_id
+
+    if session_id:
+        collection = get_session_collection()
+        if collection is not None:
+            collection.update_one(
+                {"session_id": session_id},
+                {"$push": {"messages": {"role": "user", "content": question, "timestamp": datetime.now()}}}
+            )
+
+    route = _route_query(question)
+    domain_paths = route.get("domain_paths", [])
+    _q = question.lower()
+    _complexity = _estimate_complexity(question)
+
+    history_context = ""
+    _session_is_draft = False
+    if session_id:
+        collection = get_session_collection()
+        if collection is not None:
+            _sess = collection.find_one({"session_id": session_id})
+            if _sess and "messages" in _sess:
+                recent = _sess["messages"][:-1][-6:]
+                for msg in recent:
+                    history_context += f"{msg['role'].upper()}: {msg['content']}\n"
+                _DRAFT_HIST_KW = [
+                    "advisory", "our understanding", "gst implications", "provide opinion",
+                    "our comments", "tax position", "gst treatment", "advise on", "legal opinion",
+                    "draft", "notice", "reply", "appeal", "scn", "show cause", "drc-01",
+                ]
+                _session_is_draft = any(k in history_context.lower() for k in _DRAFT_HIST_KW)
+
+    query_vec = embed_query(question)
+    cached_answer = cache_lookup(question, query_vec)
+    if cached_answer:
+        cached_text, cached_sources = cached_answer
+        return _JSONResponse({"answer": cached_text, "sources": cached_sources or []})
+
+    calc_result = detect_and_calculate(question)
+    calc_block = format_for_context(calc_result) if calc_result else ""
+
+    _DRAFT_KW = [
+        "draft", "notice", "reply", "appeal", "submission", "advisory", "scn", "show cause",
+        "drc-01", "drc 01", "asmt-10", "our understanding", "gst implications",
+        "provide opinion", "our comments", "tax position", "advise on",
+    ]
+    _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW)
+
+    # Skip LLM-based query expansion in sync mode — saves ~10-15s from the extra Sonnet call.
+    # Use rule-based multi-query for drafts only (no LLM needed).
+    refined_q = question
+    if _is_draft:
+        advanced_queries = {
+            "queries": [
+                refined_q,
+                refined_q + " section rule act provisions conditions eligibility liability",
+                refined_q + " high court supreme court judgment held ruling decision AAR",
+                refined_q + " CBIC circular notification clarification instruction",
+            ],
+            "hyde_document": "", "topic": "General", "subtopic": None,
+        }
+    else:
+        advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
+
+    retriever = get_retriever()
+    # Reduced top_k + skip_rerank: FlashRank with ms-marco-MiniLM-L-12-v2 takes
+    # 30-50s on 100+ candidates — must bypass it to fit inside API Gateway's 29s timeout.
+    _top_k = 15 if _is_draft else (12 if _complexity >= 0.60 else 10)
+    chunks = retriever.search(
+        query=refined_q,
+        top_k=_top_k,
+        allowed_sources=route["use_sources"],
+        advanced_queries=advanced_queries,
+        domain_paths=domain_paths,
+        is_draft=_is_draft,
+        skip_rerank=True,
+    )
+
+    citation_block = build_context(chunks, is_draft=_is_draft)
+    compressed_block = compress_context(chunks, question, is_draft=_is_draft)
+    full_rag_context = (
+        (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
+        + citation_block
+        + (f"\n\n{calc_block}" if calc_block else "")
+        + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
+        + compressed_block
+    )
+
+    # force_haiku=True: use Claude Haiku (~5-10s) instead of Sonnet (~30-40s)
+    # to stay within API Gateway's hard 29-second integration timeout
+    answer = await _asyncio.to_thread(
+        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=True))
+    )
+
+    unique_sources: list = []
+    seen_src: set = set()
+    for c in chunks:
+        _dedup_rel = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "") or c.get("source", "")
+        src_key = (_dedup_rel, c.get("page", 0))
+        if src_key not in seen_src:
+            seen_src.add(src_key)
+            _raw_src = c.get("source", "") or c.get("metadata", {}).get("source", "")
+            _rel_path = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "")
+            _basename = os.path.basename(_rel_path) if _rel_path else os.path.basename(_raw_src)
+            _enc_path = _urlparse.quote(_rel_path.replace("\\", "/"), safe="") if _rel_path else ""
+            _enc_name = _urlparse.quote(_basename, safe="")
+            _url = (
+                f"/api/documents/view_by_path?path={_enc_path}"
+                if _enc_path else
+                f"/api/documents/view?category=all&filename={_enc_name}"
+            )
+            unique_sources.append({
+                "title": _basename or "Document",
+                "page": c.get("page", 1),
+                "url": _url,
+                "rel_path": _rel_path,
+                "score": float(c.get("_rerank_score", 0)),
+            })
+        if len(unique_sources) >= 8:
+            break
+
+    if session_id and answer.strip():
+        collection = get_session_collection()
+        if collection is not None:
+            collection.update_one(
+                {"session_id": session_id},
+                {
+                    "$push": {"messages": {"role": "assistant", "content": answer, "timestamp": datetime.now()}},
+                    "$set": {"updated_at": datetime.now()},
+                }
+            )
+
+    return _JSONResponse({"answer": answer, "sources": unique_sources})
+
 
 @app.post("/ask-with-file")
 @limiter.limit("20/minute")

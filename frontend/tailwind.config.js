@@ -99,7 +99,7 @@ export default {
       },
 
       borderRadius: {
-        leta: '28px',
+        leta: '0px',
       },
 
       boxShadow: {

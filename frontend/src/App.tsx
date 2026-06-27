@@ -5,6 +5,9 @@ import { Navbar, SystemFooter, ScrollToTop } from './components/layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { PublicRoute }    from './components/auth/PublicRoute';
 import { authRoutes, protectedRoutes } from './routes';
+import GrainOverlay from './components/effects/GrainOverlay';
+import ScrollProgress from './components/effects/ScrollProgress';
+import PageTransition from './components/effects/PageTransition';
 
 const NotFound: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-screen gap-6"
@@ -34,10 +37,13 @@ class ErrorBoundary extends React.Component<
       return (
         <div style={{ background: '#000000', color: '#EF4444', minHeight: '100vh',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexDirection: 'column', gap: '1rem', fontFamily: 'monospace' }}>
+          flexDirection: 'column', gap: '1rem', fontFamily: 'monospace', padding: '2rem' }}>
           <h2>Something went wrong</h2>
-          <pre style={{ color: '#A1AAB8', fontSize: '0.8rem', maxWidth: '80vw', overflow: 'auto' }}>
+          <pre style={{ color: '#A1AAB8', fontSize: '0.75rem', maxWidth: '80vw', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
             {this.state.error.message}
+          </pre>
+          <pre style={{ color: '#6B7280', fontSize: '0.65rem', maxWidth: '80vw', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+            {this.state.error.stack}
           </pre>
           <button onClick={() => window.location.href = '/'}
             style={{ color: '#67E8F9', border: '1px solid rgba(103,232,249,0.4)',
@@ -67,7 +73,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <div className="min-h-screen flex flex-col"
       style={{ background: '#000000', backgroundAttachment: 'fixed', color: '#A1AAB8' }}>
       <Navbar />
-      <main className="flex-grow">{children}</main>
+      <main className="flex-grow">
+        <PageTransition>{children}</PageTransition>
+      </main>
       <SystemFooter />
     </div>
   );
@@ -77,6 +85,8 @@ function App() {
   return (
     <ErrorBoundary>
       <Router>
+        <GrainOverlay />
+        <ScrollProgress />
         <ScrollToTop />
         <Layout>
           <Routes>

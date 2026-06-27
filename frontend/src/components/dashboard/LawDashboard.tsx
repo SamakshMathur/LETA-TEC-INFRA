@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AskLetaWidget } from '../leta';
 import { DocumentLibrary } from '../documents';
 import { FileText, Shield } from 'lucide-react';
+import workspaceBg from '../../pages/IMAGES/magnific_futuristic-legal-complian_hE0WO3zvqL.png';
 
 interface LawDashboardProps {
   title: string;
@@ -38,12 +39,24 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
   };
 
   return (
-    <div className="min-h-screen pb-24 bg-[#000000] text-[#F4F7FA] selection:bg-[#4FB7C5]/25">
-      {/* Soft, ultra-subtle ambient background radial leak (NO neon glow, 1% opacity) */}
-      <div 
-        className="absolute top-0 left-0 w-full h-[500px] pointer-events-none"
+    <div className="min-h-screen pb-24 text-[#F4F7FA] selection:bg-[#4FB7C5]/25 relative">
+      {/* Background — GPU layer, avoids fixed-attachment repaints */}
+      <div
+        className="fixed inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(circle at 50% 0%, rgba(79, 183, 197, 0.015) 0%, transparent 75%)',
+          backgroundImage: `url(${workspaceBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center center',
+          zIndex: 0,
+          transform: 'translateZ(0)',
+        }}
+      />
+      {/* Deep dark overlay */}
+      <div
+        className="fixed inset-0 pointer-events-none"
+        style={{
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.97) 0%, rgba(0,0,0,0.95) 50%, rgba(0,0,0,0.98) 100%)',
+          zIndex: 1,
         }}
       />
 
@@ -75,7 +88,7 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
           </div>
 
           {/* Premium Title */}
-          <h1 className="font-display font-bold text-3xl md:text-4xl lg:text-5xl tracking-tight mb-4 text-[#F4F7FA]">
+          <h1 className="mb-4" style={{ fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 400, fontSize: 'clamp(28px,3.5vw,56px)', color: '#E8DDD0', letterSpacing: '0.01em', lineHeight: 1.1 }}>
             {metadata.title}
           </h1>
 

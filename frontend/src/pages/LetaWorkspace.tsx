@@ -517,6 +517,7 @@ const LetaWorkspace: React.FC = () => {
         content: msg.content,
         confidence: 1.0,
         citations: [],
+        consulted_sources: msg.sources || [],
         isHistory: true,
       })));
       setIsLoading(false);
@@ -553,6 +554,8 @@ const LetaWorkspace: React.FC = () => {
     releaseWakeLock();
     setIsStreaming(false);
     setIsLoading(false);
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // ─── Main ask handler ─────────────────────────────────────────────────────────
@@ -601,125 +604,145 @@ const LetaWorkspace: React.FC = () => {
           else if (lower.includes('appeal')) title = 'CIT(Appeals) Assessment Protest';
         }
 
-        const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title });
-        activeSessionId = sessionRes.data.session_id;
-        setCurrentSessionId(activeSessionId);
+        try {
+          const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title });
+          activeSessionId = sessionRes.data.session_id;
+          setCurrentSessionId(activeSessionId);
+        } catch {
+          // Session creation failed (CORS or backend unreachable) — proceed without session tracking
+        }
       }
 
-      let res;
       if (selectedFile) {
+        // File upload path: keep SSE streaming for /ask-with-file
         const formData = new FormData();
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
-        res = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', body: formData, signal: controller.signal });
+        const fileRes = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', body: formData, signal: controller.signal });
+
+        if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
+
+        const reader = fileRes.body?.getReader();
+        const decoder = new TextDecoder('utf-8');
+        setIsLoading(false);
+        setIsStreaming(true);
+
+        if (!reader) throw new Error('Response stream unavailable');
+
+        let buffer = '';
+        const appendChunk = (text: string) => {
+          setMessages(prev => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last.role === 'assistant') {
+              next[next.length - 1] = { ...last, content: last.content + text };
+            }
+            return next;
+          });
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            if (buffer) appendChunk(buffer);
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+
+          let processed = true;
+          while (processed) {
+            processed = false;
+
+            if (buffer.includes('__STATUS__:')) {
+              const si = buffer.indexOf('__STATUS__:');
+              const ei = buffer.indexOf('__END_STATUS__', si);
+              if (ei !== -1) {
+                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
+                try {
+                  const d = JSON.parse(buffer.substring(si + '__STATUS__:'.length, ei));
+                  setMessages(prev => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last.role === 'assistant') {
+                      next[next.length - 1] = { ...last, current_status: d.msg };
+                    }
+                    return next;
+                  });
+                } catch {}
+                buffer = buffer.substring(ei + '__END_STATUS__'.length);
+                processed = true;
+                continue;
+              }
+            }
+
+            if (buffer.includes('__METADATA__:')) {
+              const si = buffer.indexOf('__METADATA__:');
+              const ei = buffer.indexOf('__END_METADATA__', si);
+              if (ei !== -1) {
+                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
+                try {
+                  const meta = JSON.parse(buffer.substring(si + '__METADATA__:'.length, ei));
+                  setMessages(prev => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last.role === 'assistant') {
+                      next[next.length - 1] = { ...last, consulted_sources: meta.sources };
+                    }
+                    return next;
+                  });
+                } catch {}
+                buffer = buffer.substring(ei + '__END_METADATA__'.length);
+                processed = true;
+                continue;
+              }
+            }
+
+            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__'];
+            let safePoint = buffer.length;
+            const fsi = buffer.indexOf('__STATUS__:');
+            const fmi = buffer.indexOf('__METADATA__:');
+            if (fsi !== -1) safePoint = Math.min(safePoint, fsi);
+            if (fmi !== -1) safePoint = Math.min(safePoint, fmi);
+            for (const t of triggers) {
+              const li = buffer.lastIndexOf(t);
+              if (li !== -1 && li + t.length > buffer.length) {
+                safePoint = Math.min(safePoint, li);
+              }
+            }
+            if (safePoint > 0) {
+              appendChunk(buffer.substring(0, safePoint));
+              buffer = buffer.substring(safePoint);
+            }
+          }
+        }
+
+        setIsStreaming(false);
       } else {
-        res = await fetch(`${BASE_URL}/ask`, {
+        // Text query path: use /ask-sync (non-streaming, API Gateway compatible)
+        const syncRes = await fetch(`${BASE_URL}/ask-sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
           signal: controller.signal,
         });
-      }
 
-      if (!res.ok) throw new Error(`Server returned status: ${res.status}`);
+        if (!syncRes.ok) throw new Error(`Server returned status: ${syncRes.status}`);
+        const data = await syncRes.json();
 
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder('utf-8');
-      setIsLoading(false);
-      setIsStreaming(true);
-
-      if (!reader) throw new Error('Response stream unavailable');
-
-      let buffer = '';
-      const appendChunk = (text: string) => {
+        setIsLoading(false);
         setMessages(prev => {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last.role === 'assistant') {
-            next[next.length - 1] = { ...last, content: last.content + text };
+            next[next.length - 1] = { ...last, content: data.answer || '', consulted_sources: data.sources || [] };
           }
           return next;
         });
-      };
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          if (buffer) appendChunk(buffer);
-          break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-
-        let processed = true;
-        while (processed) {
-          processed = false;
-
-          if (buffer.includes('__STATUS__:')) {
-            const si = buffer.indexOf('__STATUS__:');
-            const ei = buffer.indexOf('__END_STATUS__', si);
-            if (ei !== -1) {
-              if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
-              try {
-                const d = JSON.parse(buffer.substring(si + '__STATUS__:'.length, ei));
-                setMessages(prev => {
-                  const next = [...prev];
-                  const last = next[next.length - 1];
-                  if (last.role === 'assistant') {
-                    next[next.length - 1] = { ...last, current_status: d.msg };
-                  }
-                  return next;
-                });
-              } catch {}
-              buffer = buffer.substring(ei + '__END_STATUS__'.length);
-              processed = true;
-              continue;
-            }
-          }
-
-          if (buffer.includes('__METADATA__:')) {
-            const si = buffer.indexOf('__METADATA__:');
-            const ei = buffer.indexOf('__END_METADATA__', si);
-            if (ei !== -1) {
-              if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
-              try {
-                const meta = JSON.parse(buffer.substring(si + '__METADATA__:'.length, ei));
-                setMessages(prev => {
-                  const next = [...prev];
-                  const last = next[next.length - 1];
-                  if (last.role === 'assistant') {
-                    next[next.length - 1] = { ...last, consulted_sources: meta.sources };
-                  }
-                  return next;
-                });
-              } catch {}
-              buffer = buffer.substring(ei + '__END_METADATA__'.length);
-              processed = true;
-              continue;
-            }
-          }
-
-          const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__'];
-          let safePoint = buffer.length;
-          const fsi = buffer.indexOf('__STATUS__:');
-          const fmi = buffer.indexOf('__METADATA__:');
-          if (fsi !== -1) safePoint = Math.min(safePoint, fsi);
-          if (fmi !== -1) safePoint = Math.min(safePoint, fmi);
-          for (const t of triggers) {
-            const li = buffer.lastIndexOf(t);
-            if (li !== -1 && li + t.length > buffer.length) {
-              safePoint = Math.min(safePoint, li);
-            }
-          }
-          if (safePoint > 0) {
-            appendChunk(buffer.substring(0, safePoint));
-            buffer = buffer.substring(safePoint);
-          }
-        }
       }
 
-      setIsStreaming(false);
       setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       abortControllerRef.current = null;
       isActiveQueryRef.current = false;
       pendingRetryRef.current = null;
@@ -748,6 +771,8 @@ const LetaWorkspace: React.FC = () => {
       });
       setIsLoading(false);
       setIsStreaming(false);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -820,6 +845,14 @@ const LetaWorkspace: React.FC = () => {
       {/* ── TOP HEADER NAVBAR ──────────────────────────────────────────────────── */}
       <header className="h-[72px] flex-shrink-0 flex items-center justify-between px-6 bg-[#000000] border-b border-[#4FB7C5]/10 relative z-20">
         <div className="flex items-center gap-4">
+          {/* Brand mark */}
+          <img
+            src="/LETA_WHITE_ON_BLACK_4K.png"
+            alt="LETA"
+            className="h-8 w-8 object-contain flex-shrink-0"
+            style={{ mixBlendMode: 'screen' }}
+          />
+          <div className="h-4 w-[1px] bg-white/[0.06]" />
           <Link
             to={`/${domainId}`}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.05] bg-white/[0.01] text-xs hover:text-white hover:border-[#4FB7C5]/30 transition-colors"
@@ -1463,7 +1496,7 @@ const LetaWorkspace: React.FC = () => {
                       {selectedFile.name}
                     </span>
                     <button
-                      onClick={() => setSelectedFile(null)}
+                      onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
                       className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-1"
                     >
                       <X size={12} />
