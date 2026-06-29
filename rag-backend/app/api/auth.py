@@ -11,6 +11,7 @@ import requests as _requests
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator, model_validator
+from pymongo.errors import DuplicateKeyError
 
 from app.database import (
     get_user_collection,
@@ -242,10 +243,17 @@ def _verify_password(password: str, stored_hash: str) -> bool:
             100000,
         )
 
-        return pwd_hash.hex() == hash_hex
+        return _secrets.compare_digest(pwd_hash.hex(), hash_hex)
 
     except Exception:
         return False
+
+
+def _verify_secret(value: str, expected: str) -> bool:
+    if not value or not expected:
+        return False
+
+    return _secrets.compare_digest(value, expected)
 
 
 def _send_sms_otp(phone: str, otp: str) -> None:
@@ -439,24 +447,37 @@ async def send_otp(req: SendOTPRequest):
             )
 
         username = f"dev_{re.sub(r'[^a-zA-Z0-9_]', '_', req.contact)[-30:]}"
-        users_col.update_one(
-            {field: req.contact},
-            {
-                "$setOnInsert": {
-                    "username": username,
-                    "full_name": "Dev User",
-                    "phone": req.contact if req.method == "phone" else "",
-                    "email": req.contact if req.method == "email" else None,
-                    "profession": "Other",
-                    "gender": "Prefer not to say",
-                    "verified": False,
-                    "role": "user",
-                    "created_at": datetime.utcnow(),
-                    "last_login": None,
-                }
-            },
-            upsert=True,
-        )
+        user_doc = {
+            "username": username,
+            "full_name": "Dev User",
+            "profession": "Other",
+            "gender": "Prefer not to say",
+            "verified": False,
+            "role": "user",
+            "created_at": datetime.utcnow(),
+            "last_login": None,
+        }
+
+        if req.method == "phone":
+            user_doc["phone"] = req.contact
+        else:
+            user_doc["email"] = req.contact
+
+        try:
+            users_col.update_one(
+                {field: req.contact},
+                {"$setOnInsert": user_doc},
+                upsert=True,
+            )
+        except DuplicateKeyError:
+            logger.warning(
+                "Duplicate user key while creating dev OTP user",
+                extra={"method": req.method},
+            )
+            raise HTTPException(
+                status_code=409,
+                detail=f"An account with that {req.method} already exists.",
+            )
         user = users_col.find_one({
             field: req.contact
         })
@@ -567,7 +588,7 @@ async def verify_otp(req: VerifyOTPRequest):
             detail="OTP expired",
         )
 
-    if not DEV_MODE and otp_record["otp"] != req.otp:
+    if not DEV_MODE and not _secrets.compare_digest(otp_record["otp"], req.otp):
         raise HTTPException(
             status_code=400,
             detail="Invalid OTP",
@@ -629,7 +650,7 @@ async def login(req: LoginRequest):
                 detail="Admin secret not configured",
             )
 
-        if req.password != ADMIN_MASTER_SECRET:
+        if not _verify_secret(req.password, ADMIN_MASTER_SECRET):
             raise HTTPException(
                 status_code=401,
                 detail="Invalid credentials",
@@ -701,6 +722,22 @@ async def refresh(req: RefreshRequest):
 
     users_col = get_user_collection()
 
+    if username == "admin":
+        if not ADMIN_MASTER_SECRET:
+            raise HTTPException(
+                status_code=500,
+                detail="Admin secret not configured",
+            )
+
+        admin_info = {
+            "id": "admin",
+            "username": "admin",
+            "email": "admin@letatec.com",
+            "role": "admin",
+        }
+
+        return _build_auth_response(admin_info)
+
     if users_col is None:
         raise HTTPException(
             status_code=500,
@@ -741,13 +778,26 @@ async def get_me(
 
 
 # =============================================================================
+# LOGOUT
+# =============================================================================
+
+@router.post("/logout")
+async def logout(
+    current_user: dict = Depends(get_current_user)
+):
+    return {
+        "message": "Logged out successfully"
+    }
+
+
+# =============================================================================
 # MAKE ADMIN
 # =============================================================================
 
 @router.post("/make-admin")
 async def make_admin(req: AdminSeedRequest):
 
-    if req.master_secret != ADMIN_MASTER_SECRET:
+    if not _verify_secret(req.master_secret, ADMIN_MASTER_SECRET):
         raise HTTPException(
             status_code=403,
             detail="Invalid master secret",

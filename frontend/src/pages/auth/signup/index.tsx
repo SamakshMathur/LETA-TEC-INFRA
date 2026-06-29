@@ -91,7 +91,7 @@ const SignupPage: React.FC = () => {
             <div className="space-y-2">
               <label htmlFor="full_name" className="label-auth">Full Name</label>
               <input id="full_name" type="text" value={form.full_name} onChange={set('full_name')}
-                required disabled={success} className="input-auth" placeholder="e.g. Samaksh Mathur" />
+                required disabled={success} className="input-auth" placeholder="Your name" />
             </div>
 
             <div className="space-y-2">

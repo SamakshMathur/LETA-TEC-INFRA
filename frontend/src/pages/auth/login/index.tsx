@@ -20,7 +20,10 @@ const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const from = (location.state as any)?.from?.pathname || '/dashboard';
+  const fromLocation = (location.state as any)?.from;
+  const from = fromLocation
+    ? `${fromLocation.pathname || '/dashboard'}${fromLocation.search || ''}${fromLocation.hash || ''}`
+    : '/dashboard';
 
   useEffect(() => {
     if (countdown <= 0) return;

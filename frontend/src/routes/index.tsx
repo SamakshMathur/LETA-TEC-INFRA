@@ -26,6 +26,10 @@ export const protectedRoutes: RouteConfig[] = [
   { path: ROUTES.DOCS,  element: <Documentation /> },
 
   { path: ROUTES.DASHBOARD, element: <GST /> },
+  { path: ROUTES.GST.LETA, element: <LetaWorkspace /> },
+  { path: ROUTES.INCOME_TAX_LETA, element: <LetaWorkspace /> },
+  { path: ROUTES.FEMA_LETA, element: <LetaWorkspace /> },
+  { path: ROUTES.COMPANY_LAW_LETA, element: <LetaWorkspace /> },
   { path: '/:domainId/leta', element: <LetaWorkspace /> },
 
   {

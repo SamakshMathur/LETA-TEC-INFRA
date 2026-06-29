@@ -1,5 +1,6 @@
 import { AXIOS_INSTANCE } from '../utils/api';
 import { Session } from '../types/auth';
+import { clearAuthSession } from '../lib/auth-storage';
 
 const ACCESS_TOKEN_KEY = 'leta_access_token';
 const REFRESH_TOKEN_KEY = 'leta_refresh_token';
@@ -33,9 +34,7 @@ export const saveSession = (session: Session) => {
 };
 
 export const clearSession = () => {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem('leta_session');
+  clearAuthSession();
 };
 
 export const getAccessToken = (): string | null => {

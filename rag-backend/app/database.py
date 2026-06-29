@@ -19,6 +19,30 @@ MONGO_URI = (
 DB_NAME = os.getenv("MONGO_DB_NAME", "leta_history")
 
 
+def _ensure_optional_unique_index(collection, field: str) -> None:
+    """Ensure unique indexes ignore null/missing optional identity fields."""
+    index_name = f"{field}_1"
+    indexes = collection.index_information()
+    existing = indexes.get(index_name)
+
+    if existing:
+        is_unique = existing.get("unique") is True
+        is_optional = (
+            existing.get("sparse") is True
+            or "partialFilterExpression" in existing
+        )
+        if is_unique and is_optional:
+            return
+        collection.drop_index(index_name)
+
+    collection.create_index(
+        [(field, ASCENDING)],
+        unique=True,
+        partialFilterExpression={field: {"$type": "string"}},
+        name=index_name,
+    )
+
+
 def _ensure_indexes(db) -> None:
     """
     Creates indexes on first connect (idempotent — MongoDB ignores duplicates).
@@ -26,8 +50,8 @@ def _ensure_indexes(db) -> None:
     """
     try:
         # users: fast login lookup by email or phone
-        db["users"].create_index([("email", ASCENDING)], unique=True, sparse=True)
-        db["users"].create_index([("phone", ASCENDING)], unique=True, sparse=True)
+        _ensure_optional_unique_index(db["users"], "email")
+        _ensure_optional_unique_index(db["users"], "phone")
 
         # sessions: fetch all sessions for a user quickly
         db["sessions"].create_index([("user_id", ASCENDING)])

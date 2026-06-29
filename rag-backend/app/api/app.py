@@ -100,18 +100,27 @@ async def root():
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-# CORS: Use ALLOWED_ORIGINS env var in production (comma-separated),
-# falls back to localhost dev origins when not set.
-_default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://gst-rag-95li.vercel.app,https://main.d1q7i80dk455hq.amplifyapp.com"
-ALLOWED_ORIGINS = [
+# CORS: Merge ALLOWED_ORIGINS env var with local dev origins so Vite
+# preflight requests keep working even when production origins are configured.
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "https://gst-rag-95li.vercel.app",
+    "https://main.d1q7i80dk455hq.amplifyapp.com",
+]
+_env_origins = [
     origin.strip()
-    for origin in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
 ]
+ALLOWED_ORIGINS = list(dict.fromkeys([*_default_origins, *_env_origins]))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https://([a-z0-9-]+\.)?(vercel\.app|amplifyapp\.com)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
