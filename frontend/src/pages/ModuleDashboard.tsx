@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Clock, Zap, CheckCircle2, ArrowRight, Scale, Building2, TrendingUp, Globe } from 'lucide-react';
+import { X, Clock, Zap, CheckCircle2, ArrowRight, Scale, Building2, Globe } from 'lucide-react';
+
+const BooksEmoji = () => <span style={{ fontSize: '18px', lineHeight: 1 }}>📚</span>;
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import DashboardParticles from '../components/effects/DashboardParticles';
@@ -23,7 +25,7 @@ const MODULES = [
     fullName: 'Goods & Services Tax',
     tagline: 'Comprehensive indirect tax intelligence',
     route: '/gst/leta',
-    icon: TrendingUp,
+    icon: BooksEmoji,
     features: ['Section-level retrieval', 'Notice drafting', 'ITC analysis', 'AAR case laws'],
   },
   {
