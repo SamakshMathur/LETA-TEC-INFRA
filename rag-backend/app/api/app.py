@@ -737,10 +737,10 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         + compressed_block
     )
 
-    # force_haiku=True: use Claude Haiku (~5-10s) instead of Sonnet (~30-40s)
-    # to stay within API Gateway's hard 29-second integration timeout
+    # Drafts (notice replies, advisories) MUST use Sonnet — they require 5,000–12,000 tokens.
+    # Non-draft Q&A uses Haiku to stay within API Gateway's 29-second timeout.
     answer = await _asyncio.to_thread(
-        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=True))
+        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=not _is_draft))
     )
 
     unique_sources: list = []

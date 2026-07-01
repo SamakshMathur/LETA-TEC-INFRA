@@ -392,7 +392,7 @@ def synthesize_answer_stream(
         prompt_template = DRAFTING_PROMPT
         use_haiku = force_haiku  # allow override even for draft in sync mode
         use_thinking = False  # Thinking disabled — DRAFTING_PROMPT is self-sufficient; all tokens go to output
-        max_tokens = 3000 if force_haiku else 12000
+        max_tokens = 4000 if force_haiku else 16000
     else:
         mode_name, prompt_template, max_tokens = _select_response_mode(complexity)
         use_haiku = force_haiku or (complexity < HAIKU_COMPLEXITY_THRESHOLD)

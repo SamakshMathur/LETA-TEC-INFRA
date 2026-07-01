@@ -904,7 +904,7 @@ const LetaWorkspace: React.FC = () => {
           </div>
 
           {/* Sidebar content — conditional on activeRepo */}
-          <div className="flex-grow overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin">
+          <div className="flex-grow min-h-0 overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin">
 
             {/* ── REPOSITORY PANEL VIEW ─────────────────────────────────────── */}
             <AnimatePresence mode="wait">
@@ -1199,7 +1199,7 @@ const LetaWorkspace: React.FC = () => {
           </button>
 
           {/* CHAT MESSAGE AREA */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth scrollbar-thin">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative scrollbar-thin" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
             <div className="max-w-[920px] mx-auto w-full px-6 md:px-12 pt-10 pb-40 flex flex-col gap-8">
 
               {messages.length === 0 ? (
@@ -1731,7 +1731,7 @@ const LetaWorkspace: React.FC = () => {
             )}
 
             {/* Content area */}
-            <div className="flex-grow overflow-y-auto scrollbar-thin">
+            <div className="flex-grow min-h-0 overflow-y-auto scrollbar-thin">
               <div className="max-w-[960px] mx-auto w-full px-8 pt-5 pb-16">
                 <div className="flex items-center gap-2 mb-4 text-[#4FB7C5]">
                   <Sparkles className="w-3.5 h-3.5" />
