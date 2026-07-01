@@ -5,21 +5,21 @@ import { sendOtpApi, verifyOtpApi } from '../../../services/auth';
 import { ROUTES } from '../../../constants/routes';
 
 type Method = 'phone' | 'email';
-type Step   = 'contact' | 'otp';
+type Step = 'contact' | 'otp';
 
 const LoginPage: React.FC = () => {
-  const [method,    setMethod]    = useState<Method>('phone');
-  const [contact,   setContact]   = useState('');
-  const [step,      setStep]      = useState<Step>('contact');
-  const [otp,       setOtp]       = useState(['', '', '', '', '', '']);
+  const [method, setMethod] = useState<Method>('phone');
+  const [contact, setContact] = useState('');
+  const [step, setStep] = useState<Step>('contact');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [countdown, setCountdown] = useState(0);
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { login } = useAuth();
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const fromLocation = (location.state as any)?.from;
   const from = fromLocation
     ? `${fromLocation.pathname || '/dashboard'}${fromLocation.search || ''}${fromLocation.hash || ''}`
@@ -41,15 +41,8 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      const data = await sendOtpApi(contact.trim(), method);
-      if (data?.otp_preview) {
-        // Dev mode: auto-verify immediately using the returned OTP
-        const session = await verifyOtpApi(contact.trim(), data.otp_preview);
-        login(session, false);
-        navigate(from, { replace: true });
-      } else {
-        setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(30);
-      }
+      await sendOtpApi(contact.trim(), method);
+      setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(30);
     } catch (err: any) {
       const d = err.response?.data?.detail;
       setError(typeof d === 'string' ? d : 'Failed to send OTP. Please try again.');
@@ -91,8 +84,6 @@ const LoginPage: React.FC = () => {
     next[i] = val.slice(-1);
     setOtp(next);
     if (val && i < 5) inputRefs.current[i + 1]?.focus();
-    if (val && i === 5 && next.join('').length === 6)
-      setTimeout(() => document.getElementById('verify-btn')?.click(), 50);
   };
 
   const handleOtpKeyDown = (i: number, e: React.KeyboardEvent) => {
@@ -121,7 +112,7 @@ const LoginPage: React.FC = () => {
 
           <div className="mb-8 text-center">
             <h1 className="font-display font-bold text-3xl text-leta-gray-900 mb-2 uppercase tracking-tight">
-              LETA <span className="text-leta-primary">TITAN</span>
+              LETA<span className="text-leta-primary">TEC AI</span>
             </h1>
             <p className="text-xs font-mono text-leta-gray-500 uppercase tracking-widest">
               {step === 'contact' ? 'Sovereign Access Portal' : 'Verify Identity'}
@@ -141,9 +132,8 @@ const LoginPage: React.FC = () => {
               <div className="flex rounded-leta border border-leta-gray-200 overflow-hidden">
                 {(['phone', 'email'] as Method[]).map(m => (
                   <button key={m} type="button" onClick={() => switchMethod(m)}
-                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${
-                      method === m ? 'bg-leta-primary text-surface' : 'text-leta-gray-500 hover:text-leta-gray-900/70'
-                    }`}>
+                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${method === m ? 'bg-leta-primary text-surface' : 'text-leta-gray-500 hover:text-leta-gray-900/70'
+                      }`}>
                     {m === 'phone' ? 'Mobile' : 'Email'}
                   </button>
                 ))}
@@ -218,7 +208,7 @@ const LoginPage: React.FC = () => {
         </div>
 
         <p className="mt-8 text-center text-[10px] font-mono text-leta-gray-900/20 uppercase tracking-[0.1em]">
-          &copy; 2026 LETA / Sovereign Compliance Systems
+          &copy; 2026 LETATEC AI / Sovereign Compliance Systems
         </p>
       </div>
     </div>

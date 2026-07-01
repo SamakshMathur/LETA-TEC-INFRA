@@ -256,7 +256,11 @@ def _verify_secret(value: str, expected: str) -> bool:
     return _secrets.compare_digest(value, expected)
 
 
-def _send_sms_otp(phone: str, otp: str) -> None:
+def send_sms_otp(phone: str, otp: str) -> None:
+
+    if DEV_MODE:
+        logger.info(f"[DEV MODE] SMS OTP {otp} for {phone} (Fast2SMS call bypassed)")
+        return
 
     if not FAST2SMS_API_KEY:
         logger.warning("FAST2SMS_API_KEY missing — SMS not sent")
@@ -283,6 +287,12 @@ def _send_sms_otp(phone: str, otp: str) -> None:
 
     except Exception as e:
         logger.error(f"SMS sending failed: {e}")
+
+
+def verify_sms_otp(phone: str, submitted_otp: str, expected_otp: str) -> bool:
+    if DEV_MODE:
+        return bool(re.match(r"^\d{6}$", submitted_otp))
+    return _secrets.compare_digest(expected_otp, submitted_otp)
 
 
 def _send_email_otp(email: str, otp: str) -> None:
@@ -535,7 +545,7 @@ async def send_otp(req: SendOTPRequest):
     )
 
     if req.method == "phone":
-        _send_sms_otp(req.contact, otp)
+        send_sms_otp(req.contact, otp)
     else:
         _send_email_otp(req.contact, otp)
 
@@ -588,11 +598,25 @@ async def verify_otp(req: VerifyOTPRequest):
             detail="OTP expired",
         )
 
-    if not DEV_MODE and not _secrets.compare_digest(otp_record["otp"], req.otp):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid OTP",
-        )
+    if otp_record["method"] == "phone":
+        if not verify_sms_otp(req.contact, req.otp, otp_record["otp"]):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid OTP",
+            )
+    else:
+        if DEV_MODE:
+            if not re.match(r"^\d{6}$", req.otp):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid OTP",
+                )
+        else:
+            if not _secrets.compare_digest(otp_record["otp"], req.otp):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid OTP",
+                )
 
     otp_col.delete_one({
         "contact": req.contact
