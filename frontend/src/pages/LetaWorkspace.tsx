@@ -719,26 +719,111 @@ const LetaWorkspace: React.FC = () => {
 
         setIsStreaming(false);
       } else {
-        // Text query path: use /ask-sync (non-streaming, API Gateway compatible)
-        const syncRes = await fetch(`${BASE_URL}/ask-sync`, {
+        // Text query path: use /ask streaming (SSE) so long drafts don't hit API Gateway timeout
+        const streamRes = await fetch(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
           signal: controller.signal,
         });
 
-        if (!syncRes.ok) throw new Error(`Server returned status: ${syncRes.status}`);
-        const data = await syncRes.json();
+        if (!streamRes.ok) throw new Error(`Server returned status: ${streamRes.status}`);
 
+        const reader = streamRes.body?.getReader();
+        const decoder = new TextDecoder('utf-8');
         setIsLoading(false);
-        setMessages(prev => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last.role === 'assistant') {
-            next[next.length - 1] = { ...last, content: data.answer || '', consulted_sources: data.sources || [] };
+        setIsStreaming(true);
+
+        if (!reader) throw new Error('Response stream unavailable');
+
+        let buffer = '';
+        const appendChunk = (text: string) => {
+          setMessages(prev => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last.role === 'assistant') {
+              next[next.length - 1] = { ...last, content: last.content + text };
+            }
+            return next;
+          });
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            if (buffer) appendChunk(buffer);
+            break;
           }
-          return next;
-        });
+          buffer += decoder.decode(value, { stream: true });
+
+          let processed = true;
+          while (processed) {
+            processed = false;
+
+            if (buffer.includes('__STATUS__:')) {
+              const si = buffer.indexOf('__STATUS__:');
+              const ei = buffer.indexOf('__END_STATUS__', si);
+              if (ei !== -1) {
+                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
+                try {
+                  const d = JSON.parse(buffer.substring(si + '__STATUS__:'.length, ei));
+                  setMessages(prev => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last.role === 'assistant') {
+                      next[next.length - 1] = { ...last, current_status: d.msg };
+                    }
+                    return next;
+                  });
+                } catch {}
+                buffer = buffer.substring(ei + '__END_STATUS__'.length);
+                processed = true;
+                continue;
+              }
+            }
+
+            if (buffer.includes('__METADATA__:')) {
+              const si = buffer.indexOf('__METADATA__:');
+              const ei = buffer.indexOf('__END_METADATA__', si);
+              if (ei !== -1) {
+                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
+                try {
+                  const meta = JSON.parse(buffer.substring(si + '__METADATA__:'.length, ei));
+                  setMessages(prev => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last.role === 'assistant') {
+                      next[next.length - 1] = { ...last, consulted_sources: meta.sources };
+                    }
+                    return next;
+                  });
+                } catch {}
+                buffer = buffer.substring(ei + '__END_METADATA__'.length);
+                processed = true;
+                continue;
+              }
+            }
+
+            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__'];
+            let safePoint = buffer.length;
+            const fsi = buffer.indexOf('__STATUS__:');
+            const fmi = buffer.indexOf('__METADATA__:');
+            if (fsi !== -1) safePoint = Math.min(safePoint, fsi);
+            if (fmi !== -1) safePoint = Math.min(safePoint, fmi);
+            for (const t of triggers) {
+              const li = buffer.lastIndexOf(t);
+              if (li !== -1 && li + t.length > buffer.length) {
+                safePoint = Math.min(safePoint, li);
+              }
+            }
+            if (safePoint > 0) {
+              appendChunk(buffer.substring(0, safePoint));
+              buffer = buffer.substring(safePoint);
+            }
+          }
+        }
+
+        setIsStreaming(false);
       }
 
       setSelectedFile(null);
