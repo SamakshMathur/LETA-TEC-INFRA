@@ -293,7 +293,7 @@ const ModuleDashboard: React.FC = () => {
           <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3 tracking-tight">
             Welcome{user?.firstName ? `, ${user.firstName}` : ''}.
           </h1>
-          <p className="text-sm" style={{ color: '#334155' }}>
+          <p className="text-sm" style={{ color: '#64748B' }}>
             Select a practice area to begin your session.
           </p>
         </motion.div>
@@ -334,12 +334,12 @@ const ModuleDashboard: React.FC = () => {
                   {mod.label}
                 </span>
                 <h3 className="text-base font-bold text-white mb-2 leading-snug">{mod.fullName}</h3>
-                <p className="text-[11px] mb-5" style={{ color: '#334155' }}>{mod.tagline}</p>
+                <p className="text-[11px] mb-5" style={{ color: '#64748B' }}>{mod.tagline}</p>
 
                 <ul className="space-y-1.5">
                   {mod.features.map(f => (
-                    <li key={f} className="flex items-center gap-2 text-[10px]" style={{ color: '#1E293B' }}>
-                      <span className="w-[3px] h-[3px] rounded-full flex-shrink-0" style={{ background: B.accent, opacity: 0.5 }} />
+                    <li key={f} className="flex items-center gap-2 text-[11px]" style={{ color: '#94A3B8' }}>
+                      <span className="w-[3px] h-[3px] rounded-full flex-shrink-0" style={{ background: B.accent }} />
                       {f}
                     </li>
                   ))}
