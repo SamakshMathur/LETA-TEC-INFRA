@@ -128,8 +128,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         # Prevent browsers from MIME-sniffing the content type
         response.headers["X-Content-Type-Options"] = "nosniff"
-        # Block clickjacking
-        response.headers["X-Frame-Options"] = "DENY"
+        # Block clickjacking — skip for document view so the frontend iframe can embed PDFs
+        if not request.url.path.startswith("/api/documents/view"):
+            response.headers["X-Frame-Options"] = "DENY"
         # Force HTTPS for 1 year, include subdomains
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         # Only send origin in Referer header, no full URL
