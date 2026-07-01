@@ -192,23 +192,27 @@ def get_categories():
                 stats[key] = 0
         return stats
 
-    # Production: count from S3
+    # Production: single S3 scan, count by folder prefix
     if S3_BUCKET:
         s3 = _s3_client()
-        for key, folder_name in CATEGORY_MAP.items():
-            prefix = f"{S3_DOCS_PREFIX}/{folder_name}/"
-            paginator = s3.get_paginator("list_objects_v2")
-            count = 0
-            try:
-                for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
-                    count += sum(
-                        1 for obj in page.get("Contents", [])
-                        if Path(obj["Key"]).suffix.lower() in SUPPORTED_EXTS
-                    )
-            except Exception:
-                pass
-            stats[key] = count
-        return stats
+        counts: dict = {key: 0 for key in CATEGORY_MAP}
+        folder_to_key = {v.lower(): k for k, v in CATEGORY_MAP.items()}
+        paginator = s3.get_paginator("list_objects_v2")
+        try:
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=f"{S3_DOCS_PREFIX}/"):
+                for obj in page.get("Contents", []):
+                    if Path(obj["Key"]).suffix.lower() not in SUPPORTED_EXTS:
+                        continue
+                    # Extract folder name from key: documents/FolderName/...
+                    parts = obj["Key"].split("/")
+                    if len(parts) >= 2:
+                        folder = parts[1].lower()
+                        cat_key = folder_to_key.get(folder)
+                        if cat_key:
+                            counts[cat_key] += 1
+        except Exception as e:
+            print(f"S3 categories scan error: {e}")
+        return counts
 
     return {key: 0 for key in CATEGORY_MAP}
 
@@ -237,33 +241,39 @@ def list_all_documents():
                 })
         return docs
 
-    # Production: list from S3
+    # Production: single S3 scan across all folders
     if S3_BUCKET:
         s3 = _s3_client()
-        for cat_key, folder_name in CATEGORY_MAP.items():
-            prefix = f"{S3_DOCS_PREFIX}/{folder_name}/"
-            paginator = s3.get_paginator("list_objects_v2")
-            count = 0
-            try:
-                for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
-                    for obj in page.get("Contents", []):
-                        key = obj["Key"]
-                        if Path(key).suffix.lower() not in SUPPORTED_EXTS:
-                            continue
-                        rel = key[len(f"{S3_DOCS_PREFIX}/"):]
-                        docs.append({
-                            "id": f"{cat_key}_{count}",
-                            "title": Path(key).name,
-                            "filename": Path(key).name,
-                            "size": f"{round(obj['Size'] / 1024, 1)} KB",
-                            "path": rel,
-                            "category": cat_key,
-                        })
-                        count += 1
-                        if count >= 150:
-                            break
-            except Exception:
-                pass
+        folder_to_key = {v.lower(): k for k, v in CATEGORY_MAP.items()}
+        cat_counts: dict = {k: 0 for k in CATEGORY_MAP}
+        paginator = s3.get_paginator("list_objects_v2")
+        try:
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=f"{S3_DOCS_PREFIX}/"):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    if Path(key).suffix.lower() not in SUPPORTED_EXTS:
+                        continue
+                    parts = key.split("/")
+                    if len(parts) < 2:
+                        continue
+                    folder = parts[1].lower()
+                    cat_key = folder_to_key.get(folder)
+                    if not cat_key:
+                        continue
+                    if cat_counts[cat_key] >= 150:
+                        continue
+                    rel = key[len(f"{S3_DOCS_PREFIX}/"):]
+                    docs.append({
+                        "id": f"{cat_key}_{cat_counts[cat_key]}",
+                        "title": Path(key).name,
+                        "filename": Path(key).name,
+                        "size": f"{round(obj['Size'] / 1024, 1)} KB",
+                        "path": rel,
+                        "category": cat_key,
+                    })
+                    cat_counts[cat_key] += 1
+        except Exception as e:
+            print(f"S3 list/all error: {e}")
     return docs
 
 
