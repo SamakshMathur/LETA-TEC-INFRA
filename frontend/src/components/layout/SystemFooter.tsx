@@ -49,7 +49,7 @@ const SystemFooter = () => {
                 <Shield size={15} style={{ color: '#4FB7C5' }} />
               </div>
               <span className="font-display font-bold text-lg tracking-tight text-white">
-                LETA <span style={{ color: '#4FB7C5' }}>TITAN</span>
+                LETA TEC
               </span>
             </Link>
             <p className="text-sm font-light leading-relaxed mb-6" style={{ color: '#A1AAB8' }}>
@@ -172,7 +172,7 @@ const SystemFooter = () => {
           style={{ borderTop: '1px solid rgba(79,183,197,0.1)' }}
         >
           <p className="text-xs font-mono" style={{ color: '#6B7280' }}>
-            &copy; {new Date().getFullYear()} LETA TITAN — All Rights Reserved.
+            &copy; {new Date().getFullYear()} LETA TEC — All Rights Reserved.
           </p>
           <div className="flex items-center gap-2">
             <div

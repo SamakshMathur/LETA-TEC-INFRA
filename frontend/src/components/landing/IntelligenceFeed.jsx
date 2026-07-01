@@ -5,17 +5,19 @@ import { Activity, Clock, Cpu, Wifi, WifiOff } from 'lucide-react';
 // ── Synthetic fallback pool (shown when backend has no data yet) ─────────────
 const SYNTHETIC_POOL = [
   { text: 'GST Circular 177/2022 Indexed & Context-Hashed', type: 'INDEX' },
-  { text: 'Refund Limitation Analysis Generated for Section 54(3)', type: 'ANALYSIS' },
+  { text: 'Income Tax Section 43B(h) MSME Payment Clause Mapped', type: 'NODE' },
   { text: 'Section 17(5) Blocked Credit Interpretation Updated', type: 'UPDATE' },
-  { text: 'Input Tax Credit Risk Signature Detected on Construction Invoices', type: 'ALERT' },
-  { text: 'FEMA Regulatory Compliance Node Activated (FEMA 20R/2017)', type: 'NODE' },
+  { text: 'FEMA 20R/2017 Regulatory Compliance Node Activated', type: 'NODE' },
+  { text: 'Capital Gains Section 112A Grandfathering Analysis Generated', type: 'ANALYSIS' },
   { text: 'NCLT Tribunal Restructuring Citation Indexing Finished', type: 'INDEX' },
-  { text: 'Filing Timeline Circular 183 Statutory Exception Synced', type: 'UPDATE' },
+  { text: 'Companies Act Section 185 Loan Restriction Trace Updated', type: 'ALERT' },
   { text: 'Customs Notification 44/2023 Import Classification Hashed', type: 'INDEX' },
-  { text: 'Supreme Court Rule of Law Judgment Citation Integrated', type: 'ANALYSIS' },
-  { text: 'CGST Rule 37A Reversal Condition Audit Trace Updated', type: 'ALERT' },
+  { text: 'Supreme Court Transfer Pricing Judgment Citation Integrated', type: 'ANALYSIS' },
+  { text: 'ITC Risk Signature Detected on Construction Invoices', type: 'ALERT' },
   { text: 'SEZ Zero-Rated Supply Interpretation Audit Sync Completed', type: 'UPDATE' },
-  { text: 'Direct Tax Section 43B(h) Ingestion Matrix Mapped', type: 'NODE' },
+  { text: 'Refund Limitation Analysis Generated for Section 54(3)', type: 'ANALYSIS' },
+  { text: 'TDS Section 194Q Applicability Threshold Matrix Synced', type: 'UPDATE' },
+  { text: 'Insolvency & Bankruptcy Code Section 29A Eligibility Indexed', type: 'INDEX' },
 ];
 
 function now() {
@@ -175,7 +177,7 @@ const IntelligenceFeed = () => {
               Legal Intelligence<br />Feed
             </h2>
             <p className="section-subhead">
-              LETA constantly reads, hashes, and indexes India's statutory frameworks,
+              LETA TEC constantly reads, hashes, and indexes India's statutory frameworks,
               updates, circulars, and dispute outcomes. Every document uploaded by the
               admin team appears here instantly.
             </p>

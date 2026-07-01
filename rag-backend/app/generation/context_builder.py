@@ -99,21 +99,48 @@ def build_citation_registry(chunks: list[dict], is_draft: bool = False) -> str:
                     court = "Appellate Authority"
                 case_names[case_name] = court
 
-    lines = ["The following legal references were FOUND IN THE RETRIEVED DOCUMENTS.",
-             "You MAY ONLY cite the references listed here. Any citation not on this list is PROHIBITED:\n"]
+    # Separate refs into circulars/notifications vs sections/rules
+    circular_refs = {r: s for r, s in all_refs.items()
+                     if re.search(r'(?i)(circular|notification|instruction|order)', r)}
+    statutory_refs = {r: s for r, s in all_refs.items() if r not in circular_refs}
 
-    for ref, sources in sorted(all_refs.items()):
-        src_list = ", ".join(sources[:2])
-        lines.append(f"  ✅ {ref}  [verified in: {src_list}]")
+    lines = [
+        "╔══════════════════════════════════════════════════════════════╗",
+        "║  MANDATORY CITATION LIST — ALL ITEMS BELOW MUST APPEAR IN   ║",
+        "║  YOUR DRAFT. Do NOT skip any. Do NOT add any not listed here.║",
+        "╚══════════════════════════════════════════════════════════════╝",
+        "",
+    ]
+
+    if statutory_refs:
+        lines.append("── STATUTORY PROVISIONS (cite in BLOCK D, Step 3 — reproduce verbatim) ──")
+        for ref, sources in sorted(statutory_refs.items()):
+            src_list = ", ".join(sources[:2])
+            lines.append(f"  📖 {ref}  [from: {src_list}]")
+        lines.append("")
+
+    if circular_refs:
+        lines.append("── CIRCULARS / NOTIFICATIONS (cite in BLOCK E — reproduce verbatim extract) ──")
+        for ref, sources in sorted(circular_refs.items()):
+            src_list = ", ".join(sources[:2])
+            lines.append(f"  📋 {ref}  [from: {src_list}]")
+        lines.append("")
 
     if case_names:
-        lines.append("\n--- VERIFIED CASE NAMES (use these exactly in 'Reliance is placed on...' lines) ---")
+        lines.append("── CASE LAWS (cite in BLOCK D Step 5 — use 'Reliance is placed on...' pattern) ──")
         for name, court in sorted(case_names.items()):
-            lines.append(f"  ⚖️  {name}  [{court}]")
+            lines.append(f"  ⚖️  {name}  [{court}] — reproduce verbatim extract from SOURCE DOCUMENTS below")
+        lines.append("")
 
     if not all_refs and not case_names:
-        return "No specific legal provisions extracted from the retrieved documents."
+        return (
+            "NO DOCUMENTS RETRIEVED from the vector database for this query.\n"
+            "Use statutory provisions from TRUTH RULES only. Mark each argument:\n"
+            "[No supporting case law retrieved — practitioner to verify from database]"
+        )
 
+    lines.append("INSTRUCTION: Every item above MUST appear in the draft letter with verbatim extract.")
+    lines.append("Missing even one is a drafting failure. Use the SOURCE DOCUMENTS below to get the text.")
     return "\n".join(lines)
 
 
@@ -158,13 +185,14 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         if len(chunk_text) > max_chunk:
             chunk_text = chunk_text[:max_chunk] + "... [truncated]"
 
+        # Use filename as the identifier so the LLM cites by name, not number.
+        # The frontend's linkifyLegalRefs then matches the name directly to a source URL.
         context_blocks.append(
             f"════════════════════════════════════════\n"
-            f"SOURCE [{i+1}] | {authority_rank} | {source_type}\n"
-            f"DOCUMENT: [{filename}]({link})\n"
+            f"SOURCE: «{filename}» | {authority_rank} | {source_type}\n"
             f"Page: {c.get('page', 'N/A')}{relevance_tag}\n"
             f"════════════════════════════════════════\n"
-            f"[QUOTABLE TEXT — copy exactly as written below]\n"
+            f"[QUOTABLE TEXT — cite this document by its exact name «{filename}»]\n"
             f"\"\"\"\n"
             f"{chunk_text}\n"
             f"\"\"\"\n"

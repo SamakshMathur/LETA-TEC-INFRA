@@ -177,6 +177,7 @@ const LetaWorkspace: React.FC = () => {
   // ─── Refs ────────────────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -719,26 +720,111 @@ const LetaWorkspace: React.FC = () => {
 
         setIsStreaming(false);
       } else {
-        // Text query path: use /ask-sync (non-streaming, API Gateway compatible)
-        const syncRes = await fetch(`${BASE_URL}/ask-sync`, {
+        // Text query path: use /ask streaming (SSE) so long drafts don't hit API Gateway timeout
+        const streamRes = await fetch(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
           signal: controller.signal,
         });
 
-        if (!syncRes.ok) throw new Error(`Server returned status: ${syncRes.status}`);
-        const data = await syncRes.json();
+        if (!streamRes.ok) throw new Error(`Server returned status: ${streamRes.status}`);
 
+        const reader = streamRes.body?.getReader();
+        const decoder = new TextDecoder('utf-8');
         setIsLoading(false);
-        setMessages(prev => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last.role === 'assistant') {
-            next[next.length - 1] = { ...last, content: data.answer || '', consulted_sources: data.sources || [] };
+        setIsStreaming(true);
+
+        if (!reader) throw new Error('Response stream unavailable');
+
+        let buffer = '';
+        const appendChunk = (text: string) => {
+          setMessages(prev => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last.role === 'assistant') {
+              next[next.length - 1] = { ...last, content: last.content + text };
+            }
+            return next;
+          });
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            if (buffer) appendChunk(buffer);
+            break;
           }
-          return next;
-        });
+          buffer += decoder.decode(value, { stream: true });
+
+          let processed = true;
+          while (processed) {
+            processed = false;
+
+            if (buffer.includes('__STATUS__:')) {
+              const si = buffer.indexOf('__STATUS__:');
+              const ei = buffer.indexOf('__END_STATUS__', si);
+              if (ei !== -1) {
+                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
+                try {
+                  const d = JSON.parse(buffer.substring(si + '__STATUS__:'.length, ei));
+                  setMessages(prev => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last.role === 'assistant') {
+                      next[next.length - 1] = { ...last, current_status: d.msg };
+                    }
+                    return next;
+                  });
+                } catch {}
+                buffer = buffer.substring(ei + '__END_STATUS__'.length);
+                processed = true;
+                continue;
+              }
+            }
+
+            if (buffer.includes('__METADATA__:')) {
+              const si = buffer.indexOf('__METADATA__:');
+              const ei = buffer.indexOf('__END_METADATA__', si);
+              if (ei !== -1) {
+                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
+                try {
+                  const meta = JSON.parse(buffer.substring(si + '__METADATA__:'.length, ei));
+                  setMessages(prev => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last.role === 'assistant') {
+                      next[next.length - 1] = { ...last, consulted_sources: meta.sources };
+                    }
+                    return next;
+                  });
+                } catch {}
+                buffer = buffer.substring(ei + '__END_METADATA__'.length);
+                processed = true;
+                continue;
+              }
+            }
+
+            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__'];
+            let safePoint = buffer.length;
+            const fsi = buffer.indexOf('__STATUS__:');
+            const fmi = buffer.indexOf('__METADATA__:');
+            if (fsi !== -1) safePoint = Math.min(safePoint, fsi);
+            if (fmi !== -1) safePoint = Math.min(safePoint, fmi);
+            for (const t of triggers) {
+              const li = buffer.lastIndexOf(t);
+              if (li !== -1 && li + t.length > buffer.length) {
+                safePoint = Math.min(safePoint, li);
+              }
+            }
+            if (safePoint > 0) {
+              appendChunk(buffer.substring(0, safePoint));
+              buffer = buffer.substring(safePoint);
+            }
+          }
+        }
+
+        setIsStreaming(false);
       }
 
       setSelectedFile(null);
@@ -904,7 +990,7 @@ const LetaWorkspace: React.FC = () => {
           </div>
 
           {/* Sidebar content — conditional on activeRepo */}
-          <div className="flex-grow overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin">
+          <div className="flex-grow min-h-0 overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin">
 
             {/* ── REPOSITORY PANEL VIEW ─────────────────────────────────────── */}
             <AnimatePresence mode="wait">
@@ -1133,7 +1219,7 @@ const LetaWorkspace: React.FC = () => {
 
         {/* ── CENTER WORKSPACE ──────────────────────────────────────────────────── */}
         <section
-          className="flex-grow flex flex-col h-full bg-[#000000] overflow-hidden relative"
+          className="flex-grow min-h-0 flex flex-col bg-[#000000] overflow-hidden relative"
           onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
           onDragEnter={e => {
             e.preventDefault(); e.stopPropagation();
@@ -1199,7 +1285,16 @@ const LetaWorkspace: React.FC = () => {
           </button>
 
           {/* CHAT MESSAGE AREA */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth scrollbar-thin">
+          <div
+            ref={chatScrollRef}
+            className="flex-1 min-h-0 overflow-y-auto relative scrollbar-thin"
+            style={{ overflowX: 'clip', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+            onWheel={(e) => {
+              if (chatScrollRef.current) {
+                chatScrollRef.current.scrollTop += e.deltaY;
+              }
+            }}
+          >
             <div className="max-w-[920px] mx-auto w-full px-6 md:px-12 pt-10 pb-40 flex flex-col gap-8">
 
               {messages.length === 0 ? (
@@ -1731,7 +1826,7 @@ const LetaWorkspace: React.FC = () => {
             )}
 
             {/* Content area */}
-            <div className="flex-grow overflow-y-auto scrollbar-thin">
+            <div className="flex-grow min-h-0 overflow-y-auto scrollbar-thin">
               <div className="max-w-[960px] mx-auto w-full px-8 pt-5 pb-16">
                 <div className="flex items-center gap-2 mb-4 text-[#4FB7C5]">
                   <Sparkles className="w-3.5 h-3.5" />

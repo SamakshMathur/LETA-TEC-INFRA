@@ -73,3 +73,67 @@ jobs:
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
           wait-for-minutes: 25
+
+      - name: Update API Gateway to new task IP
+        run: |
+          # Wait for the new task to be RUNNING and its ENI to get a public IP
+          echo "Waiting for new task to get a public IP..."
+          for i in $(seq 1 30); do
+            TASK_ARN=$(aws ecs list-tasks \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service-name ${{ env.ECS_SERVICE }} \
+              --desired-status RUNNING \
+              --query 'taskArns[0]' --output text)
+
+            ENI_ID=$(aws ecs describe-tasks \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --tasks "$TASK_ARN" \
+              --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' \
+              --output text)
+
+            PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+              --network-interface-ids "$ENI_ID" \
+              --query 'NetworkInterfaces[0].Association.PublicIp' \
+              --output text 2>/dev/null || echo "None")
+
+            if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
+              echo "New task public IP: $PUBLIC_IP"
+              break
+            fi
+            echo "Attempt $i: IP not ready yet, retrying in 10s..."
+            sleep 10
+          done
+
+          if [ -z "$PUBLIC_IP" ] || [ "$PUBLIC_IP" = "None" ]; then
+            echo "ERROR: Could not get task public IP after 5 minutes"
+            exit 1
+          fi
+
+          # Update every HTTP integration in the API Gateway
+          API_ID="swmgzifq69"
+          INTEGRATION_IDS=$(aws apigatewayv2 get-integrations \
+            --api-id "$API_ID" \
+            --query 'Items[?starts_with(IntegrationUri, `http`)].IntegrationId' \
+            --output text)
+
+          for INTEG_ID in $INTEGRATION_IDS; do
+            OLD_URI=$(aws apigatewayv2 get-integration \
+              --api-id "$API_ID" --integration-id "$INTEG_ID" \
+              --query 'IntegrationUri' --output text)
+            NEW_URI=$(echo "$OLD_URI" | sed "s|[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}|$PUBLIC_IP|g")
+            aws apigatewayv2 update-integration \
+              --api-id "$API_ID" \
+              --integration-id "$INTEG_ID" \
+              --integration-uri "$NEW_URI"
+            echo "Updated integration $INTEG_ID: $OLD_URI → $NEW_URI"
+          done
+
+          # Smoke test
+          sleep 5
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/api/health" \
+            --max-time 15)
+          echo "Health check status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "WARNING: health check returned $HTTP_STATUS (may still be warming up)"
+          fi

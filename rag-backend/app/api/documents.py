@@ -1,137 +1,258 @@
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse
 import os
 from pathlib import Path
 from typing import List, Dict
+import urllib.parse
 
 router = APIRouter()
 
-# Base path for documents
-# Use absolute path relative to this file to avoid CWD issues
 BASE_DIR = Path(__file__).resolve().parent.parent.parent / "RAG_INFORMATION_DATABASE"
 
-# Category Mapping
+S3_BUCKET = os.getenv("S3_DATA_BUCKET", "")
+S3_DOCS_PREFIX = "documents"
+AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+
 CATEGORY_MAP = {
-    "circulars": "Circulars",
-    "notifications": "Notification", 
-    "forms": "Forms",
-    "flyers": "Other APP Result",
-    "brochures": "Brochures",
-    "faqs": "FAQs",
-    "reports": "generated_reports",
-    "aars": "AAR",
-    "highcourt": "High Court Case Laws",
-    "supremecourt": "Supreme Court Case Laws",
-    "acts": "Act",
-    "cgst": "CGST",
-    "export": "Export",
-    "igst": "IGST",
-    "rules": "Rules",
-    "icai": "ICAI",
-    "responses": "Responses"
+    "circulars":     "Circulars",
+    "notifications": "Notification",
+    "forms":         "Forms",
+    "flyers":        "Other APP Result",
+    "brochures":     "Brochures",
+    "faqs":          "FAQs",
+    "reports":       "generated_reports",
+    "aars":          "AAR",
+    "highcourt":     "High Court Case Laws",
+    "supremecourt":  "Supreme Court Case Laws",
+    "acts":          "Act",
+    "cgst":          "CGST",
+    "export":        "Export",
+    "igst":          "IGST",
+    "rules":         "Rules",
+    "icai":          "ICAI",
+    "responses":     "Responses",
 }
+
+SUPPORTED_EXTS = {'.pdf', '.png', '.jpg', '.jpeg', '.docx', '.txt'}
+
+MEDIA_TYPES = {
+    '.pdf':  'application/pdf',
+    '.png':  'image/png',
+    '.jpg':  'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.txt':  'text/plain',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+}
+
+
+def _s3_client():
+    import boto3
+    return boto3.client("s3", region_name=AWS_REGION)
+
+
+def _presigned_url(s3_key: str, filename: str, download: bool = False) -> str:
+    disposition = "attachment" if download else "inline"
+    return _s3_client().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": S3_BUCKET,
+            "Key": s3_key,
+            "ResponseContentDisposition": f'{disposition}; filename="{filename}"',
+        },
+        ExpiresIn=3600,
+    )
+
+
+def _serve_local(target: Path, filename: str, download: bool) -> Response:
+    ext = target.suffix.lower()
+    media_type = MEDIA_TYPES.get(ext, "application/octet-stream")
+    disposition = "attachment" if download else "inline"
+    with open(target, "rb") as f:
+        content = f.read()
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+def _find_local(filename: str, folder: Path = None) -> Path | None:
+    search_root = folder if folder else BASE_DIR
+    if not search_root.exists():
+        return None
+    direct = search_root / filename
+    if direct.exists():
+        return direct
+    found = list(search_root.rglob(filename))
+    return found[0] if found else None
+
+
+def _find_s3_key(filename: str, folder_name: str = None) -> str | None:
+    """Search for a file in S3 and return its key, or None."""
+    s3 = _s3_client()
+    prefix = f"{S3_DOCS_PREFIX}/{folder_name}/" if folder_name else f"{S3_DOCS_PREFIX}/"
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            if Path(obj["Key"]).name == filename:
+                return obj["Key"]
+    return None
+
+
+# ─── Health ───────────────────────────────────────────────────────────────────
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "documents"}
+    try:
+        import boto3
+        s3 = boto3.client("s3", region_name=AWS_REGION)
+        resp = s3.list_objects_v2(Bucket=S3_BUCKET, Prefix="documents/", MaxKeys=5)
+        keys = [o["Key"] for o in resp.get("Contents", [])]
+        folder_to_key = {v.lower(): k for k, v in CATEGORY_MAP.items()}
+        sample_parts = [k.split("/") for k in keys]
+        sample_folders = [p[1] if len(p) > 1 else "?" for p in sample_parts]
+        sample_match = [folder_to_key.get(f.lower(), f"NO_MATCH({f.lower()})") for f in sample_folders]
+        return {"status": "ok", "s3": bool(S3_BUCKET), "bucket": S3_BUCKET,
+                "sample_keys": keys[:3], "sample_folders": sample_folders, "sample_match": sample_match}
+    except Exception as e:
+        return {"status": "ok", "s3": bool(S3_BUCKET), "bucket": S3_BUCKET, "error": str(e)}
 
+
+# ─── View by path ─────────────────────────────────────────────────────────────
 
 @router.get("/view_by_path")
 def view_by_path(path: str, download: bool = False):
-    """Serve a file directly by its rel_path inside RAG_INFORMATION_DATABASE."""
-    import urllib.parse
+    decoded = urllib.parse.unquote(path)
+    normalised = os.path.normpath(decoded.replace("\\", "/"))
+    if normalised.startswith("..") or ".." in normalised.split(os.sep):
+        raise HTTPException(status_code=400, detail="Invalid path")
 
-    def _safe_print(msg):
+    filename = Path(normalised).name
+
+    # Try local filesystem only in dev (S3_BUCKET not set)
+    if not S3_BUCKET and BASE_DIR.exists():
+        local = BASE_DIR / normalised
+        if not local.exists():
+            found = list(BASE_DIR.rglob(filename))
+            local = found[0] if found else None
+        if local and Path(local).exists():
+            return _serve_local(Path(local), filename, download)
+
+    # Production: redirect to S3 presigned URL
+    if S3_BUCKET:
+        s3_key = f"{S3_DOCS_PREFIX}/{normalised.replace(os.sep, '/')}"
         try:
-            print(msg)
+            url = _presigned_url(s3_key, filename, download)
+            return RedirectResponse(url=url, status_code=302)
         except Exception:
-            pass
+            # Key not found at exact path — do a search
+            key = _find_s3_key(filename)
+            if key:
+                return RedirectResponse(url=_presigned_url(key, filename, download), status_code=302)
 
-    try:
-        decoded = urllib.parse.unquote(path)
-        # Prevent path traversal
-        normalised = os.path.normpath(decoded.replace("\\", "/"))
-        if normalised.startswith("..") or ".." in normalised.split(os.sep):
-            raise HTTPException(status_code=400, detail="Invalid path")
+    raise HTTPException(status_code=404, detail=f"File not found: {decoded}")
 
-        target = BASE_DIR / normalised
-        _safe_print(f"view_by_path: {target}")
 
-        if not target.exists() or not target.is_file():
-            # Fallback: try case-insensitive rglob
-            name = Path(normalised).name
-            found = list(BASE_DIR.rglob(name))
-            if not found:
-                raise HTTPException(status_code=404, detail=f"File not found: {decoded}")
-            target = found[0]
-            _safe_print(f"view_by_path fallback: {target}")
+# ─── View by category + filename ──────────────────────────────────────────────
 
-        safe_name = target.name
-        ext = target.suffix.lower()
-        media_types = {
-            ".pdf": "application/pdf",
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".txt": "text/plain",
-            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        }
-        media_type = media_types.get(ext, "application/octet-stream")
-        disposition = "attachment" if download else "inline"
+@router.get("/view")
+def view_document(category: str, filename: str, download: bool = False):
+    filename = urllib.parse.unquote(filename)
+    safe_filename = os.path.basename(filename)
 
-        with open(target, "rb") as f:
-            content = f.read()
-        return Response(
-            content=content,
-            media_type=media_type,
-            headers={
-                "Content-Disposition": f'{disposition}; filename="{safe_name}"',
-                "Access-Control-Expose-Headers": "Content-Disposition",
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        _safe_print(f"view_by_path error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Try local filesystem only in dev (S3_BUCKET not set)
+    if not S3_BUCKET and BASE_DIR.exists():
+        if category.lower() in ("all", "any", "global", "ai"):
+            local = _find_local(safe_filename)
+        else:
+            folder_name = CATEGORY_MAP.get(category.lower())
+            folder = (BASE_DIR / folder_name) if folder_name else None
+            local = _find_local(safe_filename, folder)
+        if local:
+            return _serve_local(local, safe_filename, download)
+
+    # Production: S3 presigned URL
+    if S3_BUCKET:
+        folder_name = CATEGORY_MAP.get(category.lower()) if category.lower() not in ("all", "any", "global", "ai") else None
+        key = _find_s3_key(safe_filename, folder_name)
+        if key:
+            return RedirectResponse(url=_presigned_url(key, safe_filename, download), status_code=302)
+
+    raise HTTPException(status_code=404, detail=f"File '{safe_filename}' not found in library.")
+
+
+# ─── Categories ───────────────────────────────────────────────────────────────
+
+@router.get("/debug")
+def debug_info():
+    return {
+        "BASE_DIR": str(BASE_DIR),
+        "BASE_DIR_exists": BASE_DIR.exists(),
+        "S3_BUCKET": S3_BUCKET,
+        "S3_DOCS_PREFIX": S3_DOCS_PREFIX,
+    }
+
 
 @router.get("/categories")
 def get_categories():
-    """Returns available categories and file counts."""
     stats = {}
-    
-    # Debug print
-    print(f"DEBUG: BASE_DIR resolved to: {BASE_DIR}")
-    
-    for key, folder_name in CATEGORY_MAP.items():
-        folder_path = BASE_DIR / folder_name
-        if folder_path.exists():
-            # Count files
-            try:
-                # Count all supported files
-                files = [f for f in folder_path.rglob("*") if f.is_file() and f.suffix.lower() in ['.pdf', '.png', '.jpg', '.jpeg', '.docx', '.txt']]
-                stats[key] = len(files)
-            except Exception as e:
-                print(f"Error counting {folder_name}: {e}")
+
+    # S3 takes priority — if S3_BUCKET is set we're in production and local files won't exist
+    if not S3_BUCKET and BASE_DIR.exists():
+        for key, folder_name in CATEGORY_MAP.items():
+            folder_path = BASE_DIR / folder_name
+            if folder_path.exists():
+                try:
+                    files = [f for f in folder_path.rglob("*")
+                             if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS]
+                    stats[key] = len(files)
+                except Exception:
+                    stats[key] = 0
+            else:
                 stats[key] = 0
-        else:
-            print(f"Folder not found: {folder_path}")
-            stats[key] = 0
-    return stats
+        return stats
+
+    # Production: single S3 scan, count by folder prefix
+    if S3_BUCKET:
+        s3 = _s3_client()
+        counts: dict = {key: 0 for key in CATEGORY_MAP}
+        folder_to_key = {v.lower(): k for k, v in CATEGORY_MAP.items()}
+        paginator = s3.get_paginator("list_objects_v2")
+        try:
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=f"{S3_DOCS_PREFIX}/"):
+                for obj in page.get("Contents", []):
+                    if Path(obj["Key"]).suffix.lower() not in SUPPORTED_EXTS:
+                        continue
+                    # Extract folder name from key: documents/FolderName/...
+                    parts = obj["Key"].split("/")
+                    if len(parts) >= 2:
+                        folder = parts[1].lower()
+                        cat_key = folder_to_key.get(folder)
+                        if cat_key:
+                            counts[cat_key] += 1
+        except Exception as e:
+            print(f"S3 categories scan error: {e}")
+        return counts
+
+    return {key: 0 for key in CATEGORY_MAP}
+
+
+# ─── List all ─────────────────────────────────────────────────────────────────
 
 @router.get("/list/all")
 def list_all_documents():
-    """Returns all documents across every category in one call for client-side instant search."""
     docs = []
-    for cat_key, folder_name in CATEGORY_MAP.items():
-        folder_path = BASE_DIR / folder_name
-        if not folder_path.exists():
-            continue
-        try:
-            all_files = [
-                f for f in folder_path.rglob("*")
-                if f.is_file() and f.suffix.lower() in ['.pdf', '.png', '.jpg', '.jpeg', '.docx', '.txt']
-            ]
+
+    if not S3_BUCKET and BASE_DIR.exists():
+        for cat_key, folder_name in CATEGORY_MAP.items():
+            folder_path = BASE_DIR / folder_name
+            if not folder_path.exists():
+                continue
+            all_files = [f for f in folder_path.rglob("*")
+                         if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS]
             for idx, file_path in enumerate(all_files[:150]):
                 docs.append({
                     "id": f"{cat_key}_{idx}",
@@ -141,246 +262,177 @@ def list_all_documents():
                     "path": str(file_path.relative_to(BASE_DIR)).replace("\\", "/"),
                     "category": cat_key,
                 })
+        return docs
+
+    # Production: single S3 scan across all folders
+    if S3_BUCKET:
+        s3 = _s3_client()
+        folder_to_key = {v.lower(): k for k, v in CATEGORY_MAP.items()}
+        cat_counts: dict = {k: 0 for k in CATEGORY_MAP}
+        paginator = s3.get_paginator("list_objects_v2")
+        try:
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=f"{S3_DOCS_PREFIX}/"):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    if Path(key).suffix.lower() not in SUPPORTED_EXTS:
+                        continue
+                    parts = key.split("/")
+                    if len(parts) < 2:
+                        continue
+                    folder = parts[1].lower()
+                    cat_key = folder_to_key.get(folder)
+                    if not cat_key:
+                        continue
+                    if cat_counts[cat_key] >= 150:
+                        continue
+                    rel = key[len(f"{S3_DOCS_PREFIX}/"):]
+                    docs.append({
+                        "id": f"{cat_key}_{cat_counts[cat_key]}",
+                        "title": Path(key).name,
+                        "filename": Path(key).name,
+                        "size": f"{round(obj['Size'] / 1024, 1)} KB",
+                        "path": rel,
+                        "category": cat_key,
+                    })
+                    cat_counts[cat_key] += 1
         except Exception as e:
-            print(f"Error scanning {folder_name}: {e}")
+            print(f"S3 list/all error: {e}")
     return docs
+
+
+# ─── List by category ─────────────────────────────────────────────────────────
 
 @router.get("/list/{category}")
 def list_documents(category: str):
-    """Lists files in a category."""
     folder_name = CATEGORY_MAP.get(category.lower())
     if not folder_name:
         raise HTTPException(status_code=404, detail="Category not found")
-    
-    folder_path = BASE_DIR / folder_name
-    if not folder_path.exists():
-        return []
 
     docs = []
-    try:
-        # Case insensitive search for all supported files
-        all_files = [f for f in folder_path.rglob("*") if f.is_file() and f.suffix.lower() in ['.pdf', '.png', '.jpg', '.jpeg', '.docx', '.txt']]
-        
-        for idx, file_path in enumerate(all_files): 
+
+    if not S3_BUCKET and BASE_DIR.exists():
+        folder_path = BASE_DIR / folder_name
+        if not folder_path.exists():
+            return []
+        all_files = [f for f in folder_path.rglob("*")
+                     if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS]
+        for idx, file_path in enumerate(all_files[:100]):
             docs.append({
                 "id": f"{category}_{idx}",
                 "title": file_path.name,
                 "desc": f"Document from {folder_name}",
-                "date": "N/A", 
+                "date": "N/A",
                 "size": f"{round(file_path.stat().st_size / 1024, 1)} KB",
                 "filename": file_path.name,
-                "path": str(file_path.relative_to(BASE_DIR)).replace("\\", "/")
+                "path": str(file_path.relative_to(BASE_DIR)).replace("\\", "/"),
             })
-    except Exception as e:
-        print(f"Error scanning {folder_path}: {e}")
-        return []
-    
-    return docs[:100] # Limit to 100 for performance
+        return docs
 
-@router.get("/view")
-def view_document(category: str, filename: str, download: bool = False):
-    import urllib.parse
-    
-    def safe_print(msg):
+    # Production: list from S3
+    if S3_BUCKET:
+        s3 = _s3_client()
+        prefix = f"{S3_DOCS_PREFIX}/{folder_name}/"
+        paginator = s3.get_paginator("list_objects_v2")
         try:
-            print(msg)
-        except UnicodeEncodeError:
-            print(msg.encode('utf-8', errors='replace').decode('utf-8')) # Fallback
-        except Exception:
-            pass
-
-    try:
-        # Decode filename just in case
-        filename = urllib.parse.unquote(filename)
-        safe_filename = os.path.basename(filename)
-        
-        safe_print(f"DEBUG: view_document called with category='{category}', filename='{filename}'")
-        
-        target_path = None
-
-        if category.lower() in ["all", "any", "global", "ai"]:
-            # Search ALL categories
-            safe_print(f"DEBUG: Global search for {safe_filename}...")
-            for cat_key, folder_name in CATEGORY_MAP.items():
-                folder_path = BASE_DIR / folder_name
-                if folder_path.exists():
-                    # Direct check first
-                    possible_path = folder_path / safe_filename
-                    if possible_path.exists():
-                        target_path = possible_path
-                        safe_print(f"DEBUG: Found direct match: {target_path}")
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    if Path(key).suffix.lower() not in SUPPORTED_EXTS:
+                        continue
+                    rel = key[len(f"{S3_DOCS_PREFIX}/"):]
+                    docs.append({
+                        "id": f"{category}_{len(docs)}",
+                        "title": Path(key).name,
+                        "desc": f"Document from {folder_name}",
+                        "date": "N/A",
+                        "size": f"{round(obj['Size'] / 1024, 1)} KB",
+                        "filename": Path(key).name,
+                        "path": rel,
+                    })
+                    if len(docs) >= 100:
                         break
-                    # Recursive check
-                    found = list(folder_path.rglob(safe_filename))
-                    if found:
-                        target_path = found[0]
-                        safe_print(f"DEBUG: Found recursive match: {target_path}")
-                        break
-        else:
-            # Specific category search
-            folder_name = CATEGORY_MAP.get(category.lower())
-            if not folder_name:
-                raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
-            
-            folder_path = BASE_DIR / folder_name
-            
-            # optimization: Try direct path first
-            direct_path = folder_path / safe_filename
-            safe_print(f"DEBUG: Checking direct path: {direct_path}")
-            if direct_path.exists():
-                target_path = direct_path
-                safe_print(f"DEBUG: Found direct match: {target_path}")
-            else:
-                # Search recursively
-                safe_print(f"DEBUG: Searching recursively in {folder_path}")
-                found = list(folder_path.rglob(safe_filename))
-                if found:
-                    target_path = found[0]
-                    safe_print(f"DEBUG: Found recursive match: {target_path}")
-                else:
-                    safe_print(f"DEBUG: File not found in {folder_path}")
+        except Exception as e:
+            print(f"S3 list error for {folder_name}: {e}")
+    return docs
 
-        if not target_path or not target_path.exists():
-            safe_print(f"DEBUG: File not found anywhere.")
-            raise HTTPException(status_code=404, detail=f"File '{safe_filename}' not found in library.")
-            
-        # Prepare Response
-        headers = {
-            "Content-Disposition": f"{'attachment' if download else 'inline'}; filename=\"{safe_filename}\"",
-            "Access-Control-Expose-Headers": "Content-Disposition"
-        }
 
-        try:
-            with open(target_path, "rb") as f:
-                content = f.read()
-            safe_print(f"DEBUG: Successfully read {len(content)} bytes via manual read. Download={download}")
-            # Determine media type based on extension
-            media_types = {
-                '.pdf': 'application/pdf',
-                '.png': 'image/png',
-                '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg',
-                '.txt': 'text/plain',
-                '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            }
-            ext = os.path.splitext(target_path)[1].lower()
-            media_type = media_types.get(ext, 'application/octet-stream')
+# ─── AI Search ────────────────────────────────────────────────────────────────
 
-            return Response(
-                content=content, 
-                media_type=media_type,
-                headers=headers
-            )
-        except Exception as read_err:
-            safe_print(f"Manual read failed: {read_err}. Trying FileResponse...")
-            return FileResponse(
-                path=str(target_path),
-                filename=safe_filename,
-                media_type='application/pdf',
-                content_disposition_type='attachment' if download else 'inline'
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        safe_print(f"ERROR in view_document: {e}")
-        return JSONResponse(status_code=500, content={"detail": f"Internal Server Error: {str(e)}"})
 @router.get("/ai_search")
 async def ai_search(query: str = Query(...)):
-    """AI-powered semantic search across the document library."""
     from app.dependencies import get_retriever
     try:
         retriever = get_retriever()
         if not retriever or not retriever.index:
             return []
-            
-        # Perform semantic hybrid search
         results = retriever.search(query, top_k=20)
-        
-        # Format results for the Netflix-style UI
-        formatted_results = []
+        formatted = []
         for res in results:
             source = res.get("source", "")
-            # Deduce category from source path/name
             category = "all"
             for key, folder_name in CATEGORY_MAP.items():
                 if folder_name.lower() in source.lower():
                     category = key
                     break
-            
-            formatted_results.append({
+            formatted.append({
                 "id": f"ai_{res.get('chunk_id', source)}",
                 "title": os.path.basename(source),
                 "filename": os.path.basename(source),
                 "category": category,
                 "path": source,
                 "desc": res.get("text", "")[:150] + "...",
-                "score": round(float(res.get("_rerank_score", res.get("_debug_score", 0))), 4)
+                "score": round(float(res.get("_rerank_score", res.get("_debug_score", 0))), 4),
             })
-            
-        return formatted_results
+        return formatted
     except Exception as e:
         print(f"AI Search Error: {e}")
         return []
 
+
+# ─── Activity feed ────────────────────────────────────────────────────────────
+
 @router.get("/feed")
 def get_activity_feed():
-    """Returns a combined live feed of recently added documents and system activities."""
     import time
     from datetime import datetime
-    
+
     feed_items = []
-    
-    # 1. Scan filesystem for recently added files
-    try:
-        all_files = []
-        for key, folder_name in CATEGORY_MAP.items():
-            folder_path = BASE_DIR / folder_name
-            if folder_path.exists():
-                for f in folder_path.rglob("*"):
-                    if f.is_file() and f.suffix.lower() in ['.pdf', '.png', '.jpg', '.jpeg', '.docx', '.txt']:
-                        try:
-                            mtime = f.stat().st_mtime
-                            all_files.append((f, mtime, key))
-                        except Exception:
-                            pass
-                        
-        # Sort files by modification time (newest first)
-        all_files.sort(key=lambda x: x[1], reverse=True)
-        
-        for idx, (f_path, mtime, cat) in enumerate(all_files[:10]):
-            dt = datetime.fromtimestamp(mtime)
-            time_str = dt.strftime("%H:%M:%S")
-            
-            # Create a realistic log message based on category and filename
-            name = f_path.name
-            if cat in ["circulars", "cgst", "igst"]:
-                text = f"{name} Indexed & Context-Hashed"
-                item_type = "INDEX"
-            elif cat in ["highcourt", "supremecourt"]:
-                text = f"Judicial Precedent {name} Citation Integrated"
-                item_type = "ANALYSIS"
-            elif cat in ["acts", "rules"]:
-                text = f"Statutory Provision {name} Synced with Central Database"
-                item_type = "UPDATE"
-            elif cat in ["aars"]:
-                text = f"Advance Ruling {name} Registered"
-                item_type = "NODE"
-            else:
-                text = f"Document {name} Ingested successfully"
-                item_type = "UPDATE"
-                
-            feed_items.append({
-                "id": f"fs_{idx}_{int(mtime)}",
-                "text": text,
-                "type": item_type,
-                "time": time_str,
-                "timestamp": mtime
-            })
-    except Exception as e:
-        print(f"Error building filesystem feed: {e}")
-        
-    # 2. Add fallback items if the database has too few items
+
+    if BASE_DIR.exists():
+        try:
+            all_files = []
+            for key, folder_name in CATEGORY_MAP.items():
+                folder_path = BASE_DIR / folder_name
+                if folder_path.exists():
+                    for f in folder_path.rglob("*"):
+                        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS:
+                            try:
+                                all_files.append((f, f.stat().st_mtime, key))
+                            except Exception:
+                                pass
+            all_files.sort(key=lambda x: x[1], reverse=True)
+            for idx, (f_path, mtime, cat) in enumerate(all_files[:10]):
+                dt = datetime.fromtimestamp(mtime)
+                name = f_path.name
+                if cat in ("circulars", "cgst", "igst"):
+                    text, item_type = f"{name} Indexed & Context-Hashed", "INDEX"
+                elif cat in ("highcourt", "supremecourt"):
+                    text, item_type = f"Judicial Precedent {name} Citation Integrated", "ANALYSIS"
+                elif cat in ("acts", "rules"):
+                    text, item_type = f"Statutory Provision {name} Synced", "UPDATE"
+                elif cat == "aars":
+                    text, item_type = f"Advance Ruling {name} Registered", "NODE"
+                else:
+                    text, item_type = f"Document {name} Ingested", "UPDATE"
+                feed_items.append({
+                    "id": f"fs_{idx}_{int(mtime)}",
+                    "text": text, "type": item_type,
+                    "time": dt.strftime("%H:%M:%S"), "timestamp": mtime,
+                })
+        except Exception as e:
+            print(f"Feed filesystem error: {e}")
+
+    # Fallback items if database has too few
     if len(feed_items) < 7:
         fallbacks = [
             ("Customs Notification 44/2023 Import Classification Hashed", "INDEX"),
@@ -398,12 +450,9 @@ def get_activity_feed():
             dt = datetime.fromtimestamp(t_offset)
             feed_items.append({
                 "id": f"fb_{idx}_{int(t_offset)}",
-                "text": text,
-                "type": item_type,
-                "time": dt.strftime("%H:%M:%S"),
-                "timestamp": t_offset
+                "text": text, "type": item_type,
+                "time": dt.strftime("%H:%M:%S"), "timestamp": t_offset,
             })
-            
-    # Sort final combined feed by timestamp (newest first)
+
     feed_items.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
     return feed_items[:10]

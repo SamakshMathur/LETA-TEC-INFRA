@@ -56,30 +56,13 @@ function GroundGlow() {
 function FloatingSymbol({ text, position, baseOpacity, speed, offset }) {
   const ref = useRef();
   const baseY = position[1];
-  const { mouse } = useThree();
 
   useFrame((state) => {
     if (!ref.current) return;
     const t = state.clock.elapsedTime;
-
-    /* gentle float */
     ref.current.position.y = baseY + Math.sin(t * speed + offset) * 0.35;
-
-    /* slow rotation so it faces-ish the camera */
-    ref.current.rotation.y = Math.sin(t * 0.15 + offset) * 0.3;
-
-    /* pulse opacity */
     const pulse = baseOpacity + Math.sin(t * speed * 1.5 + offset) * (baseOpacity * 0.5);
     if (ref.current.material) ref.current.material.opacity = Math.max(0, pulse);
-
-    /* mouse proximity scatter */
-    const dx = mouse.x * 5 - ref.current.position.x * 0.3;
-    const dz = mouse.y * 5 - ref.current.position.z * 0.3;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist < 1.5) {
-      ref.current.position.x += (ref.current.position.x - dx) * 0.012;
-      ref.current.position.z += (ref.current.position.z - dz) * 0.012;
-    }
   });
 
   return (

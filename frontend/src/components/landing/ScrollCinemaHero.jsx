@@ -79,8 +79,8 @@ const ScrollCinemaHero = () => {
           </h1>
 
           <p className="cinema-body">
-            Autonomous GST reconciliation and compliance engine built for
-            precision-engineered financial command.
+            AI-powered legal and tax research engine — GST, Income Tax,
+            FEMA, and Company Law — built for precision-engineered advisory.
           </p>
 
           <Link to="/gst" className="cinema-cta">

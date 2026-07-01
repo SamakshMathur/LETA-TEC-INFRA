@@ -122,9 +122,52 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_origin_regex=r"^https://([a-z0-9-]+\.)?(vercel\.app|amplifyapp\.com)$",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
+    max_age=600,
 )
+
+# ── Security headers middleware ───────────────────────────────────────────────
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        # Prevent browsers from MIME-sniffing the content type
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Block clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+        # Force HTTPS for 1 year, include subdomains
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        # Only send origin in Referer header, no full URL
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Disable browser features not needed by the API
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=(), payment=()"
+        # Prevent caching of API responses (contains legal/confidential data)
+        if not request.url.path.startswith("/api/documents/view"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        # Remove server fingerprinting headers
+        response.headers.pop("server", None)
+        response.headers.pop("x-powered-by", None)
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ── Request size limit middleware ─────────────────────────────────────────────
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    MAX_BODY_BYTES = 5 * 1024 * 1024  # 5 MB
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.method in ("POST", "PUT", "PATCH"):
+            content_length = request.headers.get("content-length")
+            if content_length and int(content_length) > self.MAX_BODY_BYTES:
+                from starlette.responses import JSONResponse
+                return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        return await call_next(request)
+
+app.add_middleware(RequestSizeLimitMiddleware)
 
 from fastapi import Request
 
@@ -746,10 +789,10 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         + compressed_block
     )
 
-    # force_haiku=True: use Claude Haiku (~5-10s) instead of Sonnet (~30-40s)
-    # to stay within API Gateway's hard 29-second integration timeout
+    # Drafts (notice replies, advisories) MUST use Sonnet — they require 5,000–12,000 tokens.
+    # Non-draft Q&A uses Haiku to stay within API Gateway's 29-second timeout.
     answer = await _asyncio.to_thread(
-        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=True))
+        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=not _is_draft))
     )
 
     unique_sources: list = []
