@@ -192,7 +192,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
                 {module.label}
               </span>
             </div>
-            <h2 className="text-xl font-bold text-white">Choose your access plan</h2>
+            <h2 className="text-xl font-display font-bold text-white">Choose your access plan</h2>
             <p className="text-xs mt-1" style={{ color: '#475569' }}>
               Full {module.fullName} workspace — advisory, documents, and AI drafting
             </p>
@@ -223,7 +223,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
                     </span>
                   </div>
                   <div className="mb-0.5">
-                    <span className="text-3xl font-bold text-white">{plan.price}</span>
+                    <span className="text-3xl font-display font-bold text-white">{plan.price}</span>
                   </div>
                   <p className="text-[11px] mb-4" style={{ color: '#475569' }}>{plan.label}</p>
                   <ul className="space-y-1.5">
@@ -290,7 +290,7 @@ const ModuleDashboard: React.FC = () => {
               LETA Platform
             </span>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3 tracking-tight">
+          <h1 className="text-4xl sm:text-5xl font-display font-bold text-white mb-3 tracking-tight">
             Welcome{user?.firstName ? `, ${user.firstName}` : ''}.
           </h1>
           <p className="text-sm" style={{ color: '#64748B' }}>
@@ -333,7 +333,7 @@ const ModuleDashboard: React.FC = () => {
                 <span className="text-[9px] font-mono font-black tracking-[0.22em] uppercase mb-2 block" style={{ color: B.accent }}>
                   {mod.label}
                 </span>
-                <h3 className="text-base font-bold text-white mb-2 leading-snug">{mod.fullName}</h3>
+                <h3 className="text-base font-display font-bold text-white mb-2 leading-snug">{mod.fullName}</h3>
                 <p className="text-[11px] mb-5" style={{ color: '#64748B' }}>{mod.tagline}</p>
 
                 <ul className="space-y-1.5">
@@ -359,7 +359,7 @@ const ModuleDashboard: React.FC = () => {
         <motion.p
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.55 }}
           className="text-center text-[10px] font-mono mt-12"
-          style={{ color: '#1E293B' }}
+          style={{ color: '#334155' }}
         >
           Sessions expire based on plan duration · No recurring charges · Secured by Razorpay
         </motion.p>
