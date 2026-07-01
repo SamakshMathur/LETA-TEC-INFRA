@@ -56,22 +56,32 @@ const MODULES = [
 ];
 
 // ── Plans ─────────────────────────────────────────────────────────────────────
-const PLANS = [
+type Feature = string | { label: string; items: string[] };
+
+const ACCESS_DOCS: Feature = {
+  label: 'Access to',
+  items: ['Bare Act', 'Rules', 'Notifications', 'Case Laws', 'Circulars', 'Other documents'],
+};
+
+const PLANS: Array<{
+  id: string; label: string; price: string; duration: string;
+  badge: string | null; features: Feature[];
+}> = [
   {
     id: '1hr',
     label: '1-Hour Access',
     price: '₹499',
     duration: '1 hour',
-    badge: null as string | null,
-    features: ['Full AI workspace', 'Access to: Bare Act, Rules, Notifications, Case Laws, Circulars, Other documents', 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save'],
+    badge: null,
+    features: ['Full AI workspace', ACCESS_DOCS, 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save'],
   },
   {
     id: '3hr',
     label: '3-Hour Access',
     price: '₹999',
     duration: '3 hours',
-    badge: 'Best Value' as string | null,
-    features: ['Full AI workspace', 'Access to: Bare Act, Rules, Notifications, Case Laws, Circulars, Other documents', 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save', 'Priority response'],
+    badge: 'Best Value',
+    features: ['Full AI workspace', ACCESS_DOCS, 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save', 'Priority response'],
   },
 ];
 
@@ -228,12 +238,32 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
                   </div>
                   <p className="text-[11px] mb-4" style={{ color: '#475569' }}>{plan.label}</p>
                   <ul className="space-y-1.5">
-                    {plan.features.map(f => (
-                      <li key={f} className="flex items-center gap-2 text-[11px]" style={{ color: isSelected ? '#94A3B8' : '#334155' }}>
-                        <CheckCircle2 size={10} style={{ color: isSelected ? B.accent : '#1E293B', flexShrink: 0 }} />
-                        {f}
-                      </li>
-                    ))}
+                    {plan.features.map((f, fi) => {
+                      if (typeof f === 'string') {
+                        return (
+                          <li key={fi} className="flex items-center gap-2 text-[11px]" style={{ color: isSelected ? '#94A3B8' : '#334155' }}>
+                            <CheckCircle2 size={10} style={{ color: isSelected ? B.accent : '#1E293B', flexShrink: 0 }} />
+                            {f}
+                          </li>
+                        );
+                      }
+                      return (
+                        <li key={fi}>
+                          <div className="flex items-center gap-2 text-[11px]" style={{ color: isSelected ? '#94A3B8' : '#334155' }}>
+                            <CheckCircle2 size={10} style={{ color: isSelected ? B.accent : '#1E293B', flexShrink: 0 }} />
+                            {f.label}
+                          </div>
+                          <ul className="mt-1 ml-[18px] space-y-0.5">
+                            {f.items.map(item => (
+                              <li key={item} className="flex items-center gap-1.5 text-[10px]" style={{ color: isSelected ? '#64748B' : '#1E293B' }}>
+                                <span className="w-[2px] h-[2px] rounded-full flex-shrink-0" style={{ background: isSelected ? B.accent : '#334155', opacity: 0.6 }} />
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </button>
               );
