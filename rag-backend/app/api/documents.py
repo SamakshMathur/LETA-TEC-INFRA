@@ -106,7 +106,14 @@ def _find_s3_key(filename: str, folder_name: str = None) -> str | None:
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "documents", "s3": bool(S3_BUCKET)}
+    try:
+        import boto3
+        s3 = boto3.client("s3", region_name=AWS_REGION)
+        resp = s3.list_objects_v2(Bucket=S3_BUCKET, Prefix="documents/", MaxKeys=3)
+        count = len(resp.get("Contents", []))
+        return {"status": "ok", "service": "documents", "s3": bool(S3_BUCKET), "bucket": S3_BUCKET, "test_count": count}
+    except Exception as e:
+        return {"status": "ok", "service": "documents", "s3": bool(S3_BUCKET), "bucket": S3_BUCKET, "error": str(e)}
 
 
 # ─── View by path ─────────────────────────────────────────────────────────────
