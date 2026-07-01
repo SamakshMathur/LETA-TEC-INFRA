@@ -63,7 +63,7 @@ const PLANS = [
     price: '₹499',
     duration: '1 hour',
     badge: null as string | null,
-    features: ['Full AI workspace', 'All documents & case laws', 'Advisory drafting', 'Export & save'],
+    features: ['Full AI workspace', 'Access to: Bare Act, Rules, Notifications, Case Laws, Circulars, Other documents', 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save'],
   },
   {
     id: '3hr',
@@ -71,7 +71,7 @@ const PLANS = [
     price: '₹999',
     duration: '3 hours',
     badge: 'Best Value' as string | null,
-    features: ['Full AI workspace', 'All documents & case laws', 'Advisory drafting', 'Export & save', 'Priority response'],
+    features: ['Full AI workspace', 'Access to: Bare Act, Rules, Notifications, Case Laws, Circulars, Other documents', 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save', 'Priority response'],
   },
 ];
 
