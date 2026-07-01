@@ -5,7 +5,16 @@ import { X, Clock, Zap, CheckCircle2, ArrowRight, Scale, Building2, TrendingUp, 
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 
-// ── Module definitions ─────────────────────────────────────────────────────────
+// ── Brand — single accent color matching the rest of the site ─────────────────
+const B = {
+  accent:  '#4FB7C5',
+  glow:    'rgba(79,183,197,0.10)',
+  border:  'rgba(79,183,197,0.13)',
+  borderH: 'rgba(79,183,197,0.35)',
+  iconBg:  'rgba(79,183,197,0.08)',
+};
+
+// ── Modules ───────────────────────────────────────────────────────────────────
 const MODULES = [
   {
     id: 'gst',
@@ -14,9 +23,6 @@ const MODULES = [
     tagline: 'Comprehensive indirect tax intelligence',
     route: '/gst/leta',
     icon: TrendingUp,
-    color: '#67E8F9',
-    glow: 'rgba(103,232,249,0.15)',
-    border: 'rgba(103,232,249,0.2)',
     features: ['Section-level retrieval', 'Notice drafting', 'ITC analysis', 'AAR case laws'],
   },
   {
@@ -26,9 +32,6 @@ const MODULES = [
     tagline: 'Cross-border transaction compliance',
     route: '/fema/leta',
     icon: Globe,
-    color: '#A78BFA',
-    glow: 'rgba(167,139,250,0.15)',
-    border: 'rgba(167,139,250,0.2)',
     features: ['RBI circulars', 'Compounding analysis', 'ODI/FDI compliance', 'FCRA advisory'],
   },
   {
@@ -38,9 +41,6 @@ const MODULES = [
     tagline: 'Corporate governance & compliance',
     route: '/company-law/leta',
     icon: Building2,
-    color: '#FCD34D',
-    glow: 'rgba(252,211,77,0.12)',
-    border: 'rgba(252,211,77,0.2)',
     features: ['MCA filings', 'Board resolutions', 'NCLT procedures', 'ROC compliance'],
   },
   {
@@ -50,35 +50,31 @@ const MODULES = [
     tagline: 'Direct tax advisory & planning',
     route: '/income-tax/leta',
     icon: Scale,
-    color: '#34D399',
-    glow: 'rgba(52,211,153,0.12)',
-    border: 'rgba(52,211,153,0.2)',
     features: ['ITR analysis', 'TDS/TCS compliance', 'Capital gains', 'Assessment orders'],
   },
 ];
 
+// ── Plans ─────────────────────────────────────────────────────────────────────
 const PLANS = [
   {
     id: '1hr',
     label: '1-Hour Access',
     price: '₹499',
-    rawPrice: 49900,
     duration: '1 hour',
-    badge: null,
+    badge: null as string | null,
     features: ['Full AI workspace', 'All documents & case laws', 'Advisory drafting', 'Export & save'],
   },
   {
     id: '3hr',
     label: '3-Hour Access',
     price: '₹999',
-    rawPrice: 99900,
     duration: '3 hours',
-    badge: 'Best Value',
+    badge: 'Best Value' as string | null,
     features: ['Full AI workspace', 'All documents & case laws', 'Advisory drafting', 'Export & save', 'Priority response'],
   },
 ];
 
-// ── Razorpay loader ────────────────────────────────────────────────────────────
+// ── Razorpay loader ───────────────────────────────────────────────────────────
 function loadRazorpay(): Promise<boolean> {
   return new Promise(resolve => {
     if ((window as any).Razorpay) { resolve(true); return; }
@@ -97,7 +93,7 @@ interface PricingModalProps {
 }
 
 const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
-  const [selected, setSelected] = useState<string>('3hr');
+  const [selected, setSelected] = useState('3hr');
   const [loading, setLoading] = useState(false);
   const [rzConfig, setRzConfig] = useState<{ key_id: string; configured: boolean } | null>(null);
   const { user } = useAuth();
@@ -122,12 +118,10 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan_id: selected, module: module.id }),
       });
-
       if (!orderRes.ok) {
         const err = await orderRes.json();
         throw new Error(err.detail || 'Could not create order');
       }
-
       const order = await orderRes.json();
       const plan = PLANS.find(p => p.id === selected)!;
 
@@ -139,7 +133,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
         description: `${module.fullName} · ${plan.label}`,
         order_id: order.order_id,
         prefill: { email: user?.email || '' },
-        theme: { color: module.color },
+        theme: { color: B.accent },
         handler: async (response: any) => {
           const verifyRes = await fetch(`${BASE_URL}/api/payments/verify`, {
             method: 'POST',
@@ -152,18 +146,12 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
               module: module.id,
             }),
           });
-          if (verifyRes.ok) {
-            onClose();
-            navigate(module.route);
-          } else {
-            alert('Payment verification failed. Please contact support.');
-          }
+          if (verifyRes.ok) { onClose(); navigate(module.route); }
+          else alert('Payment verification failed. Please contact support.');
         },
         modal: { ondismiss: () => setLoading(false) },
       };
-
-      const rz = new (window as any).Razorpay(options);
-      rz.open();
+      new (window as any).Razorpay(options).open();
     } catch (err: any) {
       alert(err.message || 'Something went wrong. Please try again.');
       setLoading(false);
@@ -175,11 +163,9 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6"
-        style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+        style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)' }}
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
         <motion.div
@@ -188,26 +174,26 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
           exit={{ opacity: 0, y: 40, scale: 0.97 }}
           transition={{ type: 'spring', stiffness: 320, damping: 30 }}
           className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl overflow-hidden"
-          style={{ background: '#080808', border: '1px solid rgba(255,255,255,0.08)' }}
+          style={{ background: '#060608', border: `1px solid ${B.border}` }}
         >
           {/* Header */}
           <div className="relative px-7 pt-7 pb-5"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: `radial-gradient(ellipse at top left, ${module.glow} 0%, transparent 60%)` }}>
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: `radial-gradient(ellipse at top left, ${B.glow} 0%, transparent 55%)` }}>
             <button onClick={onClose}
               className="absolute top-5 right-5 p-2 rounded-xl transition-colors"
-              style={{ color: '#475569' }}
+              style={{ color: '#334155' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
-              <X size={16} />
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#334155'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+              <X size={15} />
             </button>
-            <div className="flex items-center gap-3 mb-1">
-              <module.icon size={18} style={{ color: module.color }} />
-              <span className="text-xs font-mono font-bold tracking-widest uppercase" style={{ color: module.color }}>
+            <div className="flex items-center gap-2.5 mb-1">
+              <module.icon size={15} style={{ color: B.accent }} />
+              <span className="text-[10px] font-mono font-bold tracking-[0.2em] uppercase" style={{ color: B.accent }}>
                 {module.label}
               </span>
             </div>
             <h2 className="text-xl font-bold text-white">Choose your access plan</h2>
-            <p className="text-xs mt-1" style={{ color: '#64748B' }}>
+            <p className="text-xs mt-1" style={{ color: '#475569' }}>
               Full {module.fullName} workspace — advisory, documents, and AI drafting
             </p>
           </div>
@@ -217,39 +203,33 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
             {PLANS.map(plan => {
               const isSelected = selected === plan.id;
               return (
-                <button
-                  key={plan.id}
-                  onClick={() => setSelected(plan.id)}
-                  className="relative text-left p-5 rounded-2xl transition-all duration-200"
+                <button key={plan.id} onClick={() => setSelected(plan.id)}
+                  className="relative text-left p-5 rounded-xl transition-all duration-150"
                   style={{
-                    background: isSelected ? `rgba(${module.color === '#67E8F9' ? '103,232,249' : module.color === '#A78BFA' ? '167,139,250' : module.color === '#FCD34D' ? '252,211,77' : '52,211,153'},0.06)` : 'rgba(255,255,255,0.02)',
-                    border: `1.5px solid ${isSelected ? module.color : 'rgba(255,255,255,0.07)'}`,
-                    boxShadow: isSelected ? `0 0 30px ${module.glow}` : 'none',
-                  }}
-                >
+                    background: isSelected ? B.iconBg : 'rgba(255,255,255,0.015)',
+                    border: `1.5px solid ${isSelected ? B.accent : 'rgba(255,255,255,0.06)'}`,
+                    boxShadow: isSelected ? `0 0 28px ${B.glow}` : 'none',
+                  }}>
                   {plan.badge && (
-                    <span className="absolute top-4 right-4 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full font-mono"
-                      style={{ background: module.color, color: '#000' }}>
+                    <span className="absolute top-4 right-4 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full font-mono"
+                      style={{ background: B.accent, color: '#000' }}>
                       {plan.badge}
                     </span>
                   )}
-
                   <div className="flex items-center gap-2 mb-3">
-                    <Clock size={13} style={{ color: isSelected ? module.color : '#475569' }} />
-                    <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: isSelected ? module.color : '#475569' }}>
+                    <Clock size={12} style={{ color: isSelected ? B.accent : '#334155' }} />
+                    <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: isSelected ? B.accent : '#334155' }}>
                       {plan.duration}
                     </span>
                   </div>
-
-                  <div className="mb-1">
+                  <div className="mb-0.5">
                     <span className="text-3xl font-bold text-white">{plan.price}</span>
                   </div>
-                  <p className="text-xs mb-4" style={{ color: '#64748B' }}>{plan.label}</p>
-
+                  <p className="text-[11px] mb-4" style={{ color: '#475569' }}>{plan.label}</p>
                   <ul className="space-y-1.5">
                     {plan.features.map(f => (
-                      <li key={f} className="flex items-center gap-2 text-[11px]" style={{ color: isSelected ? '#CBD5E1' : '#475569' }}>
-                        <CheckCircle2 size={10} style={{ color: isSelected ? module.color : '#334155', flexShrink: 0 }} />
+                      <li key={f} className="flex items-center gap-2 text-[11px]" style={{ color: isSelected ? '#94A3B8' : '#334155' }}>
+                        <CheckCircle2 size={10} style={{ color: isSelected ? B.accent : '#1E293B', flexShrink: 0 }} />
                         {f}
                       </li>
                     ))}
@@ -262,25 +242,23 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
           {/* CTA */}
           <div className="px-6 pb-7">
             {!rzConfig?.configured && (
-              <p className="text-center text-[10px] font-mono mb-3" style={{ color: '#F59E0B' }}>
-                ⚠ Payment system not yet configured — add Razorpay keys to activate
+              <p className="text-center text-[10px] font-mono mb-3" style={{ color: '#475569' }}>
+                Payment system not yet configured — Razorpay keys pending
               </p>
             )}
             <button
               onClick={handlePay}
               disabled={loading || !rzConfig?.configured}
-              className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
               style={{
-                background: rzConfig?.configured ? module.color : 'rgba(255,255,255,0.08)',
-                color: rzConfig?.configured ? '#000' : '#475569',
-                boxShadow: rzConfig?.configured ? `0 0 32px ${module.glow}` : 'none',
-              }}
-            >
-              {loading ? (
-                <><span className="animate-spin w-4 h-4 border-2 border-black/30 border-t-black rounded-full" /> Processing...</>
-              ) : (
-                <><Zap size={15} /> Get {PLANS.find(p => p.id === selected)?.label} — {PLANS.find(p => p.id === selected)?.price} <ArrowRight size={13} /></>
-              )}
+                background: rzConfig?.configured ? B.accent : 'rgba(255,255,255,0.06)',
+                color: rzConfig?.configured ? '#000' : '#334155',
+                boxShadow: rzConfig?.configured ? `0 0 30px ${B.glow}` : 'none',
+              }}>
+              {loading
+                ? <><span className="animate-spin w-4 h-4 border-2 border-black/30 border-t-black rounded-full" /> Processing...</>
+                : <><Zap size={14} /> Get {PLANS.find(p => p.id === selected)?.label} — {PLANS.find(p => p.id === selected)?.price} <ArrowRight size={13} /></>
+              }
             </button>
           </div>
         </motion.div>
@@ -296,33 +274,26 @@ const ModuleDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#000000] pt-24 pb-20 px-6 sm:px-12 lg:px-20">
-      {/* Ambient background */}
+      {/* Single-color ambient glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden>
-        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full opacity-[0.03]"
-          style={{ background: 'radial-gradient(circle, #67E8F9 0%, transparent 70%)', filter: 'blur(80px)' }} />
-        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full opacity-[0.03]"
-          style={{ background: 'radial-gradient(circle, #A78BFA 0%, transparent 70%)', filter: 'blur(80px)' }} />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full opacity-[0.04]"
+          style={{ background: `radial-gradient(ellipse, ${B.accent} 0%, transparent 70%)`, filter: 'blur(80px)' }} />
       </div>
 
       <div className="max-w-6xl mx-auto relative">
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-14"
-        >
+        <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mb-14">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-6"
-            style={{ background: 'rgba(103,232,249,0.06)', border: '1px solid rgba(103,232,249,0.15)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-[#67E8F9] animate-pulse" />
-            <span className="text-[9px] font-mono font-black tracking-[0.25em] uppercase text-[#67E8F9]">
+            style={{ background: B.iconBg, border: `1px solid ${B.border}` }}>
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: B.accent }} />
+            <span className="text-[9px] font-mono font-black tracking-[0.25em] uppercase" style={{ color: B.accent }}>
               LETA Platform
             </span>
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3 tracking-tight">
             Welcome{user?.firstName ? `, ${user.firstName}` : ''}.
           </h1>
-          <p className="text-sm" style={{ color: '#475569' }}>
+          <p className="text-sm" style={{ color: '#334155' }}>
             Select a practice area to begin your session.
           </p>
         </motion.div>
@@ -332,47 +303,43 @@ const ModuleDashboard: React.FC = () => {
           {MODULES.map((mod, i) => (
             <motion.button
               key={mod.id}
-              initial={{ opacity: 0, y: 24 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: i * 0.08 }}
+              transition={{ duration: 0.4, delay: i * 0.07 }}
               onClick={() => setActiveModule(mod)}
-              className="group relative flex flex-col text-left p-7 rounded-2xl transition-all duration-300 overflow-hidden"
-              style={{
-                background: '#07070A',
-                border: `1px solid ${mod.border}`,
-                minHeight: '300px',
-              }}
+              className="group relative flex flex-col text-left p-7 rounded-2xl transition-all duration-250 overflow-hidden"
+              style={{ background: '#060608', border: `1px solid ${B.border}`, minHeight: '300px' }}
               onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.boxShadow = `0 0 48px ${mod.glow}, inset 0 0 40px ${mod.glow.replace('0.15', '0.04').replace('0.12', '0.04')}`;
-                (e.currentTarget as HTMLElement).style.borderColor = mod.color.replace(')', ', 0.5)').replace('rgb', 'rgba');
+                (e.currentTarget as HTMLElement).style.borderColor = B.borderH;
+                (e.currentTarget as HTMLElement).style.boxShadow = `0 0 40px ${B.glow}`;
               }}
               onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = B.border;
                 (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-                (e.currentTarget as HTMLElement).style.borderColor = mod.border;
               }}
             >
-              {/* Glow blob */}
-              <div className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-                style={{ background: `radial-gradient(circle, ${mod.glow} 0%, transparent 70%)`, filter: 'blur(20px)' }} />
+              {/* Subtle top glow on hover */}
+              <div className="absolute top-0 left-0 right-0 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                style={{ background: `linear-gradient(90deg, transparent, ${B.accent}, transparent)` }} />
 
               {/* Icon */}
               <div className="mb-6 p-3 rounded-xl w-fit"
-                style={{ background: mod.glow, border: `1px solid ${mod.border}` }}>
-                <mod.icon size={22} style={{ color: mod.color }} />
+                style={{ background: B.iconBg, border: `1px solid ${B.border}` }}>
+                <mod.icon size={20} style={{ color: B.accent }} />
               </div>
 
               {/* Text */}
               <div className="flex-1">
-                <span className="text-[9px] font-mono font-black tracking-[0.25em] uppercase mb-2 block" style={{ color: mod.color }}>
+                <span className="text-[9px] font-mono font-black tracking-[0.22em] uppercase mb-2 block" style={{ color: B.accent }}>
                   {mod.label}
                 </span>
-                <h3 className="text-lg font-bold text-white mb-2 leading-tight">{mod.fullName}</h3>
-                <p className="text-xs mb-5" style={{ color: '#475569' }}>{mod.tagline}</p>
+                <h3 className="text-base font-bold text-white mb-2 leading-snug">{mod.fullName}</h3>
+                <p className="text-[11px] mb-5" style={{ color: '#334155' }}>{mod.tagline}</p>
 
                 <ul className="space-y-1.5">
                   {mod.features.map(f => (
-                    <li key={f} className="flex items-center gap-2 text-[10px]" style={{ color: '#334155' }}>
-                      <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: mod.color, opacity: 0.6 }} />
+                    <li key={f} className="flex items-center gap-2 text-[10px]" style={{ color: '#1E293B' }}>
+                      <span className="w-[3px] h-[3px] rounded-full flex-shrink-0" style={{ background: B.accent, opacity: 0.5 }} />
                       {f}
                     </li>
                   ))}
@@ -380,10 +347,9 @@ const ModuleDashboard: React.FC = () => {
               </div>
 
               {/* CTA */}
-              <div className="mt-6 flex items-center gap-1.5 text-xs font-bold transition-all duration-200"
-                style={{ color: mod.color }}>
+              <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold" style={{ color: B.accent }}>
                 Get Access
-                <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                <ArrowRight size={11} className="group-hover:translate-x-1 transition-transform duration-200" />
               </div>
             </motion.button>
           ))}
@@ -391,20 +357,15 @@ const ModuleDashboard: React.FC = () => {
 
         {/* Footnote */}
         <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.55 }}
           className="text-center text-[10px] font-mono mt-12"
           style={{ color: '#1E293B' }}
         >
-          Sessions expire based on plan duration · No recurring charges · Secure payment via Razorpay
+          Sessions expire based on plan duration · No recurring charges · Secured by Razorpay
         </motion.p>
       </div>
 
-      {/* Pricing Modal */}
-      {activeModule && (
-        <PricingModal module={activeModule} onClose={() => setActiveModule(null)} />
-      )}
+      {activeModule && <PricingModal module={activeModule} onClose={() => setActiveModule(null)} />}
     </div>
   );
 };
