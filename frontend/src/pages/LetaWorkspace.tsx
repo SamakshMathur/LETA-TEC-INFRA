@@ -177,6 +177,7 @@ const LetaWorkspace: React.FC = () => {
   // ─── Refs ────────────────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -1284,7 +1285,16 @@ const LetaWorkspace: React.FC = () => {
           </button>
 
           {/* CHAT MESSAGE AREA */}
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative scrollbar-thin" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+          <div
+            ref={chatScrollRef}
+            className="flex-1 min-h-0 overflow-y-auto relative scrollbar-thin"
+            style={{ overflowX: 'clip', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+            onWheel={(e) => {
+              if (chatScrollRef.current) {
+                chatScrollRef.current.scrollTop += e.deltaY;
+              }
+            }}
+          >
             <div className="max-w-[920px] mx-auto w-full px-6 md:px-12 pt-10 pb-40 flex flex-col gap-8">
 
               {messages.length === 0 ? (
