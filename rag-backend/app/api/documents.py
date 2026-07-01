@@ -109,11 +109,16 @@ def health():
     try:
         import boto3
         s3 = boto3.client("s3", region_name=AWS_REGION)
-        resp = s3.list_objects_v2(Bucket=S3_BUCKET, Prefix="documents/", MaxKeys=3)
-        count = len(resp.get("Contents", []))
-        return {"status": "ok", "service": "documents", "s3": bool(S3_BUCKET), "bucket": S3_BUCKET, "test_count": count}
+        resp = s3.list_objects_v2(Bucket=S3_BUCKET, Prefix="documents/", MaxKeys=5)
+        keys = [o["Key"] for o in resp.get("Contents", [])]
+        folder_to_key = {v.lower(): k for k, v in CATEGORY_MAP.items()}
+        sample_parts = [k.split("/") for k in keys]
+        sample_folders = [p[1] if len(p) > 1 else "?" for p in sample_parts]
+        sample_match = [folder_to_key.get(f.lower(), f"NO_MATCH({f.lower()})") for f in sample_folders]
+        return {"status": "ok", "s3": bool(S3_BUCKET), "bucket": S3_BUCKET,
+                "sample_keys": keys[:3], "sample_folders": sample_folders, "sample_match": sample_match}
     except Exception as e:
-        return {"status": "ok", "service": "documents", "s3": bool(S3_BUCKET), "bucket": S3_BUCKET, "error": str(e)}
+        return {"status": "ok", "s3": bool(S3_BUCKET), "bucket": S3_BUCKET, "error": str(e)}
 
 
 # ─── View by path ─────────────────────────────────────────────────────────────
