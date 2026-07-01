@@ -1,4 +1,5 @@
 export { default as Home } from './Home';
+export { default as ModuleDashboard } from './ModuleDashboard';
 export { default as About } from './About';
 export { default as Documentation } from './Documentation';
 export { default as GstTemplates } from './GstTemplates';

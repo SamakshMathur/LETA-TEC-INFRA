@@ -272,6 +272,9 @@ app.include_router(feed.router, prefix="/api/feed", tags=["Feed"])
 from app.api import transcribe
 app.include_router(transcribe.router, prefix="/api", tags=["Transcribe"])
 
+from app.api import payments
+app.include_router(payments.router, tags=["Payments"])
+
 # ---------- Request / Response ----------
 class QuestionRequest(BaseModel):
     question: str
