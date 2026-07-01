@@ -132,14 +132,14 @@ def view_by_path(path: str, download: bool = False):
 
     filename = Path(normalised).name
 
-    # Try local filesystem first (dev mode)
-    local = BASE_DIR / normalised
-    if not local.exists():
-        found = list(BASE_DIR.rglob(filename)) if BASE_DIR.exists() else []
-        local = found[0] if found else None
-
-    if local and Path(local).exists():
-        return _serve_local(Path(local), filename, download)
+    # Try local filesystem only in dev (S3_BUCKET not set)
+    if not S3_BUCKET and BASE_DIR.exists():
+        local = BASE_DIR / normalised
+        if not local.exists():
+            found = list(BASE_DIR.rglob(filename))
+            local = found[0] if found else None
+        if local and Path(local).exists():
+            return _serve_local(Path(local), filename, download)
 
     # Production: redirect to S3 presigned URL
     if S3_BUCKET:
@@ -163,8 +163,8 @@ def view_document(category: str, filename: str, download: bool = False):
     filename = urllib.parse.unquote(filename)
     safe_filename = os.path.basename(filename)
 
-    # Try local filesystem first (dev mode)
-    if BASE_DIR.exists():
+    # Try local filesystem only in dev (S3_BUCKET not set)
+    if not S3_BUCKET and BASE_DIR.exists():
         if category.lower() in ("all", "any", "global", "ai"):
             local = _find_local(safe_filename)
         else:
@@ -200,7 +200,8 @@ def debug_info():
 def get_categories():
     stats = {}
 
-    if BASE_DIR.exists():
+    # S3 takes priority — if S3_BUCKET is set we're in production and local files won't exist
+    if not S3_BUCKET and BASE_DIR.exists():
         for key, folder_name in CATEGORY_MAP.items():
             folder_path = BASE_DIR / folder_name
             if folder_path.exists():
@@ -245,7 +246,7 @@ def get_categories():
 def list_all_documents():
     docs = []
 
-    if BASE_DIR.exists():
+    if not S3_BUCKET and BASE_DIR.exists():
         for cat_key, folder_name in CATEGORY_MAP.items():
             folder_path = BASE_DIR / folder_name
             if not folder_path.exists():
@@ -309,7 +310,7 @@ def list_documents(category: str):
 
     docs = []
 
-    if BASE_DIR.exists():
+    if not S3_BUCKET and BASE_DIR.exists():
         folder_path = BASE_DIR / folder_name
         if not folder_path.exists():
             return []
