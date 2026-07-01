@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Zap, CheckCircle2, ArrowRight, Scale, Building2, TrendingUp, Globe } from 'lucide-react';
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
+import DashboardParticles from '../components/effects/DashboardParticles';
 
 // ── Brand — single accent color matching the rest of the site ─────────────────
 const B = {
@@ -164,7 +165,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6"
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6"
         style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)' }}
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
@@ -274,13 +275,9 @@ const ModuleDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#000000] pt-24 pb-20 px-6 sm:px-12 lg:px-20">
-      {/* Single-color ambient glow */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden>
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full opacity-[0.04]"
-          style={{ background: `radial-gradient(ellipse, ${B.accent} 0%, transparent 70%)`, filter: 'blur(80px)' }} />
-      </div>
+      <DashboardParticles />
 
-      <div className="max-w-6xl mx-auto relative">
+      <div className="max-w-6xl mx-auto relative" style={{ zIndex: 1 }}>
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mb-14">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-6"
