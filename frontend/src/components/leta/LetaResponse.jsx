@@ -94,7 +94,17 @@ function linkifyLegalRefs(markdown, sources) {
     safe = safe.replace(plainPat, (_, inner) => shield(wrap(inner, src)));
   }
 
-  // ── 1. Case-law citations: "XYZ vs ABC" or "XYZ v. ABC" ──────────────────
+  // ── 1. Source [N] / [Source N] numbered citations from the LLM ──────────
+  safe = safe.replace(/\[?(?:Source|source|Src)\s*\[?(\d+)\]?\]?/g, (match, numStr) => {
+    const idx = parseInt(numStr, 10) - 1; // LLM uses 1-based index
+    // Map to nearest source in the 0-7 range
+    const src = sources[Math.min(Math.max(idx, 0), sources.length - 1)];
+    if (!src?.url) return match;
+    const label = (src.title || 'Document').replace(/%20/g, ' ').replace(/\.[a-z]{2,5}$/i, '');
+    return shield(`[📄 ${label}](${src.url})`);
+  });
+
+  // ── 1b. Case-law citations: "XYZ vs ABC" or "XYZ v. ABC" ─────────────
   safe = safe.replace(
     /\b([A-Z][A-Za-z./&\s]{2,60?}?)\s+(?:v\.?s?\.?|versus)\s+([A-Za-z][A-Za-z./&\s]{2,60?}?)(?=[,;:()\n]|$)/g,
     (match) => {
@@ -117,8 +127,8 @@ function linkifyLegalRefs(markdown, sources) {
     wrap(m, findSrc('notification', 'circular') || sources[0])
   );
 
-  // ── 4. Sections: "Section 73(9)" ─────────────────────────────────────────
-  safe = safe.replace(/\bSection\s+\d+[A-Z]?(?:\(\d+[A-Za-z]?\))*/g, m =>
+  // ── 4. Sections: "Section 17(5)(c)" — handles any number of sub-clauses ──
+  safe = safe.replace(/\bSection\s+\d+[A-Z]?(?:\([^)]{1,10}\))*/g, m =>
     wrap(m, findSrc('act', 'cgst', 'igst', 'gst') || sources[0])
   );
 

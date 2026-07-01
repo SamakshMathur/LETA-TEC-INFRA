@@ -185,13 +185,14 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         if len(chunk_text) > max_chunk:
             chunk_text = chunk_text[:max_chunk] + "... [truncated]"
 
+        # Use filename as the identifier so the LLM cites by name, not number.
+        # The frontend's linkifyLegalRefs then matches the name directly to a source URL.
         context_blocks.append(
             f"════════════════════════════════════════\n"
-            f"SOURCE [{i+1}] | {authority_rank} | {source_type}\n"
-            f"DOCUMENT: [{filename}]({link})\n"
+            f"SOURCE: «{filename}» | {authority_rank} | {source_type}\n"
             f"Page: {c.get('page', 'N/A')}{relevance_tag}\n"
             f"════════════════════════════════════════\n"
-            f"[QUOTABLE TEXT — copy exactly as written below]\n"
+            f"[QUOTABLE TEXT — cite this document by its exact name «{filename}»]\n"
             f"\"\"\"\n"
             f"{chunk_text}\n"
             f"\"\"\"\n"
