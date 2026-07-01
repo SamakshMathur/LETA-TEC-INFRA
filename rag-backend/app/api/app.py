@@ -113,9 +113,52 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
+    max_age=600,
 )
+
+# ── Security headers middleware ───────────────────────────────────────────────
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        # Prevent browsers from MIME-sniffing the content type
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Block clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+        # Force HTTPS for 1 year, include subdomains
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        # Only send origin in Referer header, no full URL
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Disable browser features not needed by the API
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=(), payment=()"
+        # Prevent caching of API responses (contains legal/confidential data)
+        if not request.url.path.startswith("/api/documents/view"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        # Remove server fingerprinting headers
+        response.headers.pop("server", None)
+        response.headers.pop("x-powered-by", None)
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ── Request size limit middleware ─────────────────────────────────────────────
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    MAX_BODY_BYTES = 5 * 1024 * 1024  # 5 MB
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.method in ("POST", "PUT", "PATCH"):
+            content_length = request.headers.get("content-length")
+            if content_length and int(content_length) > self.MAX_BODY_BYTES:
+                from starlette.responses import JSONResponse
+                return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        return await call_next(request)
+
+app.add_middleware(RequestSizeLimitMiddleware)
 
 from fastapi import Request
 
