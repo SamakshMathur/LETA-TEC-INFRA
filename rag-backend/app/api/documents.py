@@ -186,6 +186,16 @@ def view_document(category: str, filename: str, download: bool = False):
 
 # ─── Categories ───────────────────────────────────────────────────────────────
 
+@router.get("/debug")
+def debug_info():
+    return {
+        "BASE_DIR": str(BASE_DIR),
+        "BASE_DIR_exists": BASE_DIR.exists(),
+        "S3_BUCKET": S3_BUCKET,
+        "S3_DOCS_PREFIX": S3_DOCS_PREFIX,
+    }
+
+
 @router.get("/categories")
 def get_categories():
     stats = {}
