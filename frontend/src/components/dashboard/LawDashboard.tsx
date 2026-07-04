@@ -166,9 +166,35 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
             <AskLetaWidget domain={domainId} contextDesc={contextDesc} />
           </div>
 
-          {/* Bottom Section: Full-width Document Library - No nesting wrappers, sits directly on the canvas */}
+          {/* Bottom Section: Document Library — GST only; other modules are isolated */}
           <div className="w-full">
-            <DocumentLibrary />
+            {domainId === 'gst' ? (
+              <DocumentLibrary />
+            ) : (
+              <div
+                className="rounded-xl p-10 flex flex-col items-center justify-center text-center"
+                style={{ background: '#0A0D14', border: '1px solid rgba(255,255,255,0.05)', minHeight: '220px' }}
+              >
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+                  style={{ background: 'rgba(79,183,197,0.07)', border: '1px solid rgba(79,183,197,0.12)' }}
+                >
+                  <Shield className="w-5 h-5" style={{ color: '#4FB7C5' }} />
+                </div>
+                <p
+                  className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] mb-2"
+                  style={{ color: '#4FB7C5' }}
+                >
+                  {title} — Document Library
+                </p>
+                <p className="text-sm font-medium text-white mb-1">
+                  Module-specific documents coming soon
+                </p>
+                <p className="text-xs" style={{ color: '#475569', maxWidth: '360px', lineHeight: 1.6 }}>
+                  The {title} statutory archive is being curated independently. Documents, circulars, and case laws for this module will appear here once indexed.
+                </p>
+              </div>
+            )}
           </div>
 
         </div>
