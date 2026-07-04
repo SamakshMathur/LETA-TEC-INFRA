@@ -13,6 +13,7 @@ const MODULES = [
 ];
 
 const NAV_LINKS = [
+  { label: 'Home',         path: '/'      },
   { label: 'About Us',     path: '/about' },
   { label: 'Resources',    path: '/docs'  },
 ];
