@@ -486,6 +486,7 @@ const ModuleCard: React.FC<{
 const ModuleDashboard: React.FC = () => {
   const [activeModule, setActiveModule] = useState<typeof MODULES[0] | null>(null);
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-[#05070E] pt-24 pb-20 px-6 sm:px-12 lg:px-20">
@@ -571,7 +572,7 @@ const ModuleDashboard: React.FC = () => {
               key={mod.id}
               mod={mod}
               index={i}
-              onClick={() => setActiveModule(mod)}
+              onClick={() => navigate(mod.route)}
             />
           ))}
         </div>
@@ -600,6 +601,7 @@ const ModuleDashboard: React.FC = () => {
         </motion.div>
       </div>
 
+      {/* PricingModal reserved for when Razorpay keys are configured */}
       {activeModule && <PricingModal module={activeModule} onClose={() => setActiveModule(null)} />}
     </div>
   );
