@@ -129,7 +129,7 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
                     onClick={() => document.getElementById('document-library')?.scrollIntoView({ behavior: 'smooth' })}
                     className="block text-center w-full py-3.5 text-[10px] font-mono uppercase tracking-[0.2em] bg-[#131D2B] border border-white/[0.05] hover:border-[#4FB7C5]/30 hover:bg-[#131D2B]/80 text-[#F4F7FA] rounded-lg transition-all cursor-pointer"
                   >
-                    Open Litigation Console
+                    Browse Statutory Archive
                   </button>
                 </div>
               </div>
