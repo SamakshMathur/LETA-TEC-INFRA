@@ -10,7 +10,7 @@ router = APIRouter()
 BASE_DIR = Path(__file__).resolve().parent.parent.parent / "RAG_INFORMATION_DATABASE"
 
 S3_BUCKET = os.getenv("S3_DATA_BUCKET", "")
-S3_DOCS_PREFIX = "documents"
+S3_DOCS_PREFIX = "RAG_INFORMATION_DATABASE"
 AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
 
 CATEGORY_MAP = {
@@ -109,7 +109,7 @@ def health():
     try:
         import boto3
         s3 = boto3.client("s3", region_name=AWS_REGION)
-        resp = s3.list_objects_v2(Bucket=S3_BUCKET, Prefix="documents/", MaxKeys=5)
+        resp = s3.list_objects_v2(Bucket=S3_BUCKET, Prefix=f"{S3_DOCS_PREFIX}/", MaxKeys=5)
         keys = [o["Key"] for o in resp.get("Contents", [])]
         folder_to_key = {v.lower(): k for k, v in CATEGORY_MAP.items()}
         sample_parts = [k.split("/") for k in keys]
