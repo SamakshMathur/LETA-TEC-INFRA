@@ -99,7 +99,7 @@ const Hero = () => {
               transition={{ delay: 0.62 }}
               className="flex flex-wrap items-center gap-3"
             >
-              <Link to="/gst">
+              <Link to="/dashboard">
                 <button
                   className="flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-[14px] text-black transition-all duration-200"
                   style={{

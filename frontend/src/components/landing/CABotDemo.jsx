@@ -217,7 +217,7 @@ const CABotDemo = () => {
             </p>
 
             {/* CTA */}
-            <Link to="/gst" style={{ textDecoration: 'none' }}>
+            <Link to="/dashboard" style={{ textDecoration: 'none' }}>
               <motion.button
                 whileHover={{ background: 'rgba(79,183,197,0.09)', borderColor: 'rgba(79,183,197,0.5)' }}
                 whileTap={{ scale: 0.97 }}

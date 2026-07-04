@@ -2,57 +2,62 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Zap, CheckCircle2, ArrowRight, Scale, Building2, Globe } from 'lucide-react';
-
-const BooksEmoji = () => <span style={{ fontSize: '18px', lineHeight: 1 }}>📚</span>;
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import DashboardParticles from '../components/effects/DashboardParticles';
 
-// ── Brand — single accent color matching the rest of the site ─────────────────
 const B = {
   accent:  '#4FB7C5',
-  glow:    'rgba(79,183,197,0.10)',
-  border:  'rgba(79,183,197,0.13)',
-  borderH: 'rgba(79,183,197,0.35)',
-  iconBg:  'rgba(79,183,197,0.08)',
+  glow:    'rgba(79,183,197,0.12)',
+  border:  'rgba(79,183,197,0.12)',
+  borderH: 'rgba(79,183,197,0.45)',
+  iconBg:  'rgba(79,183,197,0.07)',
 };
 
 // ── Modules ───────────────────────────────────────────────────────────────────
 const MODULES = [
   {
     id: 'gst',
+    num: '01',
     label: 'GST',
     fullName: 'Goods & Services Tax',
     tagline: 'Comprehensive indirect tax intelligence',
     route: '/gst/leta',
-    icon: BooksEmoji,
+    iconEl: () => <span style={{ fontSize: '22px', lineHeight: 1 }}>📚</span>,
+    status: 'LIVE',
     features: ['Section-level retrieval', 'Notice drafting', 'ITC analysis', 'AAR case laws'],
   },
   {
     id: 'fema',
+    num: '02',
     label: 'FEMA',
     fullName: 'Foreign Exchange Management',
     tagline: 'Cross-border transaction compliance',
     route: '/fema/leta',
-    icon: Globe,
+    iconEl: () => <Globe size={22} color={B.accent} />,
+    status: 'LIVE',
     features: ['RBI circulars', 'Compounding analysis', 'ODI/FDI compliance', 'FCRA advisory'],
   },
   {
     id: 'company-law',
+    num: '03',
     label: 'Company Law',
     fullName: 'Companies Act 2013',
     tagline: 'Corporate governance & compliance',
     route: '/company-law/leta',
-    icon: Building2,
+    iconEl: () => <Building2 size={22} color={B.accent} />,
+    status: 'LIVE',
     features: ['MCA filings', 'Board resolutions', 'NCLT procedures', 'ROC compliance'],
   },
   {
     id: 'income-tax',
+    num: '04',
     label: 'Income Tax',
     fullName: 'Income Tax Act 1961',
     tagline: 'Direct tax advisory & planning',
     route: '/income-tax/leta',
-    icon: Scale,
+    iconEl: () => <Scale size={22} color={B.accent} />,
+    status: 'LIVE',
     features: ['ITR analysis', 'TDS/TCS compliance', 'Capital gains', 'Assessment orders'],
   },
 ];
@@ -178,7 +183,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6"
-        style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)' }}
+        style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(12px)' }}
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
         <motion.div
@@ -187,7 +192,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
           exit={{ opacity: 0, y: 40, scale: 0.97 }}
           transition={{ type: 'spring', stiffness: 320, damping: 30 }}
           className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl overflow-hidden"
-          style={{ background: '#060608', border: `1px solid ${B.border}` }}
+          style={{ background: '#080A10', border: `1px solid ${B.border}` }}
         >
           {/* Header */}
           <div className="relative px-7 pt-7 pb-5"
@@ -200,12 +205,12 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
               <X size={15} />
             </button>
             <div className="flex items-center gap-2.5 mb-1">
-              <module.icon size={15} style={{ color: B.accent }} />
-              <span className="text-[10px] font-mono font-bold tracking-[0.2em] uppercase" style={{ color: B.accent }}>
+              <module.iconEl />
+              <span className="text-[10px] font-mono font-bold tracking-[0.2em] uppercase ml-1" style={{ color: B.accent }}>
                 {module.label}
               </span>
             </div>
-            <h2 className="text-xl font-display font-bold text-white">Choose your access plan</h2>
+            <h2 className="text-xl font-display font-bold text-white mt-2">Choose your access plan</h2>
             <p className="text-xs mt-1" style={{ color: '#475569' }}>
               Full {module.fullName} workspace — advisory, documents, and AI drafting
             </p>
@@ -300,98 +305,299 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
   );
 };
 
+// ── Module Card ───────────────────────────────────────────────────────────────
+const ModuleCard: React.FC<{
+  mod: typeof MODULES[0];
+  index: number;
+  onClick: () => void;
+}> = ({ mod, index, onClick }) => {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 28 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.42, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="group relative flex flex-col text-left w-full overflow-hidden"
+      style={{
+        background: hovered ? '#0C0F18' : '#090B12',
+        border: `1px solid ${hovered ? B.borderH : 'rgba(255,255,255,0.06)'}`,
+        borderRadius: '14px',
+        boxShadow: hovered ? `0 0 60px ${B.glow}` : '0 1px 0 rgba(255,255,255,0.02) inset',
+        transition: 'background 0.22s, border-color 0.22s, box-shadow 0.28s',
+        minHeight: '340px',
+      }}
+    >
+      {/* Top glow edge */}
+      <div style={{
+        position: 'absolute', top: 0, left: '15%', right: '15%', height: '1px',
+        background: `linear-gradient(90deg, transparent, ${B.accent}, transparent)`,
+        opacity: hovered ? 0.7 : 0,
+        transition: 'opacity 0.25s',
+      }} />
+
+      {/* Left accent strip */}
+      <div style={{
+        position: 'absolute', top: '18%', bottom: '18%', left: 0, width: '2px',
+        background: `linear-gradient(to bottom, transparent, ${B.accent}, transparent)`,
+        opacity: hovered ? 0.55 : 0,
+        transition: 'opacity 0.25s',
+        borderRadius: '0 2px 2px 0',
+      }} />
+
+      {/* ── Top section ── */}
+      <div style={{ padding: '22px 22px 0' }}>
+
+        {/* Number + Status */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
+          <span style={{
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            color: hovered ? B.accent : 'rgba(255,255,255,0.18)',
+            transition: 'color 0.22s',
+          }}>
+            {mod.num}
+          </span>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '5px',
+            padding: '3px 8px',
+            borderRadius: '4px',
+            border: `1px solid ${hovered ? B.border : 'rgba(255,255,255,0.06)'}`,
+            background: hovered ? B.iconBg : 'transparent',
+            transition: 'all 0.22s',
+          }}>
+            <span style={{
+              width: '5px', height: '5px', borderRadius: '50%',
+              background: B.accent,
+              display: 'inline-block',
+              boxShadow: hovered ? `0 0 6px ${B.accent}` : 'none',
+              transition: 'box-shadow 0.22s',
+            }} />
+            <span style={{
+              fontSize: '8px', fontWeight: 800,
+              fontFamily: 'monospace',
+              letterSpacing: '0.16em',
+              color: hovered ? B.accent : '#475569',
+              transition: 'color 0.22s',
+            }}>
+              {mod.status}
+            </span>
+          </div>
+        </div>
+
+        {/* Icon */}
+        <div style={{ marginBottom: '18px' }}>
+          <mod.iconEl />
+        </div>
+
+        {/* Label tag */}
+        <span style={{
+          fontSize: '9px', fontWeight: 800, textTransform: 'uppercase',
+          letterSpacing: '0.24em', fontFamily: 'monospace',
+          color: B.accent, display: 'block', marginBottom: '5px',
+        }}>
+          {mod.label}
+        </span>
+
+        {/* Module name */}
+        <h3 style={{
+          fontSize: '15px', fontWeight: 700, lineHeight: 1.25,
+          letterSpacing: '-0.018em',
+          color: '#F1F5F9',
+          marginBottom: '6px',
+          fontFamily: 'var(--font-display, "Inter Tight", sans-serif)',
+        }}>
+          {mod.fullName}
+        </h3>
+
+        {/* Tagline */}
+        <p style={{ fontSize: '11px', color: '#475569', lineHeight: 1.55, marginBottom: '18px' }}>
+          {mod.tagline}
+        </p>
+      </div>
+
+      {/* Divider */}
+      <div style={{ height: '1px', background: 'rgba(255,255,255,0.04)', margin: '0 22px' }} />
+
+      {/* Features */}
+      <div style={{ padding: '16px 22px', flex: 1 }}>
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '9px' }}>
+          {mod.features.map(f => (
+            <li key={f} style={{
+              display: 'flex', alignItems: 'center', gap: '9px',
+              fontSize: '11px',
+              color: hovered ? '#8B9BB4' : '#3D4F66',
+              transition: 'color 0.22s',
+            }}>
+              <span style={{
+                width: '4px', height: '4px', borderRadius: '50%', flexShrink: 0,
+                background: hovered ? B.accent : '#243044',
+                transition: 'background 0.22s',
+              }} />
+              {f}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Divider */}
+      <div style={{ height: '1px', background: 'rgba(255,255,255,0.04)', margin: '0 22px' }} />
+
+      {/* CTA row */}
+      <div style={{
+        padding: '14px 22px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <span style={{
+          fontSize: '12px', fontWeight: 600,
+          color: hovered ? B.accent : '#334155',
+          transition: 'color 0.22s',
+          letterSpacing: '0.01em',
+        }}>
+          Get Access
+        </span>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: '28px', height: '28px', borderRadius: '7px',
+          background: hovered ? B.accent : 'rgba(255,255,255,0.04)',
+          border: `1px solid ${hovered ? 'transparent' : 'rgba(255,255,255,0.07)'}`,
+          transition: 'all 0.22s',
+        }}>
+          <ArrowRight
+            size={12}
+            style={{
+              color: hovered ? '#000' : '#3D4F66',
+              transform: hovered ? 'translateX(1px)' : 'none',
+              transition: 'all 0.2s',
+            }}
+          />
+        </div>
+      </div>
+    </motion.button>
+  );
+};
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 const ModuleDashboard: React.FC = () => {
   const [activeModule, setActiveModule] = useState<typeof MODULES[0] | null>(null);
   const { user } = useAuth();
 
   return (
-    <div className="min-h-screen bg-[#000000] pt-24 pb-20 px-6 sm:px-12 lg:px-20">
+    <div className="min-h-screen bg-[#05070E] pt-24 pb-20 px-6 sm:px-12 lg:px-20">
       <DashboardParticles />
 
       <div className="max-w-6xl mx-auto relative" style={{ zIndex: 1 }}>
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mb-14">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-6"
-            style={{ background: B.iconBg, border: `1px solid ${B.border}` }}>
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: B.accent }} />
-            <span className="text-[9px] font-mono font-black tracking-[0.25em] uppercase" style={{ color: B.accent }}>
+
+        {/* ── Header ── */}
+        <motion.div
+          initial={{ opacity: 0, y: -16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          style={{ marginBottom: '52px' }}
+        >
+          {/* Platform badge */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            padding: '5px 12px', borderRadius: '100px', marginBottom: '22px',
+            background: B.iconBg,
+            border: `1px solid ${B.border}`,
+          }}>
+            <span style={{
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: B.accent,
+              animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite',
+            }} />
+            <span style={{
+              fontSize: '9px', fontWeight: 800,
+              letterSpacing: '0.26em', textTransform: 'uppercase',
+              fontFamily: 'monospace', color: B.accent,
+            }}>
               LETA Platform
             </span>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-display font-bold text-white mb-3 tracking-tight">
+
+          {/* Welcome heading */}
+          <h1 style={{
+            fontSize: 'clamp(32px, 5vw, 52px)',
+            fontWeight: 800,
+            color: '#F8FAFC',
+            letterSpacing: '-0.03em',
+            lineHeight: 1.05,
+            fontFamily: 'var(--font-display, "Inter Tight", sans-serif)',
+            marginBottom: '10px',
+          }}>
             Welcome{user?.firstName ? `, ${user.firstName}` : ''}.
           </h1>
-          <p className="text-sm" style={{ color: '#64748B' }}>
+
+          {/* Sub-line */}
+          <p style={{ fontSize: '13px', color: '#475569', letterSpacing: '0.01em' }}>
             Select a practice area to begin your session.
           </p>
+
+          {/* Metadata strip */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '18px',
+            marginTop: '22px',
+            paddingTop: '18px',
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+          }}>
+            {[
+              { val: '4', label: 'Practice Areas' },
+              { val: 'AI', label: 'Powered Research' },
+              { val: '24×7', label: 'Availability' },
+            ].map((item, i) => (
+              <React.Fragment key={item.val}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: B.accent, fontFamily: 'monospace' }}>
+                    {item.val}
+                  </span>
+                  <span style={{ fontSize: '10px', color: '#3D4F66' }}>{item.label}</span>
+                </div>
+                {i < 2 && <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.06)', display: 'block' }} />}
+              </React.Fragment>
+            ))}
+          </div>
         </motion.div>
 
-        {/* Module Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {/* ── Module Grid ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {MODULES.map((mod, i) => (
-            <motion.button
+            <ModuleCard
               key={mod.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: i * 0.07 }}
+              mod={mod}
+              index={i}
               onClick={() => setActiveModule(mod)}
-              className="group relative flex flex-col text-left p-7 rounded-2xl transition-all duration-250 overflow-hidden"
-              style={{ background: '#060608', border: `1px solid ${B.border}`, minHeight: '300px' }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = B.borderH;
-                (e.currentTarget as HTMLElement).style.boxShadow = `0 0 40px ${B.glow}`;
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = B.border;
-                (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-              }}
-            >
-              {/* Subtle top glow on hover */}
-              <div className="absolute top-0 left-0 right-0 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                style={{ background: `linear-gradient(90deg, transparent, ${B.accent}, transparent)` }} />
-
-              {/* Icon */}
-              <div className="mb-6 p-3 rounded-xl w-fit"
-                style={{ background: B.iconBg, border: `1px solid ${B.border}` }}>
-                <mod.icon size={20} style={{ color: B.accent }} />
-              </div>
-
-              {/* Text */}
-              <div className="flex-1">
-                <span className="text-[9px] font-mono font-black tracking-[0.22em] uppercase mb-2 block" style={{ color: B.accent }}>
-                  {mod.label}
-                </span>
-                <h3 className="text-base font-display font-bold text-white mb-2 leading-snug">{mod.fullName}</h3>
-                <p className="text-[11px] mb-5" style={{ color: '#64748B' }}>{mod.tagline}</p>
-
-                <ul className="space-y-1.5">
-                  {mod.features.map(f => (
-                    <li key={f} className="flex items-center gap-2 text-[11px]" style={{ color: '#94A3B8' }}>
-                      <span className="w-[3px] h-[3px] rounded-full flex-shrink-0" style={{ background: B.accent }} />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* CTA */}
-              <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold" style={{ color: B.accent }}>
-                Get Access
-                <ArrowRight size={11} className="group-hover:translate-x-1 transition-transform duration-200" />
-              </div>
-            </motion.button>
+            />
           ))}
         </div>
 
-        {/* Footnote */}
-        <motion.p
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.55 }}
-          className="text-center text-[10px] font-mono mt-12"
-          style={{ color: '#334155' }}
+        {/* ── Footer note ── */}
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
+          style={{
+            marginTop: '40px',
+            paddingTop: '20px',
+            borderTop: '1px solid rgba(255,255,255,0.04)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+          }}
         >
-          Sessions expire based on plan duration · No recurring charges · Secured by Razorpay
-        </motion.p>
+          <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#273344', letterSpacing: '0.04em' }}>
+            Sessions expire based on plan duration
+          </span>
+          <span style={{ color: '#1E2D3D', fontSize: '10px' }}>·</span>
+          <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#273344', letterSpacing: '0.04em' }}>
+            No recurring charges
+          </span>
+          <span style={{ color: '#1E2D3D', fontSize: '10px' }}>·</span>
+          <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#273344', letterSpacing: '0.04em' }}>
+            Secured by Razorpay
+          </span>
+        </motion.div>
       </div>
 
       {activeModule && <PricingModal module={activeModule} onClose={() => setActiveModule(null)} />}
