@@ -57,11 +57,19 @@ function linkifyLegalRefs(markdown, sources) {
   const placeholders = [];
   const shield = m => { placeholders.push(m); return `\x00LINK${placeholders.length - 1}\x00`; };
 
-  // Preserve existing doc links so we don't double-wrap them
-  let safe = markdown.replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, url) => {
-    if (url.includes('/api/documents/')) return shield(match);
-    return text;           // strip non-doc markdown links to plain text
-  });
+  // Preserve existing doc links so we don't double-wrap them.
+  // Strip whitespace/newlines from captured URLs — LLMs sometimes wrap long
+  // URLs across lines which embeds \n inside the URL, causing CommonMark to
+  // reject it as a link and render the raw (url) as plain text.
+  let safe = markdown
+    // First: collapse any newline between ] and ( so split links are rejoined
+    .replace(/\]\(\s*\n\s*(\/api\/)/g, ']($1')
+    // Then process all [text](url) patterns
+    .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, url) => {
+      const cleanUrl = url.replace(/\s+/g, ''); // strip embedded whitespace/newlines
+      if (cleanUrl.includes('/api/documents/')) return shield(`[${text}](${cleanUrl})`);
+      return text;           // strip non-doc markdown links to plain text
+    });
 
   const wrap = (text, src) => (src?.url ? `[${text}](${src.url})` : text);
 
@@ -342,7 +350,10 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
               },
             }}
           >
-            {linkifyLegalRefs(data?.answer || '', sources)}
+            {/* Strip any orphaned (/api/...) URL text that leaked past the link parser */}
+            {linkifyLegalRefs(data?.answer || '', sources)
+              .replace(/(?<!\])\(\/api\/[^()\s]+\)/g, '')}
+
           </ReactMarkdown>
         </div>
 
