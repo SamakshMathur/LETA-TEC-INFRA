@@ -1,5 +1,4 @@
 ﻿import React from 'react';
-import { Link } from 'react-router-dom';
 import { AskLetaWidget } from '../leta';
 import { DocumentLibrary } from '../documents';
 import { FileText, Shield } from 'lucide-react';
@@ -126,12 +125,12 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
                   </p>
                 </div>
                 <div>
-                  <Link 
-                    to="/responses" 
-                    className="block text-center w-full py-3.5 text-[10px] font-mono uppercase tracking-[0.2em] bg-[#131D2B] border border-white/[0.05] hover:border-[#4FB7C5]/30 hover:bg-[#131D2B]/80 text-[#F4F7FA] rounded-lg transition-all"
+                  <button
+                    onClick={() => document.getElementById('document-library')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="block text-center w-full py-3.5 text-[10px] font-mono uppercase tracking-[0.2em] bg-[#131D2B] border border-white/[0.05] hover:border-[#4FB7C5]/30 hover:bg-[#131D2B]/80 text-[#F4F7FA] rounded-lg transition-all cursor-pointer"
                   >
                     Open Litigation Console
-                  </Link>
+                  </button>
                 </div>
               </div>
             ) : (
@@ -167,7 +166,7 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
           </div>
 
           {/* Bottom Section: Document Library — GST only; other modules are isolated */}
-          <div className="w-full">
+          <div id="document-library" className="w-full">
             {domainId === 'gst' ? (
               <DocumentLibrary />
             ) : (

@@ -1,7 +1,7 @@
 import { LawDashboard } from '../components/dashboard';
 import {
   Home, About, Documentation,
-  GST, GstTemplates, TemplateCustomization,
+  GST, TemplateCustomization,
   AdminTemplateDashboard, AdminUploadPortal,
   SignupPage, LetaWorkspace, ModuleDashboard,
 } from '../pages';
@@ -40,8 +40,6 @@ export const protectedRoutes: RouteConfig[] = [
       />
     ),
   },
-  { path: ROUTES.GST.TEMPLATES, element: <GstTemplates /> },
-  { path: ROUTES.RESPONSES,     element: <GstTemplates /> },
   { path: ROUTES.GST.CUSTOMIZE, element: <TemplateCustomization /> },
 
   {
