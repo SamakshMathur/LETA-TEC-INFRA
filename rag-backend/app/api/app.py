@@ -141,8 +141,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if not request.url.path.startswith("/api/documents/view"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         # Remove server fingerprinting headers
-        response.headers.pop("server", None)
-        response.headers.pop("x-powered-by", None)
+        for h in ("server", "x-powered-by"):
+            if h in response.headers:
+                del response.headers[h]
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
