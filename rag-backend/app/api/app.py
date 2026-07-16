@@ -762,9 +762,9 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
 
     retriever = get_retriever()
-    # Reduced top_k + skip_rerank: FlashRank with ms-marco-MiniLM-L-12-v2 takes
-    # 30-50s on 100+ candidates — must bypass it to fit inside API Gateway's 29s timeout.
-    _top_k = 15 if _is_draft else (12 if _complexity >= 0.60 else 10)
+    # skip_rerank: FlashRank takes 30-50s on 100+ candidates — bypassed to fit in 29s.
+    # top_k raised now that ALB is in path and Sonnet is used for all queries.
+    _top_k = 20 if _is_draft else (18 if _complexity >= 0.60 else 15)
     chunks = retriever.search(
         query=refined_q,
         top_k=_top_k,
@@ -785,10 +785,10 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         + compressed_block
     )
 
-    # Drafts (notice replies, advisories) MUST use Sonnet — they require 5,000–12,000 tokens.
-    # Non-draft Q&A uses Haiku to stay within API Gateway's 29-second timeout.
+    # Use Sonnet for all queries — ALB removes the hard IP-change constraint.
+    # API Gateway still has a 29s timeout so reranking stays off, but Sonnet quality is restored.
     answer = await _asyncio.to_thread(
-        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=not _is_draft))
+        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft))
     )
 
     unique_sources: list = []
