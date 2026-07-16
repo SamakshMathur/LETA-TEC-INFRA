@@ -785,10 +785,10 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         + compressed_block
     )
 
-    # Use Sonnet for all queries — ALB removes the hard IP-change constraint.
-    # API Gateway still has a 29s timeout so reranking stays off, but Sonnet quality is restored.
+    # Draft/advisory queries: Haiku + 4000 tokens (~23-27s) — fits API Gateway's 29s limit.
+    # Non-draft Q&A: Sonnet (responses are 1000-2500 tokens, ~15-25s) — fits and gives full quality.
     answer = await _asyncio.to_thread(
-        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft))
+        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=_is_draft))
     )
 
     unique_sources: list = []
