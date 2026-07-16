@@ -719,31 +719,8 @@ const LetaWorkspace: React.FC = () => {
         }
 
         setIsStreaming(false);
-      } else if (import.meta.env.PROD) {
-        // Production path: API Gateway buffers SSE — use /ask-sync (JSON, Haiku, skip rerank)
-        const syncRes = await fetch(`${BASE_URL}/ask-sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
-          signal: controller.signal,
-        });
-
-        if (!syncRes.ok) throw new Error(`Server returned status: ${syncRes.status}`);
-
-        const data = await syncRes.json();
-        setIsLoading(false);
-        setMessages(prev => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last.role === 'assistant') {
-            next[next.length - 1] = { ...last, content: data.answer || '', consulted_sources: data.sources || [] };
-          }
-          return next;
-        });
-
-        setIsStreaming(false);
       } else {
-        // Dev path: use /ask streaming (SSE)
+        // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
         const streamRes = await fetch(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
