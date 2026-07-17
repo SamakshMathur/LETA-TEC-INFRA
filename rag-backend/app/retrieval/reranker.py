@@ -84,10 +84,8 @@ class LegalReranker:
             # Draft mode: boost case law so judgments compete with statutes
             if is_draft and _is_case_law(rel_path):
                 final_score *= 1.3
-            # Q&A mode: penalise AARs so Acts/Circulars rank above them.
-            # AARs are only relevant when the query specifically concerns an advance ruling.
-            elif not is_draft and _is_case_law(rel_path):
-                final_score *= 0.70
+            # Q&A: no penalty — legal_weight (30% of score) already naturally
+            # ranks Acts/Circulars above AARs; let semantic relevance decide
 
             chunk["_is_statute_first"] = chunk.get("_is_statute_first", False)
             chunk["_final_legal_score"] = final_score
