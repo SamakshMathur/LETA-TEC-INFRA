@@ -438,8 +438,33 @@ const LetaWorkspace: React.FC = () => {
     el.style.height = Math.min(el.scrollHeight, 300) + 'px';
   };
 
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  useEffect(() => { scrollToBottom(); }, [messages, isLoading]);
+  const userScrolledUpRef = useRef(false);
+
+  // Only auto-scroll when the user is already near the bottom (ChatGPT behaviour)
+  const scrollToBottom = (force = false) => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (force || nearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Track when the user manually scrolls up so we stop pulling them down
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      userScrolledUpRef.current = !nearBottom;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!userScrolledUpRef.current) scrollToBottom();
+  }, [messages, isLoading]);
 
   // ─── Sessions ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -565,12 +590,14 @@ const LetaWorkspace: React.FC = () => {
     if (!activeQuery.trim() && !selectedFile) return;
 
     const userMsg: Message = { role: 'user', content: activeQuery || (selectedFile ? `[Attached: ${selectedFile.name}]` : '') };
-    const newAiMsg: Message = { role: 'assistant', content: '', confidence: 0.95, citations: [] };
 
-    setMessages(prev => [...prev, userMsg, newAiMsg]);
+    // Only add user message now; assistant message is added when first chunk arrives
+    setMessages(prev => [...prev, userMsg]);
     setQuery('');
     setIsLoading(true);
     setIsStreaming(false);
+    // Force scroll to bottom when user sends (reset any "scrolled up" state)
+    userScrolledUpRef.current = false;
     if (textareaRef.current) textareaRef.current.style.height = '90px';
 
     // Prevent screen sleep from killing the stream
@@ -626,10 +653,13 @@ const LetaWorkspace: React.FC = () => {
 
         const reader = fileRes.body?.getReader();
         const decoder = new TextDecoder('utf-8');
-        setIsLoading(false);
-        setIsStreaming(true);
 
         if (!reader) throw new Error('Response stream unavailable');
+
+        // Add assistant message now that we have a live stream
+        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        setIsLoading(false);
+        setIsStreaming(true);
 
         let buffer = '';
         const appendChunk = (text: string) => {
@@ -732,10 +762,13 @@ const LetaWorkspace: React.FC = () => {
 
         const reader = streamRes.body?.getReader();
         const decoder = new TextDecoder('utf-8');
-        setIsLoading(false);
-        setIsStreaming(true);
 
         if (!reader) throw new Error('Response stream unavailable');
+
+        // Add assistant message now that we have a live stream
+        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        setIsLoading(false);
+        setIsStreaming(true);
 
         let buffer = '';
         const appendChunk = (text: string) => {
@@ -1289,11 +1322,6 @@ const LetaWorkspace: React.FC = () => {
             ref={chatScrollRef}
             className="flex-1 min-h-0 overflow-y-auto relative scrollbar-thin"
             style={{ overflowX: 'clip', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
-            onWheel={(e) => {
-              if (chatScrollRef.current) {
-                chatScrollRef.current.scrollTop += e.deltaY;
-              }
-            }}
           >
             <div className="max-w-[920px] mx-auto w-full px-6 md:px-12 pt-10 pb-40 flex flex-col gap-8">
 
@@ -1376,6 +1404,7 @@ const LetaWorkspace: React.FC = () => {
                               isDark
                               animate={!msg.isHistory}
                               onDocumentClick={handleDocumentClick}
+                              isStreaming={isStreaming && idx === messages.length - 1}
                             />
 
                             {/* ── Get Detailed Advisory CTA — prominent, inline ── */}
@@ -1608,11 +1637,11 @@ const LetaWorkspace: React.FC = () => {
                 className="w-full p-4 pr-40 pb-14 font-body text-xs leading-relaxed outline-none resize-none transition-all duration-200 bg-[#000000] border border-[#4FB7C5]/15 rounded-2xl text-[#F4F7FA] overflow-y-auto"
                 style={{ minHeight: '90px', maxHeight: '300px' }}
                 onFocus={e => {
-                  e.currentTarget.style.borderColor = 'rgba(79,183,197,0.3)';
-                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(79,183,197,0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(79,183,197,0.4)';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(79,183,197,0.06)';
                 }}
                 onBlur={e => {
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(79,183,197,0.15)';
                   e.currentTarget.style.boxShadow = 'none';
                 }}
                 onKeyDown={e => {

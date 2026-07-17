@@ -47,6 +47,11 @@
   100% { background-position: 0 0 }
 }
 
+@keyframes leta-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 
 /* ── Aurora background animation ────────────────────────────────────────── */
 @keyframes aurora {

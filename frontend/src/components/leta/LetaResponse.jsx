@@ -205,7 +205,7 @@ function linkifyLegalRefs(markdown, sources) {
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate }) => {
+const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
   const [hasCopied, setHasCopied] = useState(false);
 
   const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
@@ -220,6 +220,13 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
   if (!data) return null;
 
   const sources = data.consulted_sources || [];
+
+  // Skip heavy linkification during streaming — only process once complete
+  const processedContent = React.useMemo(() => {
+    if (isStreaming) return data?.answer || '';
+    return linkifyLegalRefs(data?.answer || '', sources)
+      .replace(/(?<!\])\(\/api\/[^()\s]+\)/g, '');
+  }, [data?.answer, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Open a source document in the right-panel viewer. */
   const openDoc = (src) => {
@@ -350,11 +357,22 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
               },
             }}
           >
-            {/* Strip any orphaned (/api/...) URL text that leaked past the link parser */}
-            {linkifyLegalRefs(data?.answer || '', sources)
-              .replace(/(?<!\])\(\/api\/[^()\s]+\)/g, '')}
-
+            {processedContent}
           </ReactMarkdown>
+          {/* Blinking cursor during active streaming */}
+          {isStreaming && (
+            <span
+              style={{
+                display: 'inline-block',
+                width: '2px',
+                height: '1em',
+                background: '#4FB7C5',
+                marginLeft: '2px',
+                verticalAlign: 'text-bottom',
+                animation: 'leta-cursor-blink 0.8s step-end infinite',
+              }}
+            />
+          )}
         </div>
 
         {/* ── Always-visible Referenced Documents bar ───────────────────── */}
