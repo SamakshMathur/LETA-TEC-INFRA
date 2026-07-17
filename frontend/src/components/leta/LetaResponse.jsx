@@ -125,24 +125,23 @@ function linkifyLegalRefs(markdown, sources) {
   safe = safe.replace(/\b(?:CBIC\s+)?Circular\s+No\.?\s*(\d+)[/\-](\d+)(?:[/\-]\w+)?\b/gi, (match, num) => {
     const src =
       sources.find(s => (s.title || '').toLowerCase().includes(num)) ||
-      findSrc('circular') ||
-      sources[0];
-    return wrap(match, src);
+      findSrc('circular');
+    return wrap(match, src);  // no fallback to sources[0] — unlink if no circular found
   });
 
   // ── 3. Notifications: "Notification No. 12/2023" ─────────────────────────
   safe = safe.replace(/\bNotification\s+No\.?\s*\d+\/\d{4}[-\w]*/gi, m =>
-    wrap(m, findSrc('notification', 'circular') || sources[0])
+    wrap(m, findSrc('notification', 'circular'))  // no sources[0] fallback
   );
 
   // ── 4. Sections: "Section 17(5)(c)" — handles any number of sub-clauses ──
   safe = safe.replace(/\bSection\s+\d+[A-Z]?(?:\([^)]{1,10}\))*/g, m =>
-    wrap(m, findSrc('act', 'cgst', 'igst', 'gst') || sources[0])
+    wrap(m, findSrc('act', 'cgst', 'igst', 'gst', 'rules'))  // no sources[0] fallback
   );
 
   // ── 5. Rules: "Rule 86A" ─────────────────────────────────────────────────
   safe = safe.replace(/\bRule\s+\d+[A-Z]?(?:\(\d+\))*/g, m =>
-    wrap(m, findSrc('rule', 'rules') || sources[0])
+    wrap(m, findSrc('rule', 'rules', 'cgst rules', 'igst rules'))  // no sources[0] fallback
   );
 
   // ── 6. GSTR forms: "GSTR-3B", "GSTR 9C" ─────────────────────────────────
@@ -151,14 +150,14 @@ function linkifyLegalRefs(markdown, sources) {
     return wrap(
       m,
       sources.find(s => (s.title || s.url || '').toLowerCase().replace(/[_\-.\s%20]/g, '').includes(norm)) ||
-      findSrc('gstr', 'form', 'return') ||
-      sources[0]
+      findSrc('gstr', 'form', 'return')
+      // no sources[0] fallback
     );
   });
 
   // ── 7. GST Act references ─────────────────────────────────────────────────
   safe = safe.replace(/\b(?:C|I|S|UT)?GST\s+Act(?:,?\s*\d{4})?\b/gi, m =>
-    wrap(m, findSrc('act', 'bare law', 'cgst', 'igst') || sources[0])
+    wrap(m, findSrc('act', 'bare law', 'cgst', 'igst'))  // no sources[0] fallback
   );
 
   // ── 8. Form codes: "DRC-01", "RFD-09", "PMT-06" ─────────────────────────
@@ -167,8 +166,8 @@ function linkifyLegalRefs(markdown, sources) {
     return wrap(
       m,
       sources.find(s => (s.title || s.url || '').toLowerCase().replace(/[_\-.\s]/g, '').includes(norm)) ||
-      findSrc('form', 'drc', 'rfd', 'pmt') ||
-      sources[0]
+      findSrc('form', 'drc', 'rfd', 'pmt')
+      // no sources[0] fallback
     );
   });
 

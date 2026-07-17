@@ -81,9 +81,13 @@ class LegalReranker:
             # Base components sum to 1.0, layer1_boost is additive for statute priority
             final_score = (0.5 * semantic_score) + (0.3 * legal_weight) + (0.2 * topic_match) + layer1_boost
 
-            # Phase 2C: Draft mode — boost case law 1.3× so judgments compete with statutes
+            # Draft mode: boost case law so judgments compete with statutes
             if is_draft and _is_case_law(rel_path):
                 final_score *= 1.3
+            # Q&A mode: penalise AARs so Acts/Circulars rank above them.
+            # AARs are only relevant when the query specifically concerns an advance ruling.
+            elif not is_draft and _is_case_law(rel_path):
+                final_score *= 0.70
 
             chunk["_is_statute_first"] = chunk.get("_is_statute_first", False)
             chunk["_final_legal_score"] = final_score

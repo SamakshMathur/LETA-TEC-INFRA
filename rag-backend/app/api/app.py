@@ -382,9 +382,26 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         "rel_path": _rel_path,
                         "score": float(c.get("_rerank_score", 0))
                     })
-                if len(unique_sources) >= 8: # Limit to top 8 unique sources
+                if len(unique_sources) >= 20:  # collect more, then sort + cap
                     break
-            
+
+            # Sort by legal authority so Acts/Rules/Circulars appear before AARs.
+            # This prevents sources[0] from being an AAR, which would cause the
+            # frontend's linkifyLegalRefs to link every Section reference to an AAR.
+            def _src_authority(s):
+                p = (s.get("rel_path", "") or s.get("url", "") or s.get("title", "")).lower().replace("\\", "/")
+                if "/act/" in p or "cgst act" in p or "igst act" in p or "sgst act" in p: return 0
+                if "/rule" in p or "cgst rules" in p or "igst rules" in p: return 1
+                if "/notification" in p: return 2
+                if "/circular" in p or "/circulars" in p: return 3
+                if "/supreme court" in p or "supreme court" in p: return 4
+                if "/high court" in p or "high court" in p: return 5
+                if "/aar/" in p or "advance ruling" in p: return 6
+                return 7
+
+            unique_sources.sort(key=_src_authority)
+            unique_sources = unique_sources[:8]
+
             metadata_payload = {
                 "type": "metadata",
                 "sources": unique_sources

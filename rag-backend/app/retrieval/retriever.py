@@ -422,9 +422,9 @@ class Retriever:
         # Drafts need: statute ≥10, case_law ≥10, circular ≥5
         # Q&A needs:   statute ≥8,  case_law ≥6,  circular ≥4
         _quotas = (
-            {"statute": 10, "case_law": 10, "circular": 5}
+            {"statute": 10, "case_law": 8, "circular": 6}   # drafts: need judgments + circulars
             if is_draft else
-            {"statute": 8,  "case_law": 6,  "circular": 4}
+            {"statute": 10, "case_law": 2, "circular": 6}   # Q&A: Acts + Circulars dominate; fewer AARs
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
 

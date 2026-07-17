@@ -35,7 +35,7 @@ const MODULES = [
     tagline: 'Cross-border transaction compliance',
     route: '/fema',
     iconEl: () => <Globe size={22} color={B.accent} />,
-    status: 'LIVE',
+    status: 'COMING_SOON',
     features: ['RBI circulars', 'Compounding analysis', 'ODI/FDI compliance', 'FCRA advisory'],
   },
   {
@@ -46,7 +46,7 @@ const MODULES = [
     tagline: 'Corporate governance & compliance',
     route: '/company-law',
     iconEl: () => <Building2 size={22} color={B.accent} />,
-    status: 'LIVE',
+    status: 'COMING_SOON',
     features: ['MCA filings', 'Board resolutions', 'NCLT procedures', 'ROC compliance'],
   },
   {
@@ -57,7 +57,7 @@ const MODULES = [
     tagline: 'Direct tax advisory & planning',
     route: '/income-tax',
     iconEl: () => <Scale size={22} color={B.accent} />,
-    status: 'LIVE',
+    status: 'COMING_SOON',
     features: ['ITR analysis', 'TDS/TCS compliance', 'Capital gains', 'Assessment orders'],
   },
 ];
@@ -312,23 +312,26 @@ const ModuleCard: React.FC<{
   onClick: () => void;
 }> = ({ mod, index, onClick }) => {
   const [hovered, setHovered] = useState(false);
+  const isComingSoon = mod.status === 'COMING_SOON';
 
   return (
     <motion.button
       initial={{ opacity: 0, y: 28 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.42, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
+      onClick={isComingSoon ? undefined : onClick}
+      onMouseEnter={() => !isComingSoon && setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className="group relative flex flex-col text-left w-full overflow-hidden"
       style={{
-        background: hovered ? '#0C0F18' : '#090B12',
-        border: `1px solid ${hovered ? B.borderH : 'rgba(255,255,255,0.06)'}`,
+        background: isComingSoon ? '#070910' : (hovered ? '#0C0F18' : '#090B12'),
+        border: `1px solid ${isComingSoon ? 'rgba(255,255,255,0.04)' : (hovered ? B.borderH : 'rgba(255,255,255,0.06)')}`,
         borderRadius: '14px',
         boxShadow: hovered ? `0 0 60px ${B.glow}` : '0 1px 0 rgba(255,255,255,0.02) inset',
         transition: 'background 0.22s, border-color 0.22s, box-shadow 0.28s',
         minHeight: '340px',
+        cursor: isComingSoon ? 'default' : 'pointer',
+        opacity: isComingSoon ? 0.6 : 1,
       }}
     >
       {/* Top glow edge */}
@@ -363,31 +366,55 @@ const ModuleCard: React.FC<{
           }}>
             {mod.num}
           </span>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '5px',
-            padding: '3px 8px',
-            borderRadius: '4px',
-            border: `1px solid ${hovered ? B.border : 'rgba(255,255,255,0.06)'}`,
-            background: hovered ? B.iconBg : 'transparent',
-            transition: 'all 0.22s',
-          }}>
-            <span style={{
-              width: '5px', height: '5px', borderRadius: '50%',
-              background: B.accent,
-              display: 'inline-block',
-              boxShadow: hovered ? `0 0 6px ${B.accent}` : 'none',
-              transition: 'box-shadow 0.22s',
-            }} />
-            <span style={{
-              fontSize: '8px', fontWeight: 800,
-              fontFamily: 'monospace',
-              letterSpacing: '0.16em',
-              color: hovered ? B.accent : '#475569',
-              transition: 'color 0.22s',
+          {isComingSoon ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              border: '1px solid rgba(255,255,255,0.05)',
+              background: 'transparent',
             }}>
-              {mod.status}
-            </span>
-          </div>
+              <span style={{
+                width: '5px', height: '5px', borderRadius: '50%',
+                background: '#374151',
+                display: 'inline-block',
+              }} />
+              <span style={{
+                fontSize: '8px', fontWeight: 800,
+                fontFamily: 'monospace',
+                letterSpacing: '0.16em',
+                color: '#374151',
+              }}>
+                COMING SOON
+              </span>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              border: `1px solid ${hovered ? B.border : 'rgba(255,255,255,0.06)'}`,
+              background: hovered ? B.iconBg : 'transparent',
+              transition: 'all 0.22s',
+            }}>
+              <span style={{
+                width: '5px', height: '5px', borderRadius: '50%',
+                background: B.accent,
+                display: 'inline-block',
+                boxShadow: hovered ? `0 0 6px ${B.accent}` : 'none',
+                transition: 'box-shadow 0.22s',
+              }} />
+              <span style={{
+                fontSize: '8px', fontWeight: 800,
+                fontFamily: 'monospace',
+                letterSpacing: '0.16em',
+                color: hovered ? B.accent : '#475569',
+                transition: 'color 0.22s',
+              }}>
+                LIVE
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Icon */}
@@ -453,30 +480,43 @@ const ModuleCard: React.FC<{
         padding: '14px 22px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <span style={{
-          fontSize: '12px', fontWeight: 600,
-          color: hovered ? B.accent : '#334155',
-          transition: 'color 0.22s',
-          letterSpacing: '0.01em',
-        }}>
-          Get Access
-        </span>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: '28px', height: '28px', borderRadius: '7px',
-          background: hovered ? B.accent : 'rgba(255,255,255,0.04)',
-          border: `1px solid ${hovered ? 'transparent' : 'rgba(255,255,255,0.07)'}`,
-          transition: 'all 0.22s',
-        }}>
-          <ArrowRight
-            size={12}
-            style={{
-              color: hovered ? '#000' : '#3D4F66',
-              transform: hovered ? 'translateX(1px)' : 'none',
-              transition: 'all 0.2s',
-            }}
-          />
-        </div>
+        {isComingSoon ? (
+          <span style={{
+            fontSize: '11px', fontWeight: 500,
+            color: '#1E293B',
+            letterSpacing: '0.01em',
+            fontStyle: 'italic',
+          }}>
+            Available soon
+          </span>
+        ) : (
+          <>
+            <span style={{
+              fontSize: '12px', fontWeight: 600,
+              color: hovered ? B.accent : '#334155',
+              transition: 'color 0.22s',
+              letterSpacing: '0.01em',
+            }}>
+              Get Access
+            </span>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '28px', height: '28px', borderRadius: '7px',
+              background: hovered ? B.accent : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${hovered ? 'transparent' : 'rgba(255,255,255,0.07)'}`,
+              transition: 'all 0.22s',
+            }}>
+              <ArrowRight
+                size={12}
+                style={{
+                  color: hovered ? '#000' : '#3D4F66',
+                  transform: hovered ? 'translateX(1px)' : 'none',
+                  transition: 'all 0.2s',
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
     </motion.button>
   );
