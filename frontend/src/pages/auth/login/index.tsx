@@ -49,7 +49,11 @@ const LoginPage: React.FC = () => {
       }
     } catch (err: any) {
       const d = err.response?.data?.detail;
-      setError(typeof d === 'string' ? d : 'Failed to send OTP. Please try again.');
+      if (typeof d === 'string') setError(d);
+      else if (err.response) setError(`Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
+      else if (err.request) setError(`Cannot reach server — check connection. (${err.message})`);
+      else setError(err.message || 'Failed to send OTP. Please try again.');
+      console.error('[Login] Send OTP error:', err.response?.status, err.response?.data, err.message);
     } finally { setLoading(false); }
   };
 
@@ -76,7 +80,11 @@ const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (err: any) {
       const d = err.response?.data?.detail;
-      setError(typeof d === 'string' ? d : 'Invalid OTP. Please try again.');
+      if (typeof d === 'string') setError(d);
+      else if (err.response) setError(`Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
+      else if (err.request) setError(`Cannot reach server — check connection. (${err.message})`);
+      else setError(err.message || 'Invalid OTP. Please try again.');
+      console.error('[Login] Verify OTP error:', err.response?.status, err.response?.data, err.message);
       setOtp(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally { setLoading(false); }
