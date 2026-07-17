@@ -55,17 +55,17 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     username = payload.get("sub")
     if username is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
-    
-    # In a real app, fetch from database:
-    # user = get_user_collection().find_one({"username": username})
-    # if not user: raise ...
-    
-    return {
-        "username": username,
-        "email": f"{username}@example.com",
-        "role": "admin",
-        "verified": True
-    }
+
+    from app.database import get_user_collection
+    users_col = get_user_collection()
+    if users_col is not None:
+        user = users_col.find_one({"username": username}, {"_id": 0, "password": 0})
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        return user
+
+    # DB not reachable — allow in dev with minimal identity
+    return {"username": username, "role": "user", "verified": True}
 
 async def get_current_admin(current_user: dict = Depends(get_current_user)) -> dict:
     if current_user.get("role") != "admin":

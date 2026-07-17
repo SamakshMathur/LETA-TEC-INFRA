@@ -9,6 +9,18 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
+
+// Reads the stored JWT and returns an Authorization header object.
+// Used on every call so each request is tied to the logged-in user.
+const getAuthHeaders = (): Record<string, string> => {
+  try {
+    const stored = localStorage.getItem('pro.auth.session');
+    if (!stored) return {};
+    const s = JSON.parse(stored);
+    const token = s?.tokens?.accessToken;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch { return {}; }
+};
 import { LetaResponse } from '../components/leta';
 import { SimpleSearchLoader } from '../components/effects';
 import { DocumentViewer } from '../components/documents';
@@ -526,7 +538,7 @@ const LetaWorkspace: React.FC = () => {
 
   const fetchSessions = async () => {
     try {
-      const res = await axios.get(`${BASE_URL}/api/sessions/list`);
+      const res = await axios.get(`${BASE_URL}/api/sessions/list`, { headers: getAuthHeaders() });
       setSessions(res.data);
     } catch (err) {
       console.error('Failed to fetch sessions:', err);
@@ -537,7 +549,7 @@ const LetaWorkspace: React.FC = () => {
     try {
       setIsLoading(true);
       setCurrentSessionId(sessionId);
-      const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`);
+      const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`, { headers: getAuthHeaders() });
       setMessages(res.data.messages.map((msg: any) => ({
         role: msg.role,
         content: msg.content,
@@ -564,7 +576,7 @@ const LetaWorkspace: React.FC = () => {
   const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await axios.delete(`${BASE_URL}/api/sessions/${id}`);
+      await axios.delete(`${BASE_URL}/api/sessions/${id}`, { headers: getAuthHeaders() });
       fetchSessions();
       if (currentSessionId === id) handleNewSession();
     } catch (err) {
@@ -633,7 +645,7 @@ const LetaWorkspace: React.FC = () => {
         }
 
         try {
-          const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title });
+          const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title }, { headers: getAuthHeaders() });
           activeSessionId = sessionRes.data.session_id;
           setCurrentSessionId(activeSessionId);
         } catch {
@@ -647,7 +659,7 @@ const LetaWorkspace: React.FC = () => {
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
-        const fileRes = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', body: formData, signal: controller.signal });
+        const fileRes = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
         if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
 
@@ -753,7 +765,7 @@ const LetaWorkspace: React.FC = () => {
         // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
         const streamRes = await fetch(`${BASE_URL}/ask`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
           signal: controller.signal,
         });
