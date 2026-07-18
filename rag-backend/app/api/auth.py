@@ -114,20 +114,24 @@ def _generate_otp() -> str:
 
 
 def _send_sms_otp(phone: str, otp: str) -> None:
-    """Send OTP via Fast2SMS (India). Requires FAST2SMS_API_KEY env var."""
-    api_key = os.getenv("FAST2SMS_API_KEY", "")
-    if not api_key:
-        logger.warning("FAST2SMS_API_KEY not set — SMS not sent")
-        return
+    """Send OTP via AWS SNS. Uses task role credentials — no API key needed."""
+    import boto3
     try:
-        resp = _requests.post(
-            "https://www.fast2sms.com/dev/bulkV2",
-            headers={"authorization": api_key, "Content-Type": "application/json"},
-            json={"route": "otp", "variables_values": otp, "numbers": phone},
-            timeout=10,
+        # Normalise to E.164: strip leading zeros, prepend +91 for India
+        number = phone.strip().lstrip("+")
+        if len(number) == 10:
+            number = "91" + number
+        e164 = "+" + number
+        sns = boto3.client("sns", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-south-1"))
+        sns.publish(
+            PhoneNumber=e164,
+            Message=f"Your LETA OTP is {otp}. Valid for 10 minutes. Do not share.",
+            MessageAttributes={
+                "AWS.SNS.SMS.SMSType": {"DataType": "String", "StringValue": "Transactional"},
+                "AWS.SNS.SMS.SenderID": {"DataType": "String", "StringValue": "LETATEC"},
+            },
         )
-        resp.raise_for_status()
-        logger.info(f"SMS OTP sent | phone=***{phone[-4:]}")
+        logger.info(f"SMS OTP sent via SNS | phone=***{phone[-4:]}")
     except Exception as e:
         logger.error(f"SMS delivery failed: {e}")
 
