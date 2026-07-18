@@ -20,6 +20,8 @@ const LoginPage: React.FC = () => {
   const location  = useLocation();
   const from = (location.state as any)?.from?.pathname || '/dashboard';
 
+  const sessionExpired = new URLSearchParams(location.search).get('reason') === 'session_expired';
+
   useEffect(() => {
     if (countdown <= 0) return;
     const id = setTimeout(() => setCountdown(c => c - 1), 1000);
@@ -124,6 +126,12 @@ const LoginPage: React.FC = () => {
               {step === 'contact' ? 'Sovereign Access Portal' : 'Verify Identity'}
             </p>
           </div>
+
+          {sessionExpired && (
+            <div className="mb-4 p-3 rounded-leta bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium text-center">
+              Your session has expired. Please log in again.
+            </div>
+          )}
 
           {error && (
             <div className="mb-6 p-3 rounded-leta bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium text-center">

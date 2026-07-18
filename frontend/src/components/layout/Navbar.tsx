@@ -4,6 +4,7 @@ import { FileText, Landmark, Globe, Briefcase, ChevronDown, Settings, LogOut, La
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { ROUTES } from '../../constants/routes';
+import SessionClock from './SessionClock';
 
 const MODULES = [
   { label: 'GST Intelligence',  path: '/gst',          icon: FileText,  status: 'LIVE' },
@@ -200,6 +201,7 @@ const Navbar = () => {
 
         {/* ── Right Side ───────────────────────────────────────────────────── */}
         <div className="flex-1 flex justify-end items-center gap-3">
+          <SessionClock />
           {isLoggedIn ? (
             <div className="relative" ref={userRef}>
               <button

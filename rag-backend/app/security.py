@@ -62,6 +62,19 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         user = users_col.find_one({"username": username}, {"_id": 0, "password": 0})
         if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+        # Enforce plan-based session window (admin is exempt)
+        if user.get("role") != "admin":
+            session_end = user.get("session_end")
+            if session_end is not None:
+                # MongoDB returns naive datetimes; treat as UTC
+                if session_end.tzinfo is None:
+                    session_end = session_end.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > session_end:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Session expired. Please log in again."
+                    )
         return user
 
     # DB not reachable — allow in dev with minimal identity

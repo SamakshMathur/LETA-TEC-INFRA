@@ -106,6 +106,12 @@ class RefreshRequest(BaseModel):
 # DEV_MODE=true → return otp_preview in response and skip strict OTP check.
 _DEV_MODE: bool = os.getenv("DEV_MODE", "true").lower() == "true"
 
+# Session durations per plan (seconds). Admin role is exempt — no timer.
+PLAN_DURATIONS: dict[str, int] = {
+    "basic": 1 * 60 * 60,   # ₹500 → 1 hour
+    "pro":   3 * 60 * 60,   # ₹1000 → 3 hours
+}
+
 
 # ── OTP helpers ────────────────────────────────────────────────────────────────
 
@@ -228,6 +234,7 @@ async def register_user(user: UserRegister):
         "gender": user.gender,
         "verified": False,
         "role": "user",
+        "plan": "basic",
         "created_at": datetime.now(),
     })
 
@@ -343,35 +350,57 @@ async def verify_otp(req: VerifyOTPRequest):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Compute plan-based session window
+    plan = user.get("plan", "basic")
+    role = user.get("role", "user")
+    now_utc   = datetime.now(timezone.utc)
+    now_ms    = int(now_utc.timestamp() * 1000)
+
+    if role == "admin":
+        session_end_ms = None          # admin: unlimited
+        session_end_dt = None
+    else:
+        duration_s     = PLAN_DURATIONS.get(plan, PLAN_DURATIONS["basic"])
+        session_end_dt = now_utc + timedelta(seconds=duration_s)
+        session_end_ms = int(session_end_dt.timestamp() * 1000)
+
     users_col.update_one(
         {"$or": [{"email": req.contact}, {"phone": req.contact}]},
-        {"$set": {"verified": True, "last_login": datetime.now()}}
+        {"$set": {
+            "verified":    True,
+            "last_login":  now_utc,
+            "session_end": session_end_dt,   # stored as UTC datetime for server-side check
+        }}
     )
 
     from app.security import create_refresh_token
     access_token  = create_access_token({"sub": user.get("username")})
     refresh_token = create_refresh_token({"sub": user.get("username")})
-    now = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     user_info = {
-        "id": str(user.get("_id", "unknown")),
-        "username": user.get("username"),
-        "email": user.get("email"),
-        "phone": user.get("phone"),
+        "id":        str(user.get("_id", "unknown")),
+        "username":  user.get("username"),
+        "email":     user.get("email"),
+        "phone":     user.get("phone"),
         "full_name": user.get("full_name"),
-        "role": user.get("role", "user"),
+        "role":      role,
+        "plan":      plan,
     }
 
+    tokens: dict = {
+        "accessToken":           access_token,
+        "refreshToken":          refresh_token,
+        "expiresAt":             now_ms + (15 * 60 * 1000),
+        "refreshTokenExpiresAt": now_ms + (7 * 24 * 60 * 60 * 1000),
+        "tokenType":             "bearer",
+    }
+    if session_end_ms is not None:
+        tokens["session_end_ms"] = session_end_ms
+
     return {
-        "tokens": {
-            "accessToken": access_token,
-            "refreshToken": refresh_token,
-            "expiresAt": now + (15 * 60 * 1000),
-            "refreshTokenExpiresAt": now + (7 * 24 * 60 * 60 * 1000),
-            "tokenType": "bearer",
-        },
-        "user": user_info,
-        "memberships": [{"organizationId": "org_default", "role": user_info["role"]}],
+        "tokens":         tokens,
+        "user":           user_info,
+        "memberships":    [{"organizationId": "org_default", "role": role}],
         "organizationId": "org_default",
     }
 

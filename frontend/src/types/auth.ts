@@ -15,6 +15,7 @@ export interface Tokens {
   tokenType: string;
   expiresIn: number;
   refreshTokenExpiresIn: number;
+  session_end_ms?: number; // plan-based session expiry (absent for admin)
 }
 
 export interface Membership {
