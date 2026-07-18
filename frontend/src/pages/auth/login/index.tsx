@@ -4,11 +4,9 @@ import { useAuth } from '../../../context/AuthContext';
 import { sendOtpApi, verifyOtpApi } from '../../../services/auth';
 import { ROUTES } from '../../../constants/routes';
 
-type Method = 'phone' | 'email';
-type Step   = 'contact' | 'otp';
+type Step = 'contact' | 'otp';
 
 const LoginPage: React.FC = () => {
-  const [method,    setMethod]    = useState<Method>('phone');
   const [contact,   setContact]   = useState('');
   const [step,      setStep]      = useState<Step>('contact');
   const [otp,       setOtp]       = useState(['', '', '', '', '', '']);
@@ -32,15 +30,12 @@ const LoginPage: React.FC = () => {
     if (step === 'otp') inputRefs.current[0]?.focus();
   }, [step]);
 
-  const switchMethod = (m: Method) => { setMethod(m); setContact(''); setError(null); };
-
   const handleSendOtp = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      const data = await sendOtpApi(contact.trim(), method);
+      const data = await sendOtpApi(contact.trim(), 'phone');
       if (data?.otp_preview) {
-        // Dev mode: auto-verify immediately using the returned OTP
         const session = await verifyOtpApi(contact.trim(), data.otp_preview);
         login(session, false);
         navigate(from, { replace: true });
@@ -61,11 +56,12 @@ const LoginPage: React.FC = () => {
     if (countdown > 0) return;
     setLoading(true); setError(null);
     try {
-      await sendOtpApi(contact.trim(), method);
+      await sendOtpApi(contact.trim(), 'phone');
       setOtp(['', '', '', '', '', '']); setCountdown(30);
     } catch (err: any) {
       const d = err.response?.data?.detail;
-      setError(typeof d === 'string' ? d : 'Failed to resend OTP.');
+      if (typeof d === 'string') setError(d);
+      else setError('Failed to resend OTP. Please try again.');
     } finally { setLoading(false); }
   };
 
@@ -113,10 +109,6 @@ const LoginPage: React.FC = () => {
     inputRefs.current[Math.min(digits.length, 5)]?.focus();
   };
 
-  const maskedContact = method === 'phone'
-    ? `+91 ••••••${contact.slice(-4)}`
-    : `${contact.slice(0, 3)}•••${contact.slice(contact.indexOf('@'))}`;
-
   return (
     <div className="auth-page py-0">
       <div className="absolute inset-0 bg-noise opacity-20 pointer-events-none" />
@@ -139,30 +131,22 @@ const LoginPage: React.FC = () => {
             </div>
           )}
 
-          {/* ── Step 1: Contact entry ── */}
+          {/* ── Step 1: Phone number entry ── */}
           {step === 'contact' && (
             <form onSubmit={handleSendOtp} className="space-y-6">
-              {/* Method toggle */}
-              <div className="flex rounded-leta border border-leta-gray-200 overflow-hidden">
-                {(['phone', 'email'] as Method[]).map(m => (
-                  <button key={m} type="button" onClick={() => switchMethod(m)}
-                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${
-                      method === m ? 'bg-leta-primary text-surface' : 'text-leta-gray-500 hover:text-leta-gray-900/70'
-                    }`}>
-                    {m === 'phone' ? 'Mobile' : 'Email'}
-                  </button>
-                ))}
-              </div>
-
               <div className="space-y-2">
-                <label htmlFor="contact" className="label-auth">
-                  {method === 'phone' ? 'Mobile Number' : 'Email Address'}
-                </label>
-                <input id="contact" type={method === 'phone' ? 'tel' : 'email'}
-                  value={contact} onChange={e => setContact(e.target.value)}
-                  required className="input-auth"
-                  placeholder={method === 'phone' ? '10-digit mobile number' : 'you@example.com'}
-                  maxLength={method === 'phone' ? 15 : undefined} />
+                <label htmlFor="contact" className="label-auth">Mobile Number</label>
+                <input
+                  id="contact"
+                  type="tel"
+                  value={contact}
+                  onChange={e => setContact(e.target.value)}
+                  required
+                  className="input-auth"
+                  placeholder="10-digit mobile number"
+                  maxLength={15}
+                  autoFocus
+                />
               </div>
 
               <button type="submit" disabled={loading || !contact.trim()} className="btn-auth-primary">
@@ -184,10 +168,9 @@ const LoginPage: React.FC = () => {
           {step === 'otp' && (
             <form onSubmit={handleVerify} className="space-y-6">
               <p className="text-center text-xs text-leta-gray-900/50">
-                OTP sent to <span className="text-leta-primary font-bold">{maskedContact}</span>
+                OTP sent to <span className="text-leta-primary font-bold">+91 ••••••{contact.slice(-4)}</span>
               </p>
 
-              {/* 6-box OTP input */}
               <div className="flex gap-2 justify-center">
                 {otp.map((digit, i) => (
                   <input key={i} ref={el => { inputRefs.current[i] = el; }}
@@ -210,7 +193,7 @@ const LoginPage: React.FC = () => {
                 <button type="button"
                   onClick={() => { setStep('contact'); setError(null); setOtp(['', '', '', '', '', '']); }}
                   className="btn-auth-secondary">
-                  ← Change {method === 'phone' ? 'number' : 'email'}
+                  ← Change number
                 </button>
                 <button type="button" onClick={handleResend}
                   disabled={countdown > 0 || loading}
