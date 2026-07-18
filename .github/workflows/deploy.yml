@@ -75,11 +75,10 @@ jobs:
 
       - name: Smoke test deployment
         run: |
-          # API Gateway now routes through ALB — no IP update needed on task restart.
-          sleep 10
+          sleep 15
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://swmgzifq69.execute-api.${{ env.AWS_REGION }}.amazonaws.com/api/health" \
-            --max-time 15)
+            "https://api.letatec.com/api/health" \
+            --max-time 20)
           echo "Health check status: $HTTP_STATUS"
           if [ "$HTTP_STATUS" != "200" ]; then
             echo "WARNING: health check returned $HTTP_STATUS (may still be warming up)"
