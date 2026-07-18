@@ -62,9 +62,10 @@ function linkifyLegalRefs(markdown, sources) {
   // URLs across lines which embeds \n inside the URL, causing CommonMark to
   // reject it as a link and render the raw (url) as plain text.
   let safe = markdown
-    // First: collapse any newline between ] and ( so split links are rejoined
-    .replace(/\]\(\s*\n\s*(\/api\/)/g, ']($1')
-    // Then process all [text](url) patterns
+    // Collapse split links: LLMs sometimes put the URL on a new line after ]
+    .replace(/\]\(\s*\n\s*(\/api\/)/g, ']($1')       // handles ](\n/api/
+    .replace(/\]\s*\n+\s*\((?=\s*\/api\/)/g, '](')   // handles ]\n(/api/
+    // Process all [text](url) patterns
     .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, url) => {
       const cleanUrl = url.replace(/\s+/g, ''); // strip embedded whitespace/newlines
       if (cleanUrl.includes('/api/documents/')) return shield(`[${text}](${cleanUrl})`);
@@ -224,7 +225,10 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
   const processedContent = React.useMemo(() => {
     if (isStreaming) return data?.answer || '';
     return linkifyLegalRefs(data?.answer || '', sources)
-      .replace(/(?<!\])\(\/api\/[^()\s]+\)/g, '');
+      // Remove orphaned (/api/...) URLs not part of a markdown link
+      .replace(/(?<!\])\(\/api\/[^()\s)]+\)/g, '')
+      // Remove naked [text] brackets left when their URL was stripped
+      .replace(/\[([^\]\x00]{1,300})\](?!\()/g, '$1');
   }, [data?.answer, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Open a source document in the right-panel viewer. */

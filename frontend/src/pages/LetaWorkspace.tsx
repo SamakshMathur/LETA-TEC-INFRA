@@ -519,11 +519,13 @@ const LetaWorkspace: React.FC = () => {
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
-        // Re-acquire wake lock if a query is still active (browser releases it on hide)
         if (isActiveQueryRef.current) {
+          // Stream is still running — just re-acquire the wake lock the browser
+          // released on hide. Do NOT retry; the fetch is still in flight.
           acquireWakeLock();
+          return;
         }
-        // If we were processing when the screen went to sleep, auto-retry
+        // Stream was interrupted (network error while tab was hidden) — retry.
         if (pendingRetryRef.current) {
           const { query: retryQuery, file: retryFile } = pendingRetryRef.current;
           pendingRetryRef.current = null;
@@ -1332,6 +1334,7 @@ const LetaWorkspace: React.FC = () => {
           {/* CHAT MESSAGE AREA */}
           <div
             ref={chatScrollRef}
+            data-lenis-prevent
             className="flex-1 min-h-0 overflow-y-auto relative scrollbar-thin"
             style={{ overflowX: 'clip', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
           >
