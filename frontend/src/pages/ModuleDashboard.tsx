@@ -110,9 +110,20 @@ interface PricingModalProps {
   onClose: () => void;
 }
 
+const getPayAuthHeader = (): Record<string, string> => {
+  try {
+    const stored = localStorage.getItem('pro.auth.session');
+    if (!stored) return {};
+    const s = JSON.parse(stored);
+    const token = s?.tokens?.accessToken;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch { return {}; }
+};
+
 const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
   const [selected, setSelected] = useState('3hr');
   const [loading, setLoading] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
   const [rzConfig, setRzConfig] = useState<{ key_id: string; configured: boolean } | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -121,19 +132,21 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
     fetch(`${BASE_URL}/api/payments/config`)
       .then(r => r.json())
       .then(setRzConfig)
-      .catch(() => {});
+      .catch(() => { setRzConfig({ key_id: '', configured: false }); });
   }, []);
 
   const handlePay = async () => {
     if (!module) return;
     setLoading(true);
+    setPayError(null);
     try {
       const loaded = await loadRazorpay();
       if (!loaded) throw new Error('Razorpay SDK failed to load');
 
+      const authHeader = getPayAuthHeader();
       const orderRes = await fetch(`${BASE_URL}/api/payments/create-order`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({ plan_id: selected, module: module.id }),
       });
       if (!orderRes.ok) {
@@ -155,7 +168,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
         handler: async (response: any) => {
           const verifyRes = await fetch(`${BASE_URL}/api/payments/verify`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeader },
             body: JSON.stringify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -165,13 +178,13 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
             }),
           });
           if (verifyRes.ok) { onClose(); navigate(module.route); }
-          else alert('Payment verification failed. Please contact support.');
+          else setPayError('Payment verification failed. Please contact support.');
         },
         modal: { ondismiss: () => setLoading(false) },
       };
       new (window as any).Razorpay(options).open();
     } catch (err: any) {
-      alert(err.message || 'Something went wrong. Please try again.');
+      setPayError(err.message || 'Something went wrong. Please try again.');
       setLoading(false);
     }
   };
@@ -279,25 +292,35 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
 
           {/* CTA */}
           <div className="px-6 pb-7">
-            {!rzConfig?.configured && (
-              <p className="text-center text-[10px] font-mono mb-3" style={{ color: '#475569' }}>
-                Payment system not yet configured — Razorpay keys pending
-              </p>
+            {payError && (
+              <div className="mb-3 p-3 rounded-xl text-xs text-center font-medium" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
+                {payError}
+              </div>
             )}
-            <button
-              onClick={handlePay}
-              disabled={loading || !rzConfig?.configured}
-              className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-              style={{
-                background: rzConfig?.configured ? B.accent : 'rgba(255,255,255,0.06)',
-                color: rzConfig?.configured ? '#000' : '#334155',
-                boxShadow: rzConfig?.configured ? `0 0 30px ${B.glow}` : 'none',
-              }}>
-              {loading
-                ? <><span className="animate-spin w-4 h-4 border-2 border-black/30 border-t-black rounded-full" /> Processing...</>
-                : <><Zap size={14} /> Get {PLANS.find(p => p.id === selected)?.label} — {PLANS.find(p => p.id === selected)?.price} <ArrowRight size={13} /></>
-              }
-            </button>
+            {rzConfig?.configured ? (
+              <button
+                onClick={handlePay}
+                disabled={loading}
+                className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                style={{ background: B.accent, color: '#000', boxShadow: `0 0 30px ${B.glow}` }}>
+                {loading
+                  ? <><span className="animate-spin w-4 h-4 border-2 border-black/30 border-t-black rounded-full" /> Processing...</>
+                  : <><Zap size={14} /> Get {PLANS.find(p => p.id === selected)?.label} — {PLANS.find(p => p.id === selected)?.price} <ArrowRight size={13} /></>
+                }
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-center text-[10px] font-mono" style={{ color: '#475569' }}>
+                  Payment system coming soon — access your session now
+                </p>
+                <button
+                  onClick={() => { onClose(); navigate(module!.route); }}
+                  className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200"
+                  style={{ background: B.accent, color: '#000', boxShadow: `0 0 30px ${B.glow}` }}>
+                  <Zap size={14} /> Enter Workspace <ArrowRight size={13} />
+                </button>
+              </div>
+            )}
           </div>
         </motion.div>
       </motion.div>
@@ -572,7 +595,7 @@ const ModuleDashboard: React.FC = () => {
             fontFamily: 'var(--font-display, "Inter Tight", sans-serif)',
             marginBottom: '10px',
           }}>
-            Welcome{user?.firstName ? `, ${user.firstName}` : ''}.
+            Welcome{user?.full_name ? `, ${user.full_name.split(' ')[0]}` : ''}.
           </h1>
 
           {/* Sub-line */}
@@ -612,7 +635,7 @@ const ModuleDashboard: React.FC = () => {
               key={mod.id}
               mod={mod}
               index={i}
-              onClick={() => navigate(mod.route)}
+              onClick={() => setActiveModule(mod)}
             />
           ))}
         </div>

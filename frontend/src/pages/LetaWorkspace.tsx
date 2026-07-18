@@ -21,9 +21,20 @@ const getAuthHeaders = (): Record<string, string> => {
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch { return {}; }
 };
+
+const getSessionFirstName = (): string => {
+  try {
+    const stored = localStorage.getItem('pro.auth.session');
+    if (!stored) return '';
+    const s = JSON.parse(stored);
+    const fullName: string = s?.user?.full_name || '';
+    return fullName.split(' ')[0] || '';
+  } catch { return ''; }
+};
 import { LetaResponse } from '../components/leta';
 import { SimpleSearchLoader } from '../components/effects';
 import { DocumentViewer } from '../components/documents';
+import SessionClock from '../components/layout/SessionClock';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -479,11 +490,35 @@ const LetaWorkspace: React.FC = () => {
   }, [messages, isLoading]);
 
   // ─── Sessions ────────────────────────────────────────────────────────────────
+
+  // Persist the active session ID so a browser refresh restores where the user left off
   useEffect(() => {
-    fetchSessions();
+    if (currentSessionId) {
+      sessionStorage.setItem(`leta_active_session_${domainId}`, currentSessionId);
+    }
+  }, [currentSessionId, domainId]);
+
+  useEffect(() => {
+    // On mount: fetch sessions, then restore the last active session for this domain
+    const initSessions = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/api/sessions/list`, { headers: getAuthHeaders() });
+        const list: Session[] = res.data;
+        setSessions(list);
+
+        const savedId = sessionStorage.getItem(`leta_active_session_${domainId}`);
+        if (savedId && list.some(s => s.session_id === savedId)) {
+          handleSelectSession(savedId);
+        }
+      } catch (err) {
+        console.error('Failed to fetch sessions:', err);
+      }
+    };
+    initSessions();
     const interval = setInterval(fetchSessions, 60000);
     return () => clearInterval(interval);
-  }, [currentSessionId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     setMessages([]);
@@ -672,11 +707,16 @@ const LetaWorkspace: React.FC = () => {
 
         // Add assistant message now that we have a live stream
         setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
-        setIsLoading(false);
         setIsStreaming(true);
+        // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
 
         let buffer = '';
+        let firstTextChunk = true;
         const appendChunk = (text: string) => {
+          if (firstTextChunk && text) {
+            firstTextChunk = false;
+            setIsLoading(false);
+          }
           setMessages(prev => {
             const next = [...prev];
             const last = next[next.length - 1];
@@ -781,11 +821,16 @@ const LetaWorkspace: React.FC = () => {
 
         // Add assistant message now that we have a live stream
         setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
-        setIsLoading(false);
         setIsStreaming(true);
+        // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
 
         let buffer = '';
+        let firstTextChunk = true;
         const appendChunk = (text: string) => {
+          if (firstTextChunk && text) {
+            firstTextChunk = false;
+            setIsLoading(false);
+          }
           setMessages(prev => {
             const next = [...prev];
             const last = next[next.length - 1];
@@ -887,6 +932,7 @@ const LetaWorkspace: React.FC = () => {
       if ((error as any)?.name === 'AbortError') {
         pendingRetryRef.current = null;
         setIsStreaming(false);
+        setIsLoading(false);
         return;
       }
       // If the error looks like a network interruption (screen sleep / tab hidden),
@@ -1353,7 +1399,7 @@ const LetaWorkspace: React.FC = () => {
                         lineHeight: 1.2,
                       }}
                     >
-                      Hi Samaksh, LETA is here to assist you.
+                      Hi {getSessionFirstName() || 'there'}, LETA is here to assist you.
                     </h2>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
@@ -1666,6 +1712,11 @@ const LetaWorkspace: React.FC = () => {
                   }
                 }}
               />
+
+              {/* Session time remaining — bottom-left of input box */}
+              <div className="absolute bottom-4 left-4 pointer-events-none select-none">
+                <SessionClock />
+              </div>
 
               <div className="absolute bottom-4 right-4 flex items-center gap-2">
                 <input

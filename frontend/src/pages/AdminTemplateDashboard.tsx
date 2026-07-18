@@ -41,8 +41,19 @@ const AdminTemplateDashboard: React.FC = () => {
 
     try {
       const baseUrl = BASE_URL;
+      let authHeaders: Record<string, string> = {};
+      try {
+        const stored = localStorage.getItem('pro.auth.session');
+        if (stored) {
+          const s = JSON.parse(stored);
+          const token = s?.tokens?.accessToken;
+          if (token) authHeaders = { Authorization: `Bearer ${token}` };
+        }
+      } catch {}
+
       const response = await fetch(`${baseUrl}/api/templates/upload`, {
         method: 'POST',
+        headers: authHeaders,
         body: formData,
       });
 

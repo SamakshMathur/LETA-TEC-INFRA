@@ -72,7 +72,15 @@ const AdminUploadPortal: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef   = useRef<Record<string, any>>({});
 
-  const authHdr = () => ({});
+  const authHdr = () => {
+    try {
+      const stored = localStorage.getItem('pro.auth.session');
+      if (!stored) return {};
+      const s = JSON.parse(stored);
+      const token = s?.tokens?.accessToken;
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch { return {}; }
+  };
 
   // ── System status ──────────────────────────────────────────────────────────
   const fetchStatus = async () => {
