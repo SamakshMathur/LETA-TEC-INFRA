@@ -802,6 +802,7 @@ const LetaWorkspace: React.FC = () => {
           }
         }
 
+        setIsLoading(false);
         setIsStreaming(false);
       } else {
         // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
@@ -916,6 +917,7 @@ const LetaWorkspace: React.FC = () => {
           }
         }
 
+        setIsLoading(false);
         setIsStreaming(false);
       }
 
@@ -940,11 +942,16 @@ const LetaWorkspace: React.FC = () => {
       const isNetworkInterrupt = error?.name === 'TypeError' || error?.message?.includes('network') || error?.message?.includes('Failed to fetch');
       if (!isNetworkInterrupt) pendingRetryRef.current = null;
       console.error('LETA API Error:', error);
+      const errMsg = 'Unable to reach the advisory server. Please check your connection and try again.';
       setMessages(prev => {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last.role === 'assistant') {
-          next[next.length - 1] = { ...last, content: last.content + `\n\n[Advisory Workspace Error]: Unable to synthesize draft guidance. Please check connection.` };
+          // Error happened mid-stream — append to existing assistant bubble
+          next[next.length - 1] = { ...last, content: (last.content || '') + `\n\n⚠ ${errMsg}` };
+        } else {
+          // Error happened before assistant message was added — create one so the user sees feedback
+          next.push({ role: 'assistant', content: `⚠ ${errMsg}`, confidence: 0, citations: [] });
         }
         return next;
       });
