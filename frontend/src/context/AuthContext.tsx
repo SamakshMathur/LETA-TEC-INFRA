@@ -1,6 +1,23 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Session, User } from '../types/auth';
 import { getStoredAuthSession, storeAuthSession, clearAuthSession } from '../lib/auth-storage';
+import { DEMO_MODE } from '../config/demo';
+
+// Minimal session used when DEMO_MODE=true. No session_end_ms → SessionClock hidden.
+const DEMO_SESSION: Session = {
+  tokens: {
+    accessToken: 'demo-preview-token',
+    refreshToken: 'demo-preview-refresh',
+    expiresAt: '2099-12-31T00:00:00Z',
+    refreshTokenExpiresAt: '2099-12-31T00:00:00Z',
+    tokenType: 'bearer',
+    expiresIn: 99999999,
+    refreshTokenExpiresIn: 99999999,
+  },
+  user: { id: 'demo-user', full_name: 'Demo', email: 'demo@letatec.com', role: 'user', plan: 'pro' },
+  memberships: [{ organizationId: 'demo-org', role: 'member' }],
+  organizationId: 'demo-org',
+};
 
 interface AuthContextType {
   session: Session | null;
@@ -19,6 +36,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isInitialised, setIsInitialised] = useState(false);
 
   useEffect(() => {
+    if (DEMO_MODE) {
+      // Seed localStorage so direct reads (getAuthHeaders, getSessionFirstName) also work
+      localStorage.setItem('pro.auth.session', JSON.stringify(DEMO_SESSION));
+      setSession(DEMO_SESSION);
+      setIsInitialised(true);
+      return;
+    }
     // Restore session from localStorage on page load (set by the login flow)
     const stored = getStoredAuthSession();
     setSession(stored);
