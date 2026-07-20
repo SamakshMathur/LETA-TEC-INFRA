@@ -18,7 +18,7 @@ const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const from = (location.state as any)?.from?.pathname || '/dashboard';
+  const from = (location.state as any)?.from?.pathname || '/';
 
   const sessionExpired = new URLSearchParams(location.search).get('reason') === 'session_expired';
 
