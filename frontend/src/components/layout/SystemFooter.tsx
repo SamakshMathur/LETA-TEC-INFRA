@@ -195,6 +195,25 @@ const SystemFooter = () => {
             >
               Terms &amp; Conditions
             </Link>
+            <Link
+              to="/legal"
+              className="text-xs font-mono px-3 py-1.5 rounded-lg transition-all duration-200"
+              style={{
+                color: '#4FB7C5',
+                border: '1px solid rgba(79,183,197,0.3)',
+                background: 'rgba(79,183,197,0.06)',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(79,183,197,0.12)';
+                e.currentTarget.style.borderColor = 'rgba(79,183,197,0.5)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'rgba(79,183,197,0.06)';
+                e.currentTarget.style.borderColor = 'rgba(79,183,197,0.3)';
+              }}
+            >
+              Legal Policies →
+            </Link>
           </div>
           <div className="flex items-center gap-2">
             <div
