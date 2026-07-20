@@ -9,4 +9,5 @@ export { default as AdminTemplateDashboard } from './AdminTemplateDashboard';
 export { default as AdminUploadPortal } from './AdminUploadPortal';
 export { default as SignupPage } from './auth/signup';
 export { default as LetaWorkspace } from './LetaWorkspace';
+export { default as LegalPolicies } from './LegalPolicies';
 
