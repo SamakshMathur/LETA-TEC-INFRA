@@ -177,7 +177,7 @@ const AdminUploadPortal: React.FC = () => {
                 <span className="text-sm">⬆</span>
               </div>
               <h1 className="text-2xl font-bold text-white tracking-tight font-display uppercase">Admin Upload Portal</h1>
-              <span className="text-[10px] font-black tracking-[0.2em] uppercase text-[#67E8F9] bg-white/[0.02] border border-white/[0.05] px-2.5 py-0.5 rounded-full">TITAN</span>
+              <span className="text-[10px] font-black tracking-[0.2em] uppercase text-[#67E8F9] bg-white/[0.02] border border-white/[0.05] px-2.5 py-0.5 rounded-full">LETA</span>
             </div>
             <p className="text-sm text-[#9a9a9a] ml-13">Upload documents → auto-chunk → embed → FAISS index update</p>
           </div>

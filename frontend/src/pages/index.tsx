@@ -10,4 +10,5 @@ export { default as AdminUploadPortal } from './AdminUploadPortal';
 export { default as SignupPage } from './auth/signup';
 export { default as LetaWorkspace } from './LetaWorkspace';
 export { default as LegalPolicies } from './LegalPolicies';
+export { default as MyDocs } from './MyDocs';
 

@@ -2,7 +2,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FileText, Landmark, Globe, Briefcase, ChevronDown, Settings, LogOut, LayoutGrid } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { ROUTES } from '../../constants/routes';
 import SessionClock from './SessionClock';
 
@@ -14,9 +14,9 @@ const MODULES = [
 ];
 
 const NAV_LINKS = [
-  { label: 'Home',         path: '/'      },
-  { label: 'About Us',     path: '/about' },
-  { label: 'Resources',    path: '/docs'  },
+  { label: 'Home',     path: '/'         },
+  { label: 'About Us', path: '/about'    },
+  { label: 'My Docs',  path: '/my-docs'  },
 ];
 
 const getInitials = (name: string) => {

@@ -3,7 +3,7 @@ import {
   Home, About, Documentation,
   GST, TemplateCustomization,
   AdminTemplateDashboard, AdminUploadPortal,
-  SignupPage, LetaWorkspace, ModuleDashboard, LegalPolicies,
+  SignupPage, LetaWorkspace, ModuleDashboard, LegalPolicies, MyDocs,
 } from '../pages';
 import LoginPage from '../pages/auth/login';
 import { ROUTES } from '../constants/routes';
@@ -82,5 +82,6 @@ export const protectedRoutes: RouteConfig[] = [
   { path: ROUTES.ADMIN.TEMPLATES, element: <AdminTemplateDashboard /> },
   { path: ROUTES.ADMIN.UPLOAD,    element: <AdminUploadPortal /> },
 
-  { path: ROUTES.LEGAL, element: <LegalPolicies /> },
+  { path: ROUTES.LEGAL,   element: <LegalPolicies /> },
+  { path: ROUTES.MY_DOCS, element: <MyDocs /> },
 ];

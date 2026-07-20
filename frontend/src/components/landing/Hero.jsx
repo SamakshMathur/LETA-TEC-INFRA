@@ -196,7 +196,7 @@ const Hero = () => {
                 <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
                 <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
                 <span className="ml-3 text-[11px] font-mono uppercase tracking-[0.1em]" style={{ color: '#52525B' }}>
-                  LETA_TITAN // STATUTORY_OPERATING_SYSTEM
+                  LETA_TEC // STATUTORY_OPERATING_SYSTEM
                 </span>
               </div>
 

@@ -90,7 +90,7 @@ const TemplateCustomization: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#000000] text-[#A1AAB8] flex flex-col h-screen overflow-hidden selection:bg-[#67E8F9]/30">
       
-      {/* Top Navigation - Titan Glass */}
+      {/* Top Navigation */}
       <div className="bg-[#10141B]/80 border-b border-white/[0.06] px-8 py-4 flex items-center justify-between z-30 relative backdrop-blur-2xl">
         <div className="flex items-center gap-6">
           <button 
@@ -107,7 +107,7 @@ const TemplateCustomization: React.FC = () => {
             <div className="flex items-center gap-3">
               <h1 className="text-sm font-bold tracking-widest text-white uppercase flex items-center gap-2 font-display">
                 <Zap size={14} className="text-[#67E8F9] fill-[#67E8F9]" /> 
-                LETA_TITAN // DRAFT_SUITE
+                LETA_TEC // DRAFT_SUITE
               </h1>
               <span className="text-[9px] px-2 py-0.5 rounded-full bg-white/[0.02] border border-white/[0.05] text-[#67E8F9] font-mono tracking-tighter">v4.0_STABLE</span>
             </div>
@@ -247,7 +247,7 @@ const TemplateCustomization: React.FC = () => {
             
             {/* Watermark */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-[0.03] rotate-[30deg] select-none text-9xl font-black">
-               LETA_TITAN
+               LETA_TEC
             </div>
 
             {!generatedDraft && !isGenerating ? (
@@ -275,7 +275,7 @@ const TemplateCustomization: React.FC = () => {
                 <span>SECURITY: ENCRYPTED</span>
              </div>
              <div className="text-[9px] text-[#67E8F9] font-bold tracking-widest uppercase bg-[#151922] border border-white/[0.06] py-1.5 px-4 rounded-leta">
-                TITAN_DRAFTING // V4_ENGINE
+                LETA_DRAFTING // V4_ENGINE
              </div>
           </div>
         </div>

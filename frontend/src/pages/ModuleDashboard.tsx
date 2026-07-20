@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Zap, CheckCircle2, ArrowRight, Scale, Building2, Globe } from 'lucide-react';
 import { BASE_URL } from '../config/api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import DashboardParticles from '../components/effects/DashboardParticles';
 
 const B = {

@@ -78,7 +78,7 @@ const SignupPage: React.FC = () => {
 
           <div className="mb-8 text-center">
             <h1 className="font-display font-bold text-3xl text-leta-gray-900 mb-2 uppercase tracking-tight">
-              LETA <span className="text-leta-primary">TITAN</span>
+              LETA <span className="text-leta-primary">TEC</span>
             </h1>
             <p className="text-xs font-mono text-leta-gray-500 uppercase tracking-widest">Account Setup</p>
           </div>

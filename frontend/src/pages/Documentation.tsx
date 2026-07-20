@@ -39,7 +39,7 @@ const Documentation: React.FC = () => (
       {/* Header */}
       <div className={cn('header')}>
         <h1 className={cn('title')}>
-          LETA TITAN Knowledge Ops
+          LETA TEC Knowledge Ops
         </h1>
         <p className={cn('subtitle')}>
           Secure statutory repository &amp; AI-powered legal intelligence network.

@@ -19,7 +19,7 @@ const TemplateCard = ({ template, isHero, onPreview }) => {
         <div className="h-2/3 w-full bg-gradient-to-br from-emerald-900/20 to-blue-900/10 relative flex items-center justify-center p-4">
            <FileText className="text-emerald-500/20 w-12 h-12" />
            <div className="absolute top-2 right-2 text-[8px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-leta border border-emerald-500/20 uppercase">
-             {template.category || 'TITAN_DOC'}
+             {template.category || 'LETA_DOC'}
            </div>
         </div>
         <div className="flex-1 p-3 bg-[#181818] flex flex-col justify-center">

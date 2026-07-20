@@ -1,5 +1,5 @@
-import React, { createContext, useContext } from 'react';
-import { useAuth } from './AuthContext';
+import React, { createContext } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { Session } from '../types/auth';
 
 interface ProtectedAuthContextType {
@@ -8,7 +8,7 @@ interface ProtectedAuthContextType {
   logout: () => void;
 }
 
-const ProtectedAuthContext = createContext<ProtectedAuthContextType | undefined>(undefined);
+export const ProtectedAuthContext = createContext<ProtectedAuthContextType | undefined>(undefined);
 
 export const ProtectedAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session, organizationId, logout } = useAuth();
@@ -31,10 +31,3 @@ export const ProtectedAuthProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
-export const useProtectedAuth = () => {
-  const context = useContext(ProtectedAuthContext);
-  if (context === undefined) {
-    throw new Error('useProtectedAuth must be used within a ProtectedAuthProvider');
-  }
-  return context;
-};

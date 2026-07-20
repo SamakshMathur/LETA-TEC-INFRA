@@ -1,9 +1,7 @@
-import { useEffect, useRef, createContext, useContext } from 'react';
+import { useEffect, useRef, createContext } from 'react';
 import Lenis from 'lenis';
 
-const LenisContext = createContext<Lenis | null>(null);
-
-export const useLenis = () => useContext(LenisContext);
+export const LenisContext = createContext<Lenis | null>(null);
 
 interface Props { children: React.ReactNode }
 

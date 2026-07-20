@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAuth } from '../../../context/AuthContext';
+import { useAuth } from '../../../hooks/useAuth';
 import { sendOtpApi, verifyOtpApi } from '../../../services/auth';
 import { ROUTES } from '../../../constants/routes';
 
@@ -120,7 +120,7 @@ const LoginPage: React.FC = () => {
 
           <div className="mb-8 text-center">
             <h1 className="font-display font-bold text-3xl text-leta-gray-900 mb-2 uppercase tracking-tight">
-              LETA <span className="text-leta-primary">TITAN</span>
+              LETA <span className="text-leta-primary">TEC</span>
             </h1>
             <p className="text-xs font-mono text-leta-gray-500 uppercase tracking-widest">
               {step === 'contact' ? 'Sovereign Access Portal' : 'Verify Identity'}
