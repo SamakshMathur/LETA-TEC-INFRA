@@ -375,12 +375,14 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         if _enc_path else
                         f"/api/documents/view?category=all&filename={_enc_name}"
                     )
+                    _snippet = (c.get("text") or "").strip()
                     unique_sources.append({
                         "title": _basename or "Document",
                         "page": c.get("page", 1),
                         "url": _url,
                         "rel_path": _rel_path,
-                        "score": float(c.get("_rerank_score", 0))
+                        "score": float(c.get("_rerank_score", 0)),
+                        "snippet": _snippet[:800] if _snippet else "",
                     })
                 if len(unique_sources) >= 20:  # collect more, then sort + cap
                     break
@@ -815,12 +817,14 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
                 if _enc_path else
                 f"/api/documents/view?category=all&filename={_enc_name}"
             )
+            _snippet = (c.get("text") or "").strip()
             unique_sources.append({
                 "title": _basename or "Document",
                 "page": c.get("page", 1),
                 "url": _url,
                 "rel_path": _rel_path,
                 "score": float(c.get("_rerank_score", 0)),
+                "snippet": _snippet[:800] if _snippet else "",
             })
         if len(unique_sources) >= 8:
             break

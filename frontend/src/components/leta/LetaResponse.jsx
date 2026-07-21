@@ -207,6 +207,7 @@ function linkifyLegalRefs(markdown, sources) {
 
 const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
   const [hasCopied, setHasCopied] = useState(false);
+  const [activeSnippet, setActiveSnippet] = useState(null);
 
   const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
 
@@ -378,7 +379,7 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
           )}
         </div>
 
-        {/* ── Always-visible Referenced Documents bar ───────────────────── */}
+        {/* ── Referenced Documents + inline snippet panel ───────────────── */}
         {sources.length > 0 && (
           <div
             className="mt-6 pt-4"
@@ -395,37 +396,115 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
                 const label = (src.title || 'Document')
                   .replace(/%20/g, ' ')
                   .replace(/\.[a-z]{2,5}$/i, '');
+                const isActive = activeSnippet?.url === src.url && activeSnippet?.page === src.page;
                 return (
                   <button
                     key={i}
-                    onClick={() => openDoc(src)}
-                    title={`Open ${src.title} — page ${src.page || 1}`}
+                    onClick={() => setActiveSnippet(isActive ? null : src)}
+                    title={src.snippet ? 'Click to preview excerpt' : `Open ${label}`}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono transition-all"
                     style={{
-                      background: 'rgba(103,232,249,0.05)',
-                      border: '1px solid rgba(103,232,249,0.15)',
-                      color: '#94A3B8',
+                      background: isActive ? 'rgba(103,232,249,0.14)' : 'rgba(103,232,249,0.05)',
+                      border: `1px solid ${isActive ? 'rgba(103,232,249,0.5)' : 'rgba(103,232,249,0.15)'}`,
+                      color: isActive ? '#67E8F9' : '#94A3B8',
                     }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.borderColor = 'rgba(103,232,249,0.5)';
-                      e.currentTarget.style.background = 'rgba(103,232,249,0.12)';
-                      e.currentTarget.style.color = '#67E8F9';
+                      if (!isActive) {
+                        e.currentTarget.style.borderColor = 'rgba(103,232,249,0.5)';
+                        e.currentTarget.style.background = 'rgba(103,232,249,0.12)';
+                        e.currentTarget.style.color = '#67E8F9';
+                      }
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.borderColor = 'rgba(103,232,249,0.15)';
-                      e.currentTarget.style.background = 'rgba(103,232,249,0.05)';
-                      e.currentTarget.style.color = '#94A3B8';
+                      if (!isActive) {
+                        e.currentTarget.style.borderColor = 'rgba(103,232,249,0.15)';
+                        e.currentTarget.style.background = 'rgba(103,232,249,0.05)';
+                        e.currentTarget.style.color = '#94A3B8';
+                      }
                     }}
                   >
                     <FileText size={10} />
                     <span className="max-w-[180px] truncate">{label}</span>
                     {src.page && src.page > 1 && (
-                      <span style={{ color: '#475569' }}>p.{src.page}</span>
+                      <span style={{ color: isActive ? '#4FB7C5' : '#475569' }}>p.{src.page}</span>
                     )}
                   </button>
                 );
               })}
             </div>
+
+            {/* ── Snippet panel ─────────────────────────────────────────────── */}
+            {activeSnippet && (
+              <div
+                className="mt-3 rounded-xl overflow-hidden"
+                style={{ border: '1px solid rgba(103,232,249,0.2)', background: 'rgba(10,18,32,0.85)' }}
+              >
+                {/* Panel header */}
+                <div
+                  className="flex items-center justify-between px-4 py-2.5"
+                  style={{ borderBottom: '1px solid rgba(103,232,249,0.1)', background: 'rgba(103,232,249,0.06)' }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText size={11} style={{ color: '#4FB7C5', flexShrink: 0 }} />
+                    <span
+                      className="text-[10px] font-mono truncate"
+                      style={{ color: '#67E8F9' }}
+                    >
+                      {(activeSnippet.title || 'Document').replace(/%20/g, ' ').replace(/\.[a-z]{2,5}$/i, '')}
+                    </span>
+                    {activeSnippet.page && (
+                      <span
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0"
+                        style={{ background: 'rgba(103,232,249,0.12)', color: '#4FB7C5' }}
+                      >
+                        p.{activeSnippet.page}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => openDoc(activeSnippet)}
+                      className="text-[9px] font-mono px-2.5 py-1 rounded transition-all"
+                      style={{ border: '1px solid rgba(103,232,249,0.3)', color: '#4FB7C5' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(103,232,249,0.12)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      Full Document →
+                    </button>
+                    <button
+                      onClick={() => setActiveSnippet(null)}
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors"
+                      style={{ color: '#475569' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#94A3B8'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Snippet text */}
+                <div className="px-5 py-4 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(103,232,249,0.2) transparent' }}>
+                  {activeSnippet.snippet ? (
+                    <p
+                      className="leading-relaxed whitespace-pre-wrap"
+                      style={{
+                        fontFamily: "'Georgia', 'Times New Roman', serif",
+                        fontSize: '13px',
+                        color: '#CBD5E1',
+                        lineHeight: '1.75',
+                      }}
+                    >
+                      {activeSnippet.snippet}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] font-mono text-center py-4" style={{ color: '#475569' }}>
+                      No excerpt available — click Full Document to open the PDF.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
