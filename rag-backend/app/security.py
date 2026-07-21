@@ -119,6 +119,7 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme)
 ) -> dict:
 
+    logger.debug("Verifying JWT")
     payload = verify_token(token, "access")
 
     username = payload.get("sub")
@@ -162,17 +163,55 @@ async def get_current_user(
     return user
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ROLE & PERMISSION DEFINITIONS
+# ─────────────────────────────────────────────────────────────────────────────
+
+ROLE_USER = "user"
+ROLE_ADMIN = "admin"
+ROLE_SUPER_ADMIN = "super_admin"
+
+ADMIN_ROLES = {ROLE_ADMIN, ROLE_SUPER_ADMIN}
+
+# Role Hierarchy Definition:
+# USER (low) -> ADMIN (mid) -> SUPER_ADMIN (high)
+
+def has_role(user: dict, role: str) -> bool:
+    """Check if the user is explicitly matching a given role."""
+    return user.get("role") == role
+
+def is_admin(user: dict) -> bool:
+    """Check if the user holds admin or higher administrative privilege."""
+    return user.get("role") in ADMIN_ROLES
+
+def is_super_admin(user: dict) -> bool:
+    """Check if the user holds super_admin privileges."""
+    return user.get("role") == ROLE_SUPER_ADMIN
+
+def require_roles(*allowed_roles: str):
+    """Generic role verification dependency injection factory."""
+    async def dependency(current_user: dict = Depends(get_current_user)) -> dict:
+        if current_user.get("role") not in allowed_roles:
+            logger.warning(
+                f"Access denied | user={current_user.get('username')} role={current_user.get('role')} "
+                f"required={allowed_roles}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Action not authorized due to insufficient role permissions"
+            )
+        return current_user
+    return dependency
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ADMIN AUTH
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def get_current_admin(
     current_user: dict = Depends(get_current_user)
 ) -> dict:
-
-    if current_user.get("role") != "admin":
+    if not is_admin(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin clearance required"
         )
-
     return current_user

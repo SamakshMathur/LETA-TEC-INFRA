@@ -118,3 +118,7 @@ def validate_config():
         logger.error(f"[CONFIG] {e}")
 
     return len(errors) == 0
+
+
+import contextvars
+ai_log_context = contextvars.ContextVar("ai_log_context", default=None)

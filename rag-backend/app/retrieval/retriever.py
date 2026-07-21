@@ -262,6 +262,18 @@ class Retriever:
         graph_path = Path(chunks_path).parent.parent / "graph" / "edges.jsonl"
         self.graph_retriever = ProvisionGraphRetriever(graph_path)
 
+        # Fetch inactive paths from MongoDB to support dynamic soft-delete filtering
+        self.inactive_paths = set()
+        try:
+            from app.database import get_db
+            db = get_db()
+            if db is not None:
+                inactive_docs = db["knowledge_base"].find({"is_active": False}, {"rel_path": 1})
+                self.inactive_paths = {doc["rel_path"] for doc in inactive_docs if "rel_path" in doc}
+                logger.info(f"Retriever loaded {len(self.inactive_paths)} inactive paths for soft-delete filtering")
+        except Exception as e:
+            logger.warning(f"Failed to fetch inactive document paths: {e}")
+
         logger.info("Retriever initialized: 3-Layer Architecture + Provision Graph + MMR")
 
     def _enforce_pool_quotas(self, pool: list, query: str, quotas: dict) -> list:
@@ -323,6 +335,10 @@ class Retriever:
             logger.warning("search() called but retriever is not initialized (missing index/bm25)")
             return []
 
+        import time
+        from app.ai_logger import update_ai_log
+        t_start = time.monotonic()
+
         # --- 1. Query Topic & Subtopic (from pre-computed advanced_queries, no extra LLM call) ---
         topic = "General"
         subtopic = None
@@ -353,10 +369,14 @@ class Retriever:
         def _add_to_pool(idx):
             """Add chunk by index if not already in pool and index is valid."""
             if 0 <= idx < len(self.chunks):
-                cid = self.chunks[idx].get("chunk_id")
+                chunk = self.chunks[idx]
+                rel_path = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
+                if rel_path in self.inactive_paths:
+                    return
+                cid = chunk.get("chunk_id")
                 if cid and cid not in seen_chunk_ids:
                     seen_chunk_ids.add(cid)
-                    candidate_pool.append(self.chunks[idx].copy())
+                    candidate_pool.append(chunk.copy())
 
         # 1. Vector Search — primary query
         query_vec = embed_query(query)
@@ -439,6 +459,9 @@ class Retriever:
         RERANK_MAX = 200
         reranker_input = combined_results[:RERANK_MAX]
 
+        t_retrieval_end = time.monotonic()
+        t_rerank_start = time.monotonic()
+
         # --- Semantic Reranking (FlashRank) ---
         # skip_rerank=True bypasses the cross-encoder to stay within API Gateway's 29s timeout
         reranked_results = reranker_input
@@ -477,9 +500,17 @@ class Retriever:
                         res[key] = val
             final_results.append(res)
 
+        final_results = [r for r in final_results if r.get("rel_path") not in self.inactive_paths]
+
         logger.debug(
             f"search() complete: query='{query[:60]}' | "
             f"statute={len(statute_results)} graph={len(graph_results)} "
             f"semantic={len(candidate_pool)} final={len(final_results)}"
+        )
+        t_end = time.monotonic()
+        update_ai_log(
+            retrieved_chunks=len(final_results),
+            retrieval_time_ms=(t_retrieval_end - t_start) * 1000.0,
+            reranker_time_ms=(t_end - t_rerank_start) * 1000.0
         )
         return final_results[:top_k]

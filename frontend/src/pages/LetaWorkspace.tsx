@@ -7,7 +7,7 @@ import {
   Bookmark, BookmarkCheck, Trash2, Calendar, ShieldCheck, Plus, Square, Upload,
   ArrowLeft, Eye, Mic, MicOff, FileText
 } from 'lucide-react';
-import axios from 'axios';
+import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
 import { LetaResponse } from '../components/leta';
 import { SimpleSearchLoader } from '../components/effects';

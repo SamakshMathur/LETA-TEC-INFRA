@@ -78,6 +78,38 @@ def _ensure_indexes(db) -> None:
         # feedback: analytics queries by rating and timestamp
         db["feedback"].create_index([("rating", ASCENDING), ("timestamp", DESCENDING)])
 
+        # activity_logs: analytics, auditing, debugging, and training traces
+        db["activity_logs"].create_index([("timestamp", DESCENDING)])
+        db["activity_logs"].create_index([("user_id", ASCENDING)])
+        db["activity_logs"].create_index([("action", ASCENDING)])
+        db["activity_logs"].create_index([("category", ASCENDING)])
+
+        # ai_query_analytics: analytics for AI requests
+        db["ai_query_analytics"].create_index([("timestamp", DESCENDING)])
+        db["ai_query_analytics"].create_index([("user_id", ASCENDING)])
+        db["ai_query_analytics"].create_index([("draft_type", ASCENDING)])
+        db["ai_query_analytics"].create_index([("model_used", ASCENDING)])
+        db["ai_query_analytics"].create_index([("success", ASCENDING)])
+        db["ai_query_analytics"].create_index([("user_id", ASCENDING), ("timestamp", DESCENDING)])
+        db["ai_query_analytics"].create_index([("success", ASCENDING), ("timestamp", DESCENDING)])
+        db["ai_query_analytics"].create_index([("draft_type", ASCENDING), ("timestamp", DESCENDING)])
+        db["ai_query_analytics"].create_index([("model_used", ASCENDING), ("timestamp", DESCENDING)])
+        db["ai_query_analytics"].create_index([("cache_hit", ASCENDING), ("timestamp", DESCENDING)])
+        db["ai_query_analytics"].create_index([("query_id", ASCENDING)], unique=True)
+
+        # knowledge_base indexes
+        db["knowledge_base"].create_index([("document_id", ASCENDING)], unique=True)
+        db["knowledge_base"].create_index([("sha256", ASCENDING)])
+        db["knowledge_base"].create_index([("is_active", ASCENDING)])
+        db["knowledge_base"].create_index([("category", ASCENDING)])
+        db["knowledge_base"].create_index([("uploaded_at", DESCENDING)])
+        db["knowledge_base"].create_index([("title", ASCENDING)])
+
+        # knowledge_audit_logs indexes
+        db["knowledge_audit_logs"].create_index([("timestamp", DESCENDING)])
+        db["knowledge_audit_logs"].create_index([("action", ASCENDING)])
+        db["knowledge_audit_logs"].create_index([("user_id", ASCENDING)])
+
         logger.info("MongoDB indexes ensured")
     except OperationFailure as e:
         # Non-fatal: Atlas free tier may restrict index creation
@@ -135,6 +167,9 @@ def get_template_collection():
 
 def get_otp_collection():
     return db.get_collection("otp_store")
+
+def get_activity_log_collection():
+    return db.get_collection("activity_logs")
 
 def get_db():
     if not db.client:

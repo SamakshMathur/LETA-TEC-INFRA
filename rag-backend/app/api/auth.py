@@ -3,16 +3,18 @@ import logging
 import re
 import secrets as _secrets
 import hashlib
+import time
 
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 import requests as _requests
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator, model_validator
 from pymongo.errors import DuplicateKeyError
 
+from app.activity_logger import log_activity
 from app.database import (
     get_user_collection,
     get_otp_collection,
@@ -24,6 +26,7 @@ from app.security import (
     create_refresh_token,
     verify_token,
     get_current_user,
+    is_admin,
 )
 
 router = APIRouter()
@@ -363,16 +366,57 @@ def _build_auth_response(user_info: dict):
     }
 
 
+def _elapsed_ms(started_at: float) -> float:
+    return (time.monotonic() - started_at) * 1000
+
+
+def _auth_contact_metadata(contact: str, method: Optional[str] = None) -> dict:
+    metadata = {"method": method} if method else {}
+    if method == "phone" or (method is None and "@" not in contact):
+        metadata["phone"] = contact
+    else:
+        metadata["email"] = contact
+    return metadata
+
+
+def _log_auth_activity(
+    *,
+    request: Request,
+    started_at: float,
+    action: str,
+    user: Optional[dict] = None,
+    metadata: Optional[dict] = None,
+    success: bool = True,
+) -> None:
+    log_activity(
+        user=user,
+        action=action,
+        category="authentication",
+        metadata=metadata or {},
+        request=request,
+        success=success,
+        duration=_elapsed_ms(started_at),
+    )
+
+
 # =============================================================================
 # REGISTER
 # =============================================================================
 
 @router.post("/register", status_code=201)
-async def register_user(user: UserRegister):
+async def register_user(request: Request, user: UserRegister):
+    started_at = time.monotonic()
 
     users_col = get_user_collection()
 
     if users_col is None:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="register",
+            metadata={"phone": user.phone, "email": user.email, "error": "database_unavailable"},
+            success=False,
+        )
         raise HTTPException(
             status_code=500,
             detail="Database not connected",
@@ -383,6 +427,13 @@ async def register_user(user: UserRegister):
     })
 
     if existing_phone:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="register",
+            metadata={"phone": user.phone, "email": user.email, "error": "phone_already_registered"},
+            success=False,
+        )
         raise HTTPException(
             status_code=400,
             detail="Phone number already registered",
@@ -395,6 +446,13 @@ async def register_user(user: UserRegister):
         })
 
         if existing_email:
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="register",
+                metadata={"phone": user.phone, "email": user.email, "error": "email_already_registered"},
+                success=False,
+            )
             raise HTTPException(
                 status_code=400,
                 detail="Email already registered",
@@ -420,6 +478,17 @@ async def register_user(user: UserRegister):
     })
 
     logger.info(f"User registered | username={username}")
+    _log_auth_activity(
+        request=request,
+        started_at=started_at,
+        action="register",
+        user={
+            "username": username,
+            "phone": user.phone,
+            "email": user.email,
+        },
+        metadata={"phone": user.phone, "email": user.email},
+    )
 
     return {
         "message": "Account created successfully",
@@ -432,12 +501,20 @@ async def register_user(user: UserRegister):
 # =============================================================================
 
 @router.post("/send-otp")
-async def send_otp(req: SendOTPRequest):
+async def send_otp(request: Request, req: SendOTPRequest):
+    started_at = time.monotonic()
 
     otp_col = get_otp_collection()
     users_col = get_user_collection()
 
     if otp_col is None or users_col is None:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="send_otp",
+            metadata={**_auth_contact_metadata(req.contact, req.method), "error": "database_unavailable"},
+            success=False,
+        )
         raise HTTPException(
             status_code=500,
             detail="Database not connected",
@@ -451,6 +528,13 @@ async def send_otp(req: SendOTPRequest):
 
     if not user:
         if not DEV_MODE:
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="send_otp",
+                metadata={**_auth_contact_metadata(req.contact, req.method), "error": "account_not_found"},
+                success=False,
+            )
             raise HTTPException(
                 status_code=404,
                 detail=f"No account found with that {req.method}. Please register first.",
@@ -484,6 +568,13 @@ async def send_otp(req: SendOTPRequest):
                 "Duplicate user key while creating dev OTP user",
                 extra={"method": req.method},
             )
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="send_otp",
+                metadata={**_auth_contact_metadata(req.contact, req.method), "error": "duplicate_user_key"},
+                success=False,
+            )
             raise HTTPException(
                 status_code=409,
                 detail=f"An account with that {req.method} already exists.",
@@ -514,6 +605,14 @@ async def send_otp(req: SendOTPRequest):
             rate_window_start = None
 
     if request_count >= OTP_RATE_LIMIT_PER_HOUR:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="send_otp",
+            user=user,
+            metadata={**_auth_contact_metadata(req.contact, req.method), "error": "rate_limited"},
+            success=False,
+        )
         raise HTTPException(
             status_code=429,
             detail="Too many OTP requests",
@@ -557,6 +656,14 @@ async def send_otp(req: SendOTPRequest):
     if DEV_MODE:
         response["otp_preview"] = otp
 
+    _log_auth_activity(
+        request=request,
+        started_at=started_at,
+        action="send_otp",
+        user=user,
+        metadata=_auth_contact_metadata(req.contact, req.method),
+    )
+
     return response
 
 
@@ -565,12 +672,20 @@ async def send_otp(req: SendOTPRequest):
 # =============================================================================
 
 @router.post("/verify-otp", response_model=Token)
-async def verify_otp(req: VerifyOTPRequest):
+async def verify_otp(request: Request, req: VerifyOTPRequest):
+    started_at = time.monotonic()
 
     otp_col = get_otp_collection()
     users_col = get_user_collection()
 
     if otp_col is None or users_col is None:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="verify_otp",
+            metadata={**_auth_contact_metadata(req.contact), "error": "database_unavailable"},
+            success=False,
+        )
         raise HTTPException(
             status_code=500,
             detail="Database not connected",
@@ -582,6 +697,13 @@ async def verify_otp(req: VerifyOTPRequest):
     })
 
     if not otp_record:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="verify_otp",
+            metadata={**_auth_contact_metadata(req.contact), "error": "no_pending_otp"},
+            success=False,
+        )
         raise HTTPException(
             status_code=400,
             detail="No pending OTP found",
@@ -593,6 +715,13 @@ async def verify_otp(req: VerifyOTPRequest):
             "contact": req.contact
         })
 
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="verify_otp",
+            metadata={**_auth_contact_metadata(req.contact, otp_record.get("method")), "error": "otp_expired"},
+            success=False,
+        )
         raise HTTPException(
             status_code=400,
             detail="OTP expired",
@@ -600,6 +729,13 @@ async def verify_otp(req: VerifyOTPRequest):
 
     if otp_record["method"] == "phone":
         if not verify_sms_otp(req.contact, req.otp, otp_record["otp"]):
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="verify_otp",
+                metadata={**_auth_contact_metadata(req.contact, "phone"), "error": "invalid_otp"},
+                success=False,
+            )
             raise HTTPException(
                 status_code=400,
                 detail="Invalid OTP",
@@ -607,12 +743,26 @@ async def verify_otp(req: VerifyOTPRequest):
     else:
         if DEV_MODE:
             if not re.match(r"^\d{6}$", req.otp):
+                _log_auth_activity(
+                    request=request,
+                    started_at=started_at,
+                    action="verify_otp",
+                    metadata={**_auth_contact_metadata(req.contact, "email"), "error": "invalid_otp"},
+                    success=False,
+                )
                 raise HTTPException(
                     status_code=400,
                     detail="Invalid OTP",
                 )
         else:
             if not _secrets.compare_digest(otp_record["otp"], req.otp):
+                _log_auth_activity(
+                    request=request,
+                    started_at=started_at,
+                    action="verify_otp",
+                    metadata={**_auth_contact_metadata(req.contact, "email"), "error": "invalid_otp"},
+                    success=False,
+                )
                 raise HTTPException(
                     status_code=400,
                     detail="Invalid OTP",
@@ -630,6 +780,13 @@ async def verify_otp(req: VerifyOTPRequest):
     })
 
     if not user:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="verify_otp",
+            metadata={**_auth_contact_metadata(req.contact, otp_record.get("method")), "error": "user_not_found"},
+            success=False,
+        )
         raise HTTPException(
             status_code=404,
             detail="User not found",
@@ -654,6 +811,14 @@ async def verify_otp(req: VerifyOTPRequest):
         "role": user.get("role", "user"),
     }
 
+    _log_auth_activity(
+        request=request,
+        started_at=started_at,
+        action="verify_otp",
+        user=user_info,
+        metadata=_auth_contact_metadata(req.contact, otp_record.get("method")),
+    )
+
     return _build_auth_response(user_info)
 
 
@@ -662,19 +827,34 @@ async def verify_otp(req: VerifyOTPRequest):
 # =============================================================================
 
 @router.post("/login", response_model=Token)
-async def login(req: LoginRequest):
+async def login(request: Request, req: LoginRequest):
+    started_at = time.monotonic()
 
     users_col = get_user_collection()
 
     if req.email == "admin@letatec.com":
 
         if not ADMIN_MASTER_SECRET:
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="login",
+                metadata={"email": req.email, "error": "admin_secret_not_configured"},
+                success=False,
+            )
             raise HTTPException(
                 status_code=500,
                 detail="Admin secret not configured",
             )
 
         if not _verify_secret(req.password, ADMIN_MASTER_SECRET):
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="login",
+                metadata={"email": req.email, "error": "invalid_credentials"},
+                success=False,
+            )
             raise HTTPException(
                 status_code=401,
                 detail="Invalid credentials",
@@ -687,9 +867,23 @@ async def login(req: LoginRequest):
             "role": "admin",
         }
 
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="login",
+            user=admin_info,
+            metadata={"email": req.email},
+        )
         return _build_auth_response(admin_info)
 
     if users_col is None:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="login",
+            metadata={"email": req.email, "error": "database_unavailable"},
+            success=False,
+        )
         raise HTTPException(
             status_code=500,
             detail="Database not connected",
@@ -700,12 +894,27 @@ async def login(req: LoginRequest):
     })
 
     if not user:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="login",
+            metadata={"email": req.email, "error": "invalid_credentials"},
+            success=False,
+        )
         raise HTTPException(
             status_code=401,
             detail="Invalid credentials",
         )
 
-    if user.get("role") != "admin":
+    if not is_admin(user):
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="login",
+            user=user,
+            metadata={"email": req.email, "error": "password_login_forbidden"},
+            success=False,
+        )
         raise HTTPException(
             status_code=403,
             detail="Only admins can login with password",
@@ -715,6 +924,14 @@ async def login(req: LoginRequest):
         req.password,
         user.get("password", ""),
     ):
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="login",
+            user=user,
+            metadata={"email": req.email, "error": "invalid_credentials"},
+            success=False,
+        )
         raise HTTPException(
             status_code=401,
             detail="Invalid credentials",
@@ -727,6 +944,14 @@ async def login(req: LoginRequest):
         "role": user.get("role", "admin"),
     }
 
+    _log_auth_activity(
+        request=request,
+        started_at=started_at,
+        action="login",
+        user=user_info,
+        metadata={"email": req.email},
+    )
+
     return _build_auth_response(user_info)
 
 
@@ -735,12 +960,23 @@ async def login(req: LoginRequest):
 # =============================================================================
 
 @router.post("/refresh", response_model=Token)
-async def refresh(req: RefreshRequest):
+async def refresh(request: Request, req: RefreshRequest):
+    started_at = time.monotonic()
 
-    payload = verify_token(
-        req.refresh_token,
-        "refresh",
-    )
+    try:
+        payload = verify_token(
+            req.refresh_token,
+            "refresh",
+        )
+    except HTTPException as e:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="refresh_token",
+            metadata={"error": "invalid_refresh_token", "status_code": e.status_code},
+            success=False,
+        )
+        raise
 
     username = payload.get("sub")
 
@@ -748,6 +984,13 @@ async def refresh(req: RefreshRequest):
 
     if username == "admin":
         if not ADMIN_MASTER_SECRET:
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="refresh_token",
+                metadata={"username": username, "error": "admin_secret_not_configured"},
+                success=False,
+            )
             raise HTTPException(
                 status_code=500,
                 detail="Admin secret not configured",
@@ -760,9 +1003,23 @@ async def refresh(req: RefreshRequest):
             "role": "admin",
         }
 
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="refresh_token",
+            user=admin_info,
+            metadata={"username": username},
+        )
         return _build_auth_response(admin_info)
 
     if users_col is None:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="refresh_token",
+            metadata={"username": username, "error": "database_unavailable"},
+            success=False,
+        )
         raise HTTPException(
             status_code=500,
             detail="Database not connected",
@@ -773,6 +1030,13 @@ async def refresh(req: RefreshRequest):
     })
 
     if not user:
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="refresh_token",
+            metadata={"username": username, "error": "user_not_found"},
+            success=False,
+        )
         raise HTTPException(
             status_code=404,
             detail="User not found",
@@ -786,6 +1050,14 @@ async def refresh(req: RefreshRequest):
         "full_name": user.get("full_name"),
         "role": user.get("role", "user"),
     }
+
+    _log_auth_activity(
+        request=request,
+        started_at=started_at,
+        action="refresh_token",
+        user=user_info,
+        metadata={"username": username},
+    )
 
     return _build_auth_response(user_info)
 
@@ -807,8 +1079,17 @@ async def get_me(
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
+    started_at = time.monotonic()
+    _log_auth_activity(
+        request=request,
+        started_at=started_at,
+        action="logout",
+        user=current_user,
+        metadata={"username": current_user.get("username")},
+    )
     return {
         "message": "Logged out successfully"
     }

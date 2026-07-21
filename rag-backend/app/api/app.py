@@ -149,15 +149,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if not request.url.path.startswith("/api/documents/view"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         # Remove server fingerprinting headers
-        response.headers.pop("server", None)
-        response.headers.pop("x-powered-by", None)
+        if "server" in response.headers:
+            del response.headers["server"]
+        if "x-powered-by" in response.headers:
+            del response.headers["x-powered-by"]
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
 
 # ── Request size limit middleware ─────────────────────────────────────────────
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    MAX_BODY_BYTES = 5 * 1024 * 1024  # 5 MB
+    MAX_BODY_BYTES = 20 * 1024 * 1024  # 20 MB
 
     async def dispatch(self, request: StarletteRequest, call_next):
         if request.method in ("POST", "PUT", "PATCH"):
@@ -257,6 +259,22 @@ limiter = _build_limiter()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+def _get_user_info_from_req(request: Request) -> tuple:
+    user_id = "anonymous"
+    username = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            token = auth_header.split(" ")[1]
+            from app.security import verify_token
+            payload = verify_token(token, "access")
+            if payload:
+                user_id = payload.get("sub", "anonymous")
+                username = payload.get("sub")
+        except Exception:
+            pass
+    return user_id, username
+
 from app.api import documents
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 
@@ -274,6 +292,12 @@ app.include_router(templates.router, prefix="/api/templates", tags=["Templates"]
 
 from app.api import admin
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+
+from app.api import knowledge
+app.include_router(knowledge.router, prefix="/api/admin/knowledge", tags=["Admin Knowledge"])
+
+from app.api import control_center
+app.include_router(control_center.router, prefix="/api/admin/control-center", tags=["Admin Control Center"])
 
 from app.api import feed
 app.include_router(feed.router, prefix="/api/feed", tags=["Feed"])
@@ -397,6 +421,8 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
         except Exception as me:
             _logger.warning(f"Metadata emission failed: {me}")
 
+    import time
+    t_gen_start = time.monotonic()
     try:
         for chunk in generator:
             full_answer += chunk
@@ -505,6 +531,19 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             except Exception as ce:
                 _logger.warning(f"Cache store error (non-fatal): {ce}")
 
+        # Commit AI log analytics
+        try:
+            from app.ai_logger import update_ai_log, commit_ai_log
+            update_ai_log(
+                generation_time_ms=round((time.monotonic() - t_gen_start) * 1000, 2),
+                estimated_completion_tokens=len(full_answer) // 4,
+                response_length=len(full_answer),
+                citations_count=len(unique_sources)
+            )
+            commit_ai_log(success=bool(full_answer.strip()))
+        except Exception as cle:
+            _logger.warning(f"AI logger commit error (non-fatal): {cle}")
+
 _ask_logger = logging.getLogger("leta.ask")
 
 @app.post("/ask")
@@ -514,6 +553,18 @@ async def ask_question(request: Request, req: QuestionRequest):
     session_id = req.session_id
     query_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
     t0 = time.monotonic()
+
+    user_id, username = _get_user_info_from_req(request)
+    from app.ai_logger import init_ai_log
+    init_ai_log(
+        user_id=user_id,
+        username=username,
+        query=question,
+        endpoint="/api/ask",
+        session_id=session_id,
+        request_id=query_id,
+        client_ip=request.client.host if request.client else None
+    )
 
     # IMMEDIATE SAVE: Save User Question First
     if session_id:
@@ -598,6 +649,17 @@ async def ask_question(request: Request, req: QuestionRequest):
             if cached_sources:
                 yield f"__METADATA__:{json.dumps({'type': 'metadata', 'sources': cached_sources})}__END_METADATA__"
             yield cached_text
+            try:
+                from app.ai_logger import update_ai_log, commit_ai_log
+                update_ai_log(
+                    model_used="cache",
+                    cache_hit=True,
+                    response_length=len(cached_text),
+                    citations_count=len(cached_sources or [])
+                )
+                commit_ai_log(success=True)
+            except Exception:
+                pass
             return
 
         # ── Stage 3: Pre-computed calculation injection (deterministic, <1ms) ────
@@ -681,12 +743,76 @@ async def ask_question(request: Request, req: QuestionRequest):
         ):
             yield chunk
 
+    async def log_wrapper(generator):
+        success = False
+        error_msg = None
+        status_code = 200
+        try:
+            async for chunk in generator:
+                yield chunk
+            success = True
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+            status_code = 500
+            raise e
+        finally:
+            try:
+                from app.ai_logger import commit_ai_log
+                commit_ai_log(success=success, http_status=status_code, error_message=error_msg)
+            except Exception:
+                pass
+
     from fastapi.responses import StreamingResponse
-    return StreamingResponse(rag_pipeline_orchestrator(), media_type="text/event-stream")
+    return StreamingResponse(log_wrapper(rag_pipeline_orchestrator()), media_type="text/event-stream")
+
+
+def log_analytics_sync(endpoint_name: str):
+    def decorator(func):
+        import functools
+        @functools.wraps(func)
+        async def wrapper(request: Request, req: QuestionRequest, *args, **kwargs):
+            question = req.question.strip()
+            session_id = req.session_id
+            
+            user_id, username = _get_user_info_from_req(request)
+            request_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
+            
+            from app.ai_logger import init_ai_log, commit_ai_log
+            init_ai_log(
+                user_id=user_id,
+                username=username,
+                query=question,
+                endpoint=endpoint_name,
+                session_id=session_id,
+                request_id=request_id,
+                client_ip=request.client.host if request.client else None
+            )
+            
+            success = False
+            error_msg = None
+            status_code = 200
+            try:
+                res = await func(request, req, *args, **kwargs)
+                success = True
+                return res
+            except Exception as e:
+                success = False
+                error_msg = str(e)
+                status_code = 500
+                raise e
+            finally:
+                try:
+                    commit_ai_log(success=success, http_status=status_code, error_message=error_msg)
+                except Exception:
+                    pass
+        return wrapper
+    return decorator
 
 
 @app.post("/ask-sync")
 @limiter.limit("20/minute")
+@log_analytics_sync("/api/ask-sync")
 async def ask_question_sync(request: Request, req: QuestionRequest):
     """Non-streaming version of /ask — returns complete JSON response.
     Required for AWS API Gateway HTTP_PROXY compatibility (no SSE streaming support)."""
@@ -737,6 +863,13 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     cached_answer = cache_lookup(question, query_vec)
     if cached_answer:
         cached_text, cached_sources = cached_answer
+        update_ai_log(
+            model_used="cache",
+            cache_hit=True,
+            response_length=len(cached_text),
+            citations_count=len(cached_sources or [])
+        )
+        commit_ai_log(success=True)
         return _JSONResponse({"answer": cached_text, "sources": cached_sources or []})
 
     calc_result = detect_and_calculate(question)
@@ -789,11 +922,12 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         + compressed_block
     )
 
-    # Drafts (notice replies, advisories) MUST use Sonnet — they require 5,000–12,000 tokens.
-    # Non-draft Q&A uses Haiku to stay within API Gateway's 29-second timeout.
+    import time
+    t_gen_start = time.monotonic()
     answer = await _asyncio.to_thread(
         lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=not _is_draft))
     )
+    t_gen_end = time.monotonic()
 
     unique_sources: list = []
     seen_src: set = set()
@@ -833,18 +967,28 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
                 }
             )
 
+    # Commit AI log analytics
+    try:
+        from app.ai_logger import update_ai_log, commit_ai_log
+        update_ai_log(
+            generation_time_ms=round((t_gen_end - t_gen_start) * 1000, 2),
+            estimated_completion_tokens=len(answer) // 4,
+            response_length=len(answer),
+            citations_count=len(unique_sources)
+        )
+        commit_ai_log(success=bool(answer.strip()))
+    except Exception as cle:
+        logger.warning(f"AI logger commit error (non-fatal): {cle}")
+
     return _JSONResponse({"answer": answer, "sources": unique_sources})
 
 
-@app.post("/ask-with-file")
-@limiter.limit("20/minute")
-async def ask_question_with_file(
+async def _execute_ask_question_with_file(
     request: Request,
-    file: UploadFile = File(...),
-    question: str = Form(...),
-    session_id: Optional[str] = Form(None),
+    file: UploadFile,
+    question_text: str,
+    session_id: Optional[str]
 ):
-    question_text = question.strip()
 
     # 1. Read the file
     file_bytes = await file.read()
@@ -962,6 +1106,40 @@ async def ask_question_with_file(
     )
 
     return StreamingResponse(wrapped_stream, media_type="text/event-stream")
+
+
+@app.post("/ask-with-file")
+@limiter.limit("20/minute")
+async def ask_question_with_file(
+    request: Request,
+    file: UploadFile = File(...),
+    question: str = Form(...),
+    session_id: Optional[str] = Form(None),
+):
+    question_text = question.strip()
+    user_id, username = _get_user_info_from_req(request)
+    request_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
+    
+    from app.ai_logger import init_ai_log
+    init_ai_log(
+        user_id=user_id,
+        username=username,
+        query=question_text,
+        endpoint="/api/ask-with-file",
+        session_id=session_id,
+        request_id=request_id,
+        client_ip=request.client.host if request.client else None
+    )
+
+    try:
+        return await _execute_ask_question_with_file(request, file, question_text, session_id)
+    except Exception as e:
+        try:
+            from app.ai_logger import commit_ai_log
+            commit_ai_log(success=False, http_status=500, error_message=str(e))
+        except Exception:
+            pass
+        raise e
 
 
 # ---------- Feedback Endpoint ----------
