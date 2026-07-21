@@ -6,7 +6,7 @@ import axios, {
 
 const BASE_URL =
   import.meta.env.VITE_API_URL ??
-  (import.meta.env.PROD ? '/api_proxy' : 'http://localhost:8000');
+  (import.meta.env.PROD ? 'https://api.letatec.com' : 'http://localhost:8000');
 
 export const AXIOS_INSTANCE = axios.create({ baseURL: BASE_URL });
 
