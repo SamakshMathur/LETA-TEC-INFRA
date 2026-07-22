@@ -132,7 +132,7 @@ Output a valid JSON object with EXACTLY four keys:
    query using the dense, formal vocabulary of official GST Acts, Rules, or Notifications.
 3. "topic": Classify into exactly ONE topic from: [ITC, RCM, Export, Refund, Registration,
    Place_of_Supply, Time_of_Supply, Valuation, Exemption, Returns, Penalty, Audit,
-   Classification, Supply, Payment, Appeals, General]
+   Classification, Supply, Payment, Appeals, Intermediary, Cross_Border_Services, General]
 4. "subtopic": A specific subtopic or null if none applies.
 
 Respond with ONLY the raw JSON object."""

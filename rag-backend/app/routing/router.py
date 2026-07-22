@@ -18,56 +18,72 @@ _DOMAIN_PATHS: dict[str, list[str]] = {
     "penalty":      ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
     "scn":          ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
     "draft":        ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
+    # Intermediary services: definition in IGST Act s.2(13), PoS in s.13(8)(b)
+    "intermediary": ["Act", "IGST", "Circulars", "Notification"] + _HC_SC,
+    # Place of supply — needs both Acts and circulars for PoS disputes
+    "place_of_supply": ["Act", "IGST", "Circulars", "Notification"] + _HC_SC,
 }
 
 
 def _detect_domain_paths(question: str) -> list[str]:
     q = question.lower()
-    paths: set[str] = set()
+    domain_specific: set[str] = set()  # only domain matches — NOT the HC/SC fallback
 
     if re.search(r'rule\s*4[23]|common\s+input|revers.*itc|itc.*revers', q):
-        paths.update(_DOMAIN_PATHS["rule4x"])
+        domain_specific.update(_DOMAIN_PATHS["rule4x"])
 
     if re.search(r'\bitc\b|input\s+tax\s+credit|sec(?:tion)?\.?\s*1[67]', q):
-        paths.update(_DOMAIN_PATHS["itc"])
+        domain_specific.update(_DOMAIN_PATHS["itc"])
 
     if re.search(r'refund|igst\s+refund|export.*refund|unutilised\s+credit', q):
-        paths.update(_DOMAIN_PATHS["refund"])
+        domain_specific.update(_DOMAIN_PATHS["refund"])
 
     if re.search(r'hsn|sac|\bgst\s+rate\b|percent|gst\s+on\s+\w', q):
-        paths.update(_DOMAIN_PATHS["rate_hsn"])
+        domain_specific.update(_DOMAIN_PATHS["rate_hsn"])
 
     if re.search(r'export|zero.?rated|\blut\b|letter\s+of\s+undertaking|sez\b', q):
-        paths.update(_DOMAIN_PATHS["export"])
+        domain_specific.update(_DOMAIN_PATHS["export"])
 
     if re.search(r'e.?way\s*bill|eway', q):
-        paths.update(_DOMAIN_PATHS["eway"])
+        domain_specific.update(_DOMAIN_PATHS["eway"])
 
     if re.search(r'appeal|tribunal|gstat|high\s+court|supreme\s+court', q):
-        paths.update(_DOMAIN_PATHS["appeal"])
+        domain_specific.update(_DOMAIN_PATHS["appeal"])
 
     if re.search(r'annual\s+return|gstr.?9\b', q):
-        paths.update(_DOMAIN_PATHS["annual"])
+        domain_specific.update(_DOMAIN_PATHS["annual"])
 
     if re.search(r'registr(?:ation|ed|ing)', q):
-        paths.update(_DOMAIN_PATHS["registration"])
+        domain_specific.update(_DOMAIN_PATHS["registration"])
 
     if re.search(r'\baudit\b|gst\s+audit|gstr.?9c', q):
-        paths.update(_DOMAIN_PATHS["audit"])
+        domain_specific.update(_DOMAIN_PATHS["audit"])
 
     if re.search(r'penalty|penalt|section\s*12[2-9]|sec\s*12[2-9]', q):
-        paths.update(_DOMAIN_PATHS["penalty"])
+        domain_specific.update(_DOMAIN_PATHS["penalty"])
 
     if re.search(r'scn|show\s*cause|notice|drc.?0?1|section\s*7[34]|sec\s*7[34]', q):
-        paths.update(_DOMAIN_PATHS["scn"])
+        domain_specific.update(_DOMAIN_PATHS["scn"])
 
     if re.search(r'draft|reply|response|representation|appeal\s+letter|submission', q):
-        paths.update(_DOMAIN_PATHS["draft"])
+        domain_specific.update(_DOMAIN_PATHS["draft"])
 
-    # Always include HC/SC for any query — case laws improve every answer
-    paths.update(_HC_SC)
+    if re.search(r'intermediary|commission\s+agent|broker\s+service|facilitator|agent\s+service', q):
+        domain_specific.update(_DOMAIN_PATHS["intermediary"])
 
-    return list(paths)  # empty = no restriction
+    if re.search(r'place\s+of\s+supply|pos\b|section\s*1[23]\s*igst|cross.?border\s+service', q):
+        domain_specific.update(_DOMAIN_PATHS["place_of_supply"])
+
+    # Include HC/SC ONLY when at least one domain-specific path was found.
+    # If nothing matched, return an EMPTY list so search() applies NO folder
+    # filter and searches all sources. Previously we returned just HC/SC/AAR as
+    # a fallback, which accidentally excluded Acts and Circulars for every query
+    # that didn't match a domain pattern (e.g., definition queries).
+    if domain_specific:
+        domain_specific.update(_HC_SC)
+        return list(domain_specific)
+
+    return []  # empty = no restriction, search all sources
 
 
 def route_query(question: str) -> dict:

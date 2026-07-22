@@ -388,8 +388,23 @@ def synthesize_answer_stream(
         "what would be the gst", "legal opinion", "our client is",
         "we are engaged in", "facts of the case",
     ]
-    # Route as draft if: current message has draft keywords OR session history does
-    is_draft = session_is_draft or any(kw in question.lower() for kw in _DRAFT_KW)
+    # Definition/explanation queries MUST bypass DRAFTING_PROMPT even if session history
+    # has draft signals. A query like "define X" or "provide definition of X" has no
+    # missing facts and should never trigger the CHECK-3 clarification flow.
+    import re as _re
+    _NEVER_DRAFT_PATTERNS = [
+        r'\b(what\s+is|what\s+are|define|definition\s+of|explain|meaning\s+of)\b',
+        r'\b(provide|give|state|share)\s+(the\s+)?(definition|meaning|explanation|rate|provision)',
+        r'\b(relevant\s+circular|applicable\s+circular|circular\s+on)\b',
+        r'\b(full\s+form|abbreviation)\b',
+    ]
+    _is_never_draft = any(_re.search(p, question.lower()) for p in _NEVER_DRAFT_PATTERNS)
+
+    # Route as draft only when: current or session has draft signals, AND query is not
+    # a pure definition/knowledge query.
+    is_draft = (not _is_never_draft) and (
+        session_is_draft or any(kw in question.lower() for kw in _DRAFT_KW)
+    )
 
     if is_draft:
         prompt_template = DRAFTING_PROMPT

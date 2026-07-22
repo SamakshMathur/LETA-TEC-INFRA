@@ -246,6 +246,22 @@
             "Summary Assessment": ["Section 64"]
         }
     },
+    "Intermediary": {
+        "primary": ["Section 2(13) IGST", "Section 13(8) IGST", "Section 13 IGST"],
+        "subtopics": {
+            "Definition": ["Section 2(13) IGST"],
+            "Place of Supply": ["Section 13(8)(b) IGST", "Section 13(8) IGST"],
+            "Cross Border Services": ["Section 13(8) IGST", "Section 2(13) IGST"]
+        }
+    },
+    "Cross_Border_Services": {
+        "primary": ["Section 13 IGST", "Section 2(13) IGST", "Section 16 IGST"],
+        "subtopics": {
+            "Intermediary": ["Section 2(13) IGST", "Section 13(8)(b) IGST"],
+            "Export of Services": ["Section 2(6) IGST", "Section 16 IGST"],
+            "Import of Services": ["Section 5(3) IGST", "Section 5(4) IGST"]
+        }
+    },
     "General": {
         "primary": ["Section 9", "Section 7", "Section 15", "Section 16"],
         "subtopics": {}

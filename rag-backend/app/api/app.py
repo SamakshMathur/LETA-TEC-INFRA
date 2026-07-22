@@ -553,7 +553,20 @@ async def ask_question(request: Request, req: QuestionRequest):
             "tax position","gst treatment of","advise on","legal opinion",
             "our client is","we are engaged in","facts of the case",
         ]
-        _is_draft_early = any(k in _q for k in _DRAFT_KW)
+        # Definition/explanation queries must NEVER route to DRAFTING_PROMPT regardless
+        # of session history. A plain knowledge query ("define X", "what is X",
+        # "provide definition of X") has no missing facts and should never trigger
+        # the check-3 clarification flow.
+        _NEVER_DRAFT_PATTERNS = [
+            r'\b(what\s+is|what\s+are|define|definition\s+of|explain|meaning\s+of)\b',
+            r'\b(provide|give|state|share)\s+(the\s+)?(definition|meaning|explanation|rate|provision)',
+            r'\b(relevant\s+circular|applicable\s+circular|circular\s+on)\b',
+            r'\b(full\s+form|abbreviation|what\s+does\s+.+stand\s+for)\b',
+        ]
+        import re as _re
+        _is_never_draft = any(_re.search(p, _q) for p in _NEVER_DRAFT_PATTERNS)
+
+        _is_draft_early = (not _is_never_draft) and any(k in _q for k in _DRAFT_KW)
 
         if "rule 42" in _q or "rule42" in _q:
             _init_msg = "Computing Rule 42 ITC Reversal..."
