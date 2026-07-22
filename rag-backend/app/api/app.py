@@ -606,7 +606,12 @@ async def ask_question(request: Request, req: QuestionRequest):
             _sess = _coll.find_one({"session_id": session_id})
             if not _sess or "messages" not in _sess:
                 return "", False
-            _recent = _sess["messages"][:-1][-6:]
+            # IMPORTANT: include the current user message (already saved by the
+            # immediate save above) in the history window. Previously [:-1] excluded
+            # it, so CHECK 1 in the drafting prompt could not see the user's reply
+            # to LETA's questions and would ask again. Using [-7:] shows the model
+            # the full sequence: LETA-questions → USER-answers → produce draft.
+            _recent = _sess["messages"][-7:]
             _hist = "".join(f"{m['role'].upper()}: {m['content']}\n" for m in _recent)
             _is_d = any(k in _hist.lower() for k in _HISTORY_DRAFT_KW)
             return _hist, _is_d
