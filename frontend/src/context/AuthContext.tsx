@@ -37,9 +37,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (DEMO_MODE) {
-      // Seed localStorage so direct reads (getAuthHeaders, getSessionFirstName) also work
-      localStorage.setItem('pro.auth.session', JSON.stringify(DEMO_SESSION));
-      setSession(DEMO_SESSION);
+      // Use real session if one exists (real login takes precedence over demo).
+      // Only fall back to demo session when no real user is logged in.
+      const existing = getStoredAuthSession();
+      const isRealSession = existing && existing.tokens?.accessToken !== 'demo-preview-token';
+      if (!isRealSession) {
+        localStorage.setItem('pro.auth.session', JSON.stringify(DEMO_SESSION));
+        setSession(DEMO_SESSION);
+      } else {
+        setSession(existing);
+      }
       setIsInitialised(true);
       return;
     }

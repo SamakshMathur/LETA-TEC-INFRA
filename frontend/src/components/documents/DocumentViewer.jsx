@@ -32,7 +32,7 @@ const getFileType = (url) => {
   return '';
 };
 
-// Renders DOCX as HTML using mammoth (loaded from CDN on demand)
+// Renders DOCX as HTML using mammoth (bundled via npm, no CDN)
 const DocxViewer = ({ url }) => {
   const [html, setHtml]       = useState('');
   const [loading, setLoading] = useState(true);
@@ -46,23 +46,12 @@ const DocxViewer = ({ url }) => {
 
     const render = async () => {
       try {
-        // Fetch the file bytes
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const arrayBuffer = await resp.arrayBuffer();
 
-        // Load mammoth from CDN if not already loaded
-        if (!window.mammoth) {
-          await new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
-            s.onload = resolve;
-            s.onerror = reject;
-            document.head.appendChild(s);
-          });
-        }
-
-        const result = await window.mammoth.convertToHtml({ arrayBuffer });
+        const mammoth = (await import('mammoth')).default;
+        const result = await mammoth.convertToHtml({ arrayBuffer });
         if (!cancelled) setHtml(result.value);
       } catch (e) {
         if (!cancelled) setError(e.message || 'Failed to render document');
