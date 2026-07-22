@@ -530,25 +530,38 @@ async def ask_question(request: Request, req: QuestionRequest):
             )
 
     async def rag_pipeline_orchestrator():
-        # ── Stage 1: Query classifier + domain router (pure keyword, <1ms) ──────
+        import asyncio as _asyncio
         from app.routing.router import route_query
         from app.generation.synthesizer import _estimate_complexity
         from app.generation.calculation_engine import detect_and_calculate, format_for_context
         from app.generation.context_compressor import compress_context
+        from app.cache import cache_lookup
+        from app.retrieval.retriever import embed_query
 
+        # ── Stage 1: Instant intent classification (pure keyword, ~1ms) ──────────
         route = route_query(question)
         domain_paths = route.get("domain_paths", [])
         _complexity = _estimate_complexity(question)
-
-        # Query-aware Pulse 1 message
         _q = question.lower()
+
+        _DRAFT_KW = [
+            "draft","notice","reply","appeal","submission","advisory","scn","show cause",
+            "drc-01","drc 01","asmt-10","asmt 10","drc-07","drc 07","drc-03","drc 03",
+            "write a letter","write letter","prepare reply","representation",
+            "response to notice","respond to","our understanding","gst implications",
+            "gst implication","provide opinion","provide advisory","our comments",
+            "tax position","gst treatment of","advise on","legal opinion",
+            "our client is","we are engaged in","facts of the case",
+        ]
+        _is_draft_early = any(k in _q for k in _DRAFT_KW)
+
         if "rule 42" in _q or "rule42" in _q:
             _init_msg = "Computing Rule 42 ITC Reversal..."
         elif "rule 43" in _q or "rule43" in _q:
             _init_msg = "Computing Rule 43 Capital Goods Reversal..."
         elif any(k in _q for k in ["itc", "input tax credit", "section 16", "section 17"]):
             _init_msg = "Analyzing ITC Eligibility Provisions..."
-        elif any(k in _q for k in ["draft","notice","reply","appeal","submission","scn","show cause","drc-01","drc 01","asmt-10","representation","advisory","our understanding","gst implications","provide opinion","our comments","tax position","advise on"]):
+        elif _is_draft_early:
             _init_msg = "Initializing Advisory & Drafting Engine..."
         elif any(k in _q for k in ["refund", "export", "lut"]):
             _init_msg = "Checking Refund & Export Provisions..."
@@ -559,43 +572,42 @@ async def ask_question(request: Request, req: QuestionRequest):
 
         yield f"__STATUS__:{json.dumps({'msg': _init_msg})}__END_STATUS__"
 
-        # 1. Fetch session history
-        history_context = ""
-        _session_is_draft = False  # becomes True if history shows ongoing advisory/draft session
-        if session_id:
-            collection = get_session_collection()
-            if collection is not None:
-                session = collection.find_one({"session_id": session_id})
-                if session and "messages" in session:
-                    recent = session["messages"][:-1][-6:]
-                    for msg in recent:
-                        history_context += f"{msg['role'].upper()}: {msg['content']}\n"
-                    # If any recent message contains draft/advisory signals, keep the session
-                    # in draft mode — this ensures follow-up messages (clarifications, corrections,
-                    # "re-analyze" requests) continue routing through DRAFTING_PROMPT.
-                    _HISTORY_DRAFT_KW = [
-                        "advisory","our understanding","gst implications","gst implication",
-                        "provide opinion","our comments","tax position","gst treatment",
-                        "advise on","legal opinion","our client","we are engaged",
-                        "facts of the case","b)  our comments","our comments from gst",
-                        "draft","notice","reply","appeal","scn","show cause",
-                        "drc-01","drc-07","asmt-10","representation",
-                        # LETA's own advisory/analysis output markers
-                        "our comments from gst perspective",
-                        "i've reviewed your","issue raised","section invoked",
-                        "to draft a strong reply",
-                    ]
-                    _hist_lower = history_context.lower()
-                    _session_is_draft = any(k in _hist_lower for k in _HISTORY_DRAFT_KW)
+        # ── Stage 2: PARALLEL — session history + query embedding ─────────────────
+        # Both are independent I/O-bound tasks; run them simultaneously.
+        _HISTORY_DRAFT_KW = [
+            "advisory","our understanding","gst implications","gst implication",
+            "provide opinion","our comments","tax position","gst treatment",
+            "advise on","legal opinion","our client","we are engaged",
+            "facts of the case","draft","notice","reply","appeal","scn","show cause",
+            "drc-01","drc-07","asmt-10","representation",
+            "our comments from gst perspective","i've reviewed your",
+            "issue raised","section invoked","to draft a strong reply",
+        ]
 
-        # ── Stage 2: Cache lookup (L1 exact + L2 semantic) ───────────────────────
-        from app.cache import cache_lookup
-        from app.retrieval.retriever import embed_query
+        def _fetch_history_sync():
+            if not session_id:
+                return "", False
+            _coll = get_session_collection()
+            if _coll is None:
+                return "", False
+            _sess = _coll.find_one({"session_id": session_id})
+            if not _sess or "messages" not in _sess:
+                return "", False
+            _recent = _sess["messages"][:-1][-6:]
+            _hist = "".join(f"{m['role'].upper()}: {m['content']}\n" for m in _recent)
+            _is_d = any(k in _hist.lower() for k in _HISTORY_DRAFT_KW)
+            return _hist, _is_d
 
         yield f"__STATUS__:{json.dumps({'msg': 'Scanning Semantic Cache...'})}__END_STATUS__"
-        query_vec = embed_query(question)
-        cached_answer = cache_lookup(question, query_vec)
 
+        (history_context, _session_is_draft), query_vec = await _asyncio.gather(
+            _asyncio.to_thread(_fetch_history_sync),
+            _asyncio.to_thread(embed_query, question),
+        )
+        _is_draft = _is_draft_early or _session_is_draft
+
+        # ── Stage 3: Cache lookup ─────────────────────────────────────────────────
+        cached_answer = await _asyncio.to_thread(cache_lookup, question, query_vec)
         if cached_answer:
             cached_text, cached_sources = cached_answer
             _ask_logger.info("Cache HIT", extra={"query_id": query_id, "cache_hit": True})
@@ -605,53 +617,85 @@ async def ask_question(request: Request, req: QuestionRequest):
             yield cached_text
             return
 
-        # ── Stage 3: Pre-computed calculation injection (deterministic, <1ms) ────
+        # ── Stage 4: Pre-computed calculations (sync, instant) ────────────────────
         calc_result = detect_and_calculate(question)
         calc_block = format_for_context(calc_result) if calc_result else ""
         if calc_result:
             yield f"__STATUS__:{json.dumps({'msg': 'Pre-computing Statutory Formula...'})}__END_STATUS__"
 
-        # ── Stage 4: Query expansion — only for deeply complex non-draft queries ────
-        _DRAFT_KW_EARLY = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","drc-07","drc 07","drc-03","drc 03","write a letter","write letter","prepare reply","representation","response to notice","respond to","our understanding","gst implications","gst implication","provide opinion","provide advisory","our comments","tax position","gst treatment of","advise on","legal opinion","our client is","we are engaged in","facts of the case"]
-        _is_draft_early = _session_is_draft or any(k in _q for k in _DRAFT_KW_EARLY)
-
-        if _complexity >= 0.35 and not _is_draft_early:
-            yield f"__STATUS__:{json.dumps({'msg': 'Expanding Query for Precision Retrieval...'})}__END_STATUS__"
-            from app.retrieval.query_refiner import generate_advanced_queries
-            advanced_queries = generate_advanced_queries(question)
-            refined_q = advanced_queries.get("queries", [question])[0]
-        else:
-            advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
-            refined_q = question
-
-        # ── Phase 2B: Draft sub-query injection (no LLM call — rule-based) ────────
-        if _is_draft_early:
-            _statute_q  = refined_q + " section rule act provisions conditions eligibility liability"
-            _caselaw_q  = refined_q + " high court supreme court judgment held ruling decision AAR"
-            _circular_q = refined_q + " CBIC circular notification clarification instruction"
-            advanced_queries["queries"] = [refined_q, _statute_q, _caselaw_q, _circular_q]
-
-        # ── Stage 5: Targeted hybrid retrieval ────────────────────────────────────
-        domain_label = ", ".join(domain_paths[:2]) if domain_paths else "All Databases"
-        yield f"__STATUS__:{json.dumps({'msg': f'Querying Statutory Provisions ({domain_label})...'})}__END_STATUS__"
+        # ── Stage 5: Retrieval — strategy depends on query type ───────────────────
+        # Follow-up query enrichment: if query is short (<8 words) and history
+        # exists, enrich the retrieval query with context from the last exchange
+        # so "what about penalties?" searches with full legal context.
         retriever = get_retriever()
-        _DRAFT_KW = ["draft","notice","reply","appeal","submission","advisory","scn","show cause","drc-01","drc 01","asmt-10","asmt 10","drc-07","drc 07","drc-03","drc 03","write a letter","write letter","prepare reply","representation","response to notice","respond to","our understanding","gst implications","gst implication","provide opinion","provide advisory","our comments","tax position","gst treatment of","advise on","legal opinion","our client is","we are engaged in","facts of the case"]
-        _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW)
         _retrieval_top_k = 30 if _is_draft else (25 if _complexity >= 0.60 else 20)
-        chunks = retriever.search(
-            query=refined_q,
-            top_k=_retrieval_top_k,
-            allowed_sources=route["use_sources"],
-            advanced_queries=advanced_queries,
-            domain_paths=domain_paths,
-            is_draft=_is_draft,
-        )
+        domain_label = ", ".join(domain_paths[:2]) if domain_paths else "All Databases"
 
-        # ── Stage 6: Context assembly — citation registry + compressed excerpts ───
-        # build_context() provides the citation registry (hallucination grounding).
-        # compress_context() provides the focused factual text block (speed).
-        citation_block = build_context(chunks, is_draft=_is_draft)      # ~5 KB: registry + authority metadata
-        compressed_block = compress_context(chunks, question, is_draft=_is_draft)  # focused excerpts
+        def _enrich_for_retrieval(q: str, hist: str) -> str:
+            if hist and len(q.split()) < 8:
+                _last_lines = [l for l in hist.split('\n') if l.startswith('ASSISTANT:')]
+                if _last_lines:
+                    _ctx = _last_lines[-1].replace('ASSISTANT:', '').strip()[:100]
+                    return f"{q} [context: {_ctx}]"
+            return q
+
+        _retrieval_q = _enrich_for_retrieval(question, history_context)
+
+        yield f"__STATUS__:{json.dumps({'msg': f'Searching Statutory Database ({domain_label})...'})}__END_STATUS__"
+
+        if _is_draft:
+            # Draft: rule-based sub-queries, no LLM expansion call needed
+            _statute_q  = _retrieval_q + " section rule act provisions conditions eligibility liability"
+            _caselaw_q  = _retrieval_q + " high court supreme court judgment held ruling decision AAR"
+            _circular_q = _retrieval_q + " CBIC circular notification clarification instruction"
+            _adv = {
+                "queries": [_retrieval_q, _statute_q, _caselaw_q, _circular_q],
+                "hyde_document": "", "topic": "General", "subtopic": None,
+            }
+            chunks = await _asyncio.to_thread(
+                retriever.search, _retrieval_q, _retrieval_top_k,
+                route["use_sources"], _adv, domain_paths, True,
+            )
+
+        elif _complexity >= 0.35:
+            # Complex non-draft: run query expansion + fast retrieval IN PARALLEL.
+            # Fast retrieval uses original query without expansion (skip_rerank for speed).
+            # When expansion arrives, we supplement the pool and do ONE final rerank.
+            yield f"__STATUS__:{json.dumps({'msg': 'Expanding Query for Precision Retrieval...'})}__END_STATUS__"
+
+            def _fast_retrieve():
+                return retriever.search(
+                    _retrieval_q, _retrieval_top_k, route["use_sources"],
+                    None, domain_paths, False, skip_rerank=True,
+                )
+
+            def _expand():
+                from app.retrieval.query_refiner import generate_advanced_queries
+                return generate_advanced_queries(_retrieval_q)
+
+            fast_chunks, advanced_queries = await _asyncio.gather(
+                _asyncio.to_thread(_fast_retrieve),
+                _asyncio.to_thread(_expand),
+            )
+
+            # Supplement the fast pool with expanded-query FAISS results,
+            # then do ONE FlashRank + LegalReranker pass on the merged pool.
+            chunks = await _asyncio.to_thread(
+                retriever.supplement_and_rerank,
+                fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
+            )
+
+        else:
+            # Simple query: direct retrieval (already fast)
+            _adv = {"queries": [_retrieval_q], "hyde_document": "", "topic": "General", "subtopic": None}
+            chunks = await _asyncio.to_thread(
+                retriever.search, _retrieval_q, _retrieval_top_k,
+                route["use_sources"], _adv, domain_paths, False,
+            )
+
+        # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
+        citation_block   = build_context(chunks, is_draft=_is_draft)
+        compressed_block = compress_context(chunks, question, is_draft=_is_draft)
 
         full_rag_context = (
             (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")

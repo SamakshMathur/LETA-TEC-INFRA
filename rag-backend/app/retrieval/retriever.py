@@ -121,9 +121,78 @@ def embed_query(text: str):
     return vec
 
 
+# GST compound phrases used to generate bigram tokens for BM25
+_GST_BIGRAMS = frozenset([
+    "input tax credit", "reverse charge mechanism", "reverse charge",
+    "place of supply", "time of supply", "zero rated supply",
+    "show cause notice", "input service distributor", "electronic cash ledger",
+    "electronic credit ledger", "inverted duty structure", "composite supply",
+    "mixed supply", "works contract", "capital goods", "job work",
+    "advance ruling", "high court", "supreme court", "annual return",
+    "inter state", "intra state", "e way bill", "transitional credit",
+    "input tax", "output tax", "zero rated", "exempt supply",
+])
+
+# Abbreviation → full-form expansion for BM25 query preprocessing
+_GST_ABBREV = [
+    (re.compile(r'\bitc\b', re.IGNORECASE), 'input tax credit ITC'),
+    (re.compile(r'\brcm\b', re.IGNORECASE), 'reverse charge mechanism RCM'),
+    (re.compile(r'\bscn\b', re.IGNORECASE), 'show cause notice SCN'),
+    (re.compile(r'\bisd\b', re.IGNORECASE), 'input service distributor ISD'),
+    (re.compile(r'\blut\b', re.IGNORECASE), 'letter of undertaking LUT'),
+    (re.compile(r'\bsez\b', re.IGNORECASE), 'special economic zone SEZ'),
+    (re.compile(r'\bcgst\b', re.IGNORECASE), 'central goods services tax CGST'),
+    (re.compile(r'\bigst\b', re.IGNORECASE), 'integrated goods services tax IGST'),
+    (re.compile(r'\bsgst\b', re.IGNORECASE), 'state goods services tax SGST'),
+    (re.compile(r'\bgstr\b', re.IGNORECASE), 'return GSTR'),
+    (re.compile(r'\bfaq\b', re.IGNORECASE), 'frequently asked questions FAQ'),
+    (re.compile(r'\baar\b', re.IGNORECASE), 'advance ruling AAR'),
+    (re.compile(r'\bpoc\b', re.IGNORECASE), 'place of supply POS'),
+    # Normalize section shorthand: "sec 16", "s.16", "s16" → "section 16"
+    (re.compile(r'\bsec\.?\s*(\d)', re.IGNORECASE), r'section \1'),
+    (re.compile(r'\bs\.\s*(\d)', re.IGNORECASE), r'section \1'),
+]
+
+
+def _expand_for_bm25(query: str) -> str:
+    """Expand GST abbreviations in a query string for better BM25 keyword coverage."""
+    result = query
+    for pattern, replacement in _GST_ABBREV:
+        result = pattern.sub(replacement, result)
+    return result
+
+
 def tokenize_text(text: str):
-    """Simple tokenizer for BM25."""
-    return [word.lower() for word in re.findall(r'\b\w+\b', text)]
+    """
+    Enhanced BM25 tokenizer that:
+    - Preserves section/rule compound references as additional tokens
+    - Keeps form codes (DRC-01, GSTR-3B) with hyphen intact
+    - Adds underscore-joined bigrams for critical GST compound phrases
+    - Falls back to standard word tokenization for everything else
+    """
+    text_lower = text.lower()
+    tokens = list(re.findall(r'\b\w+\b', text_lower))
+
+    # Preserve section/rule number references as compound tokens
+    # e.g. "section 16(2)(b)" → "section_16_2_b"
+    for m in re.finditer(
+        r'\b(section|rule|schedule|article|clause|sub-section|proviso)\s+(\d+(?:[(\w)]+)*)',
+        text_lower
+    ):
+        compound = re.sub(r'[^a-z0-9]', '_', m.group(0))
+        tokens.append(compound)
+
+    # Keep form/notification codes with hyphens as single tokens
+    # e.g. "DRC-01", "GSTR-3B", "RFD-01"
+    for m in re.finditer(r'\b[a-z]{2,5}-[\w\d]+\b', text_lower):
+        tokens.append(m.group(0))
+
+    # Add bigram tokens for GST compound phrases
+    for phrase in _GST_BIGRAMS:
+        if phrase in text_lower:
+            tokens.append(phrase.replace(' ', '_'))
+
+    return tokens
 
 
 def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
@@ -279,7 +348,7 @@ class Retriever:
         result = list(pool)  # start with the full pool
 
         if self.bm25:
-            tokenized_query = tokenize_text(query)
+            tokenized_query = tokenize_text(_expand_for_bm25(query))
             bm25_scores = self.bm25.get_scores(tokenized_query)
 
             for cat, quota in quotas.items():
@@ -381,9 +450,10 @@ class Retriever:
                     for idx in I2[0]:
                         _add_to_pool(idx)
 
-        # 2. BM25 Search
+        # 2. BM25 Search — expand abbreviations before tokenizing so "ITC" matches
+        # chunks that say "Input Tax Credit", "sec 16" matches "Section 16", etc.
         if self.bm25:
-            tokenized_query = tokenize_text(query)
+            tokenized_query = tokenize_text(_expand_for_bm25(query))
             bm25_scores = self.bm25.get_scores(tokenized_query)
             top_bm25_idxs = np.argsort(bm25_scores)[::-1][:BM25_TOP_K]
             for idx in top_bm25_idxs:
@@ -436,7 +506,7 @@ class Retriever:
                 combined_results.append(r)
 
         # Cap total candidates for reranker (FlashRank OOM above ~300)
-        RERANK_MAX = 200
+        RERANK_MAX = 80
         reranker_input = combined_results[:RERANK_MAX]
 
         # --- Semantic Reranking (FlashRank) ---
@@ -483,3 +553,70 @@ class Retriever:
             f"semantic={len(candidate_pool)} final={len(final_results)}"
         )
         return final_results[:top_k]
+
+    def supplement_and_rerank(self, base_chunks: list, advanced_queries: dict, query: str, top_k: int) -> list:
+        """
+        Called after fast retrieval (skip_rerank=True) + query expansion finish in parallel.
+        Supplements the fast pool with FAISS results from expanded queries, then runs ONE
+        FlashRank + LegalReranker + MMR pass on the merged pool capped at 80 chunks.
+        This replaces the old pattern of running FlashRank on 200 chunks twice.
+        """
+        if not advanced_queries:
+            return base_chunks[:top_k]
+
+        topic = advanced_queries.get("topic", "General")
+        existing_ids = {c.get("chunk_id") for c in base_chunks}
+        extra_queries = list(advanced_queries.get("queries", [])[1:])
+        hyde = advanced_queries.get("hyde_document", "")
+        if hyde:
+            extra_queries.append(hyde)
+
+        combined = list(base_chunks)
+        if self.index:
+            for eq in extra_queries:
+                if not eq or not eq.strip():
+                    continue
+                vec = embed_query(eq)
+                if vec is not None:
+                    D, I = self.index.search(np.array([vec]).astype('float32'), VECTOR_EXPANDED_TOP_K)
+                    for idx in I[0]:
+                        if 0 <= idx < len(self.chunks):
+                            chunk = self.chunks[idx].copy()
+                            cid = chunk.get("chunk_id")
+                            if cid and cid not in existing_ids:
+                                existing_ids.add(cid)
+                                combined.append(chunk)
+
+        RERANK_CAP = 80
+        rerank_input = combined[:RERANK_CAP]
+        reranked = rerank_input
+
+        if rerank_input and self.ranker:
+            try:
+                from flashrank import RerankRequest
+                passages = [{"id": i, "text": c.get("text", ""), "meta": c} for i, c in enumerate(rerank_input)]
+                flash_results = self.ranker.rerank(RerankRequest(query=query, passages=passages))
+                reranked = []
+                for r in flash_results:
+                    item = r["meta"]
+                    item["_rerank_score"] = r["score"]
+                    reranked.append(item)
+            except Exception as e:
+                logger.warning(f"FlashRank failed in supplement_and_rerank: {e}")
+
+        reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
+
+        final = []
+        for res in _mmr_deduplicate(reranked, top_k=top_k):
+            if "metadata" in res:
+                meta = res.pop("metadata")
+                for key, val in meta.items():
+                    if key not in res:
+                        res[key] = val
+            final.append(res)
+
+        logger.info(
+            f"supplement_and_rerank: base={len(base_chunks)} expanded={len(combined)-len(base_chunks)} "
+            f"reranked={len(reranked)} final={len(final)}"
+        )
+        return final
