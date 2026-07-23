@@ -181,7 +181,8 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         rerank_score = c.get('_rerank_score', None)
         relevance_tag = f" | Relevance: {rerank_score:.3f}" if rerank_score is not None else ""
 
-        chunk_text = c['text'].strip()
+        # Use context_text (enriched with adjacent-page neighbors) when available
+        chunk_text = (c.get('context_text') or c['text']).strip()
         if len(chunk_text) > max_chunk:
             chunk_text = chunk_text[:max_chunk] + "... [truncated]"
 
