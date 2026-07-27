@@ -104,7 +104,8 @@ class RefreshRequest(BaseModel):
 
 
 # DEV_MODE=true → return otp_preview in response and skip strict OTP check.
-_DEV_MODE: bool = os.getenv("DEV_MODE", "true").lower() == "true"
+# Default is false (production-safe). Set DEV_MODE=true only for local testing.
+_DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() == "true"
 
 # Session durations per plan (seconds). Admin role is exempt — no timer.
 PLAN_DURATIONS: dict[str, int] = {
