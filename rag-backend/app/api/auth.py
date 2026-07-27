@@ -351,26 +351,17 @@ async def verify_otp(req: VerifyOTPRequest):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Compute plan-based session window
-    plan = user.get("plan", "basic")
-    role = user.get("role", "user")
-    now_utc   = datetime.now(timezone.utc)
-    now_ms    = int(now_utc.timestamp() * 1000)
+    role    = user.get("role", "user")
+    plan    = user.get("plan", "basic")
+    now_utc = datetime.now(timezone.utc)
+    now_ms  = int(now_utc.timestamp() * 1000)
 
-    if role == "admin":
-        session_end_ms = None          # admin: unlimited
-        session_end_dt = None
-    else:
-        duration_s     = PLAN_DURATIONS.get(plan, PLAN_DURATIONS["basic"])
-        session_end_dt = now_utc + timedelta(seconds=duration_s)
-        session_end_ms = int(session_end_dt.timestamp() * 1000)
-
+    # Session timer is NOT started at login — it only starts after payment (see payments.py).
     users_col.update_one(
         {"$or": [{"email": req.contact}, {"phone": req.contact}]},
         {"$set": {
-            "verified":    True,
-            "last_login":  now_utc,
-            "session_end": session_end_dt,   # stored as UTC datetime for server-side check
+            "verified":   True,
+            "last_login": now_utc,
         }}
     )
 
@@ -394,9 +385,8 @@ async def verify_otp(req: VerifyOTPRequest):
         "expiresAt":             now_ms + (15 * 60 * 1000),
         "refreshTokenExpiresAt": now_ms + (7 * 24 * 60 * 60 * 1000),
         "tokenType":             "bearer",
+        # session_end_ms absent here — clock only starts after payment (see /api/payments/verify)
     }
-    if session_end_ms is not None:
-        tokens["session_end_ms"] = session_end_ms
 
     return {
         "tokens":         tokens,

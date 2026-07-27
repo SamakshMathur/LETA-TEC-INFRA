@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import { Navbar, SystemFooter, ScrollToTop } from './components/layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { PublicRoute }    from './components/auth/PublicRoute';
-import { authRoutes, protectedRoutes } from './routes';
+import { openRoutes, authRoutes, protectedRoutes } from './routes';
 import GrainOverlay from './components/effects/GrainOverlay';
 import ScrollProgress from './components/effects/ScrollProgress';
 import PageTransition from './components/effects/PageTransition';
@@ -90,6 +90,9 @@ function App() {
         <ScrollToTop />
         <Layout>
           <Routes>
+            {openRoutes.map(({ path, element }) => (
+              <Route key={path} path={path} element={element} />
+            ))}
             {authRoutes.map(({ path, element }) => (
               <Route key={path} path={path} element={<PublicRoute>{element}</PublicRoute>} />
             ))}

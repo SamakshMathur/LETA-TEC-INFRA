@@ -225,32 +225,26 @@ def _extract_query_refs(query: str) -> list:
     return refs
 
 
-def _expand_context_window(selected: list, pool: list, max_neighbors: int = 2) -> list:
+def _expand_context_window(
+    selected: list,
+    doc_map: dict,
+    all_chunks: list,
+    max_neighbors: int = 2,
+) -> list:
     """
-    Parent-child equivalent without re-indexing: for each selected chunk, find
-    adjacent chunks from the same document in the broader pool and merge their
-    text into context_text. The LLM receives richer context; the original text
-    field is preserved for scoring and snippet display.
-    """
-    from collections import defaultdict
+    Full-corpus context window expansion.
 
-    if not pool or len(pool) <= 1:
+    For each selected chunk, looks up its document in the startup-built doc_map
+    (rel_path → sorted [(page, chunk_index)]) and fetches adjacent-page neighbors
+    directly from all_chunks by index. Neighbors can be anywhere in the full corpus,
+    not just the 80-chunk retrieval pool — this is the key improvement over the
+    previous pool-only version.
+
+    Stores the enriched text in context_text; original text is preserved for
+    scoring, snippet display, and the source panel.
+    """
+    if not doc_map or not all_chunks:
         return selected
-
-    # Build per-document list of (page, chunk) from the pool
-    doc_map: dict = defaultdict(list)
-    for chunk in pool:
-        rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
-        if not rel:
-            continue
-        pages = chunk.get("pages") or chunk.get("metadata", {}).get("pages") or []
-        page = min(pages) if pages else (
-            chunk.get("page") or chunk.get("metadata", {}).get("page") or 0
-        )
-        doc_map[rel].append((page, chunk))
-
-    for rel in doc_map:
-        doc_map[rel].sort(key=lambda x: x[0])
 
     expanded = []
     for chunk in selected:
@@ -262,13 +256,20 @@ def _expand_context_window(selected: list, pool: list, max_neighbors: int = 2) -
         cid = chunk.get("chunk_id")
 
         if rel and rel in doc_map and len(doc_map[rel]) > 1:
-            neighbors = [
-                c for (p, c) in doc_map[rel]
-                if c.get("chunk_id") != cid and abs(p - page) <= 2
-            ]
-            if neighbors:
-                neighbors = neighbors[:max_neighbors]
-                neighbor_texts = [n.get("text", "").strip() for n in neighbors if n.get("text", "").strip()]
+            neighbor_chunks = []
+            for (p, idx) in doc_map[rel]:
+                if abs(p - page) <= 2 and 0 <= idx < len(all_chunks):
+                    nbr = all_chunks[idx]
+                    if nbr.get("chunk_id") != cid:
+                        neighbor_chunks.append(nbr)
+
+            if neighbor_chunks:
+                neighbor_chunks = neighbor_chunks[:max_neighbors]
+                neighbor_texts = [
+                    n.get("text", "").strip()
+                    for n in neighbor_chunks
+                    if n.get("text", "").strip()
+                ]
                 if neighbor_texts:
                     chunk = chunk.copy()
                     chunk["context_text"] = (
@@ -450,6 +451,30 @@ class Retriever:
                         self._provision_index[_ref] = []
                     self._provision_index[_ref].append(_ci)
         logger.info(f"Provision index built: {len(self._provision_index)} citation keys")
+
+        # Build full-corpus document map for context window expansion.
+        # Maps rel_path → sorted list of (page_num, chunk_index).
+        # Built once at startup so every query can fetch neighbors from the
+        # entire corpus by index, not just from the 80-chunk retrieval pool.
+        self._doc_map: dict = {}
+        for _ci, _chunk in enumerate(self.chunks):
+            _meta = _chunk.get("metadata", {})
+            _rel = _chunk.get("rel_path") or _meta.get("rel_path", "")
+            if not _rel:
+                continue
+            _pages = _chunk.get("pages") or _meta.get("pages") or []
+            _page = min(_pages) if _pages else (
+                _chunk.get("page") or _meta.get("page") or 0
+            )
+            if _rel not in self._doc_map:
+                self._doc_map[_rel] = []
+            self._doc_map[_rel].append((_page, _ci))
+        for _rel in self._doc_map:
+            self._doc_map[_rel].sort(key=lambda x: x[0])
+        logger.info(
+            f"Doc map built: {len(self._doc_map)} documents, "
+            f"{len(self.chunks)} total chunks"
+        )
 
         # Initialize FlashRank
         logger.info(f"Loading reranker: {RERANKING_MODEL}")
@@ -676,9 +701,6 @@ class Retriever:
             if r.get("chunk_id") not in existing_ids:
                 combined_results.append(r)
 
-        # Store full pool before capping — used for context window expansion later
-        _full_pool = list(combined_results)
-
         # Cap total candidates for reranker (FlashRank OOM above ~300)
         RERANK_MAX = 80
         reranker_input = combined_results[:RERANK_MAX]
@@ -712,9 +734,9 @@ class Retriever:
         reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k)
 
         # --- Context Window Expansion ---
-        # Enrich each selected chunk with adjacent-page neighbors from the same
-        # document, giving the LLM wider context without re-indexing.
-        reranked_results = _expand_context_window(reranked_results, _full_pool)
+        # Enrich each selected chunk with adjacent-page neighbors from the full
+        # corpus (self._doc_map covers all chunks, not just the 80-chunk pool).
+        reranked_results = _expand_context_window(reranked_results, self._doc_map, self.chunks)
 
         # Flatten metadata for final output (safe merge avoiding key collisions)
         final_results = []
@@ -795,8 +817,8 @@ class Retriever:
 
         mmr_results = _mmr_deduplicate(reranked, top_k=top_k)
 
-        # Context window expansion using the full pre-rerank pool
-        mmr_results = _expand_context_window(mmr_results, combined)
+        # Context window expansion using the full-corpus doc map
+        mmr_results = _expand_context_window(mmr_results, self._doc_map, self.chunks)
 
         final = []
         for res in mmr_results:

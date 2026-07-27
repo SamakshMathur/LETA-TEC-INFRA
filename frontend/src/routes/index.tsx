@@ -13,6 +13,13 @@ export interface RouteConfig {
   element: React.ReactNode;
 }
 
+/** No auth check — anyone can visit regardless of login state */
+export const openRoutes: RouteConfig[] = [
+  { path: ROUTES.HOME,  element: <Home /> },
+  { path: ROUTES.ABOUT, element: <About /> },
+  { path: ROUTES.DOCS,  element: <Documentation /> },
+];
+
 /** Redirect to /dashboard if already logged in */
 export const authRoutes: RouteConfig[] = [
   { path: ROUTES.LOGIN,  element: <LoginPage /> },
@@ -21,10 +28,6 @@ export const authRoutes: RouteConfig[] = [
 
 /** Require login — redirect to /login if not authenticated */
 export const protectedRoutes: RouteConfig[] = [
-  { path: ROUTES.HOME,  element: <Home /> },
-  { path: ROUTES.ABOUT, element: <About /> },
-  { path: ROUTES.DOCS,  element: <Documentation /> },
-
   { path: ROUTES.DASHBOARD, element: <ModuleDashboard /> },
   { path: '/:domainId/leta', element: <LetaWorkspace /> },
 
