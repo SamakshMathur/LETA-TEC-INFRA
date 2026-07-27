@@ -24,4 +24,5 @@ export const ROUTES = {
   RESPONSES: '/responses',
   LEGAL: '/legal',
   MY_DOCS: '/my-docs',
+  PAYMENT: '/payment',
 };

@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Zap, CheckCircle2, ArrowRight, Scale, Building2, Globe } from 'lucide-react';
-import { BASE_URL } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import DashboardParticles from '../components/effects/DashboardParticles';
 
@@ -92,102 +91,15 @@ const PLANS: Array<{
   },
 ];
 
-// ── Razorpay loader ───────────────────────────────────────────────────────────
-function loadRazorpay(): Promise<boolean> {
-  return new Promise(resolve => {
-    if ((window as any).Razorpay) { resolve(true); return; }
-    const s = document.createElement('script');
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.body.appendChild(s);
-  });
-}
-
 // ── Pricing Modal ─────────────────────────────────────────────────────────────
 interface PricingModalProps {
   module: typeof MODULES[0] | null;
   onClose: () => void;
 }
 
-const getPayAuthHeader = (): Record<string, string> => {
-  try {
-    const stored = localStorage.getItem('pro.auth.session');
-    if (!stored) return {};
-    const s = JSON.parse(stored);
-    const token = s?.tokens?.accessToken;
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  } catch { return {}; }
-};
-
 const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
   const [selected, setSelected] = useState('3hr');
-  const [loading, setLoading] = useState(false);
-  const [payError, setPayError] = useState<string | null>(null);
-  const [rzConfig, setRzConfig] = useState<{ key_id: string; configured: boolean } | null>(null);
-  const { user } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    fetch(`${BASE_URL}/api/payments/config`)
-      .then(r => r.json())
-      .then(setRzConfig)
-      .catch(() => { setRzConfig({ key_id: '', configured: false }); });
-  }, []);
-
-  const handlePay = async () => {
-    if (!module) return;
-    setLoading(true);
-    setPayError(null);
-    try {
-      const loaded = await loadRazorpay();
-      if (!loaded) throw new Error('Razorpay SDK failed to load');
-
-      const authHeader = getPayAuthHeader();
-      const orderRes = await fetch(`${BASE_URL}/api/payments/create-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ plan_id: selected, module: module.id }),
-      });
-      if (!orderRes.ok) {
-        const err = await orderRes.json();
-        throw new Error(err.detail || 'Could not create order');
-      }
-      const order = await orderRes.json();
-      const plan = PLANS.find(p => p.id === selected)!;
-
-      const options = {
-        key: rzConfig?.key_id || '',
-        amount: order.amount,
-        currency: order.currency,
-        name: 'LETA — Legal Intelligence',
-        description: `${module.fullName} · ${plan.label}`,
-        order_id: order.order_id,
-        prefill: { email: user?.email || '' },
-        theme: { color: B.accent },
-        handler: async (response: any) => {
-          const verifyRes = await fetch(`${BASE_URL}/api/payments/verify`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeader },
-            body: JSON.stringify({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              plan_id: selected,
-              module: module.id,
-            }),
-          });
-          if (verifyRes.ok) { onClose(); navigate(module.route); }
-          else setPayError('Payment verification failed. Please contact support.');
-        },
-        modal: { ondismiss: () => setLoading(false) },
-      };
-      new (window as any).Razorpay(options).open();
-    } catch (err: any) {
-      setPayError(err.message || 'Something went wrong. Please try again.');
-      setLoading(false);
-    }
-  };
 
   if (!module) return null;
 
@@ -292,35 +204,12 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
 
           {/* CTA */}
           <div className="px-6 pb-7">
-            {payError && (
-              <div className="mb-3 p-3 rounded-xl text-xs text-center font-medium" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
-                {payError}
-              </div>
-            )}
-            {rzConfig?.configured ? (
-              <button
-                onClick={handlePay}
-                disabled={loading}
-                className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                style={{ background: B.accent, color: '#000', boxShadow: `0 0 30px ${B.glow}` }}>
-                {loading
-                  ? <><span className="animate-spin w-4 h-4 border-2 border-black/30 border-t-black rounded-full" /> Processing...</>
-                  : <><Zap size={14} /> Get {PLANS.find(p => p.id === selected)?.label} — {PLANS.find(p => p.id === selected)?.price} <ArrowRight size={13} /></>
-                }
-              </button>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-center text-[10px] font-mono" style={{ color: '#475569' }}>
-                  Payment system coming soon — access your session now
-                </p>
-                <button
-                  onClick={() => { onClose(); navigate(module!.route); }}
-                  className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200"
-                  style={{ background: B.accent, color: '#000', boxShadow: `0 0 30px ${B.glow}` }}>
-                  <Zap size={14} /> Enter Workspace <ArrowRight size={13} />
-                </button>
-              </div>
-            )}
+            <button
+              onClick={() => { onClose(); navigate(`/payment?module=${module!.id}&plan=${selected}`); }}
+              className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200"
+              style={{ background: B.accent, color: '#000', boxShadow: `0 0 30px ${B.glow}` }}>
+              <Zap size={14} /> Continue to Payment <ArrowRight size={13} />
+            </button>
           </div>
         </motion.div>
       </motion.div>

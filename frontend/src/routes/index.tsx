@@ -3,7 +3,7 @@ import {
   Home, About, Documentation,
   GST, TemplateCustomization,
   AdminTemplateDashboard, AdminUploadPortal,
-  SignupPage, LetaWorkspace, ModuleDashboard, LegalPolicies, MyDocs,
+  SignupPage, LetaWorkspace, ModuleDashboard, LegalPolicies, MyDocs, Payment,
 } from '../pages';
 import LoginPage from '../pages/auth/login';
 import { ROUTES } from '../constants/routes';
@@ -84,4 +84,5 @@ export const protectedRoutes: RouteConfig[] = [
 
   { path: ROUTES.LEGAL,   element: <LegalPolicies /> },
   { path: ROUTES.MY_DOCS, element: <MyDocs /> },
+  { path: ROUTES.PAYMENT, element: <Payment /> },
 ];
