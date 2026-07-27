@@ -100,6 +100,7 @@ interface PricingModalProps {
 const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
   const [selected, setSelected] = useState('3hr');
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   if (!module) return null;
 
@@ -205,10 +206,19 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
           {/* CTA */}
           <div className="px-6 pb-7">
             <button
-              onClick={() => { onClose(); navigate(`/payment?module=${module!.id}&plan=${selected}`); }}
+              onClick={() => {
+                onClose();
+                if (user?.role === 'admin') {
+                  navigate(`/${module!.id}/leta`);
+                } else {
+                  navigate(`/payment?module=${module!.id}&plan=${selected}`);
+                }
+              }}
               className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200"
               style={{ background: B.accent, color: '#000', boxShadow: `0 0 30px ${B.glow}` }}>
-              <Zap size={14} /> Continue to Payment <ArrowRight size={13} />
+              <Zap size={14} />
+              {user?.role === 'admin' ? 'Enter Workspace' : 'Continue to Payment'}
+              <ArrowRight size={13} />
             </button>
           </div>
         </motion.div>

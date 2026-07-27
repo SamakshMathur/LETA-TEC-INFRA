@@ -374,6 +374,13 @@ const Payment: React.FC = () => {
   const [success,         setSuccess]         = useState(false);
   const [rzConfig,        setRzConfig]        = useState<{ key_id: string; configured: boolean } | null>(null);
 
+  // Admin accounts bypass payment entirely — redirect straight to the workspace.
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      navigate(`/${moduleId}/leta`, { replace: true });
+    }
+  }, [user, moduleId, navigate]);
+
   useEffect(() => {
     fetch(`${BASE_URL}/api/payments/config`)
       .then(r => r.json())
