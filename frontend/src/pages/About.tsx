@@ -11,7 +11,7 @@ const About: React.FC = () => (
         animate={{ opacity: 1, y: 0 }}
         className="font-display font-bold text-4xl md:text-5xl mb-4 tracking-tight text-white uppercase"
       >
-        About LETA TITAN
+        About LETA TEC
       </motion.h1>
       <p className="text-lg font-light max-w-2xl mx-auto text-[#A7B3C2]">
         Advancing statutory intelligence through precision engineering and artificial intelligence.
@@ -23,7 +23,7 @@ const About: React.FC = () => (
       <div className="flex flex-col gap-10">
 
         <p className="text-base font-light leading-relaxed text-[#A7B3C2]">
-          LETA TITAN is a premier platform designed for GST professionals, tax consultants, and legal experts.
+          LETA TEC is a premier platform designed for GST professionals, tax consultants, and legal experts.
           We bridge the gap between complex statutory frameworks and actionable intelligence using advanced
           Large Language Models (LLMs).
         </p>

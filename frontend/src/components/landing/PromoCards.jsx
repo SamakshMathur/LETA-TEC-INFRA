@@ -29,7 +29,7 @@ const PromoCards = () => {
             // SYSTEM_CAPABILITIES
           </span>
           <h2 className="text-3xl md:text-4xl font-bold text-[#F5F7FA] font-display tracking-tight uppercase">
-            Why Professionals Choose LETA Titan
+            Why Professionals Choose LETA TEC
           </h2>
         </motion.div>
 

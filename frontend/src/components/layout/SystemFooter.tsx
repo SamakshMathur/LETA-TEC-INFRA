@@ -116,6 +116,7 @@ const SystemFooter = () => {
                 { label: 'API Reference',  to: '#' },
                 { label: 'System Status',  to: '#' },
                 { label: 'About Us',       to: '/about' },
+                { label: 'Legal Policies', to: '/legal' },
               ].map(({ label, to }) => (
                 <li key={label}>
                   <Link
@@ -171,9 +172,49 @@ const SystemFooter = () => {
           className="pt-8 flex flex-col md:flex-row justify-between items-center gap-4"
           style={{ borderTop: '1px solid rgba(79,183,197,0.1)' }}
         >
-          <p className="text-xs font-mono" style={{ color: '#6B7280' }}>
-            &copy; {new Date().getFullYear()} LETA TEC — All Rights Reserved.
-          </p>
+          <div className="flex items-center gap-4 flex-wrap justify-center md:justify-start">
+            <p className="text-xs font-mono" style={{ color: '#6B7280' }}>
+              &copy; {new Date().getFullYear()} LETA TEC — All Rights Reserved.
+            </p>
+            <span className="text-xs font-mono" style={{ color: 'rgba(79,183,197,0.2)' }}>|</span>
+            <Link
+              to="/legal"
+              className="text-xs font-mono transition-colors duration-200"
+              style={{ color: '#6B7280' }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#4FB7C5'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; }}
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              to="/legal"
+              className="text-xs font-mono transition-colors duration-200"
+              style={{ color: '#6B7280' }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#4FB7C5'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; }}
+            >
+              Terms &amp; Conditions
+            </Link>
+            <Link
+              to="/legal"
+              className="text-xs font-mono px-3 py-1.5 rounded-lg transition-all duration-200"
+              style={{
+                color: '#4FB7C5',
+                border: '1px solid rgba(79,183,197,0.3)',
+                background: 'rgba(79,183,197,0.06)',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(79,183,197,0.12)';
+                e.currentTarget.style.borderColor = 'rgba(79,183,197,0.5)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'rgba(79,183,197,0.06)';
+                e.currentTarget.style.borderColor = 'rgba(79,183,197,0.3)';
+              }}
+            >
+              Legal Policies →
+            </Link>
+          </div>
           <div className="flex items-center gap-2">
             <div
               className="w-2 h-2 rounded-full animate-pulse"

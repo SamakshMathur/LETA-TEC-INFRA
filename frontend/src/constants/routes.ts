@@ -22,4 +22,6 @@ export const ROUTES = {
     UPLOAD: '/admin/upload',
   },
   RESPONSES: '/responses',
+  LEGAL: '/legal',
+  MY_DOCS: '/my-docs',
 };

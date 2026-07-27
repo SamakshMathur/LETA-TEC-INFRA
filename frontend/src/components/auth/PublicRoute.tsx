@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 
 export const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoggedIn, isInitialised } = useAuth();
@@ -8,11 +8,11 @@ export const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children 
 
   if (!isInitialised) return null;
 
-  if (isLoggedIn && location.pathname === "/login") {
+  if (isLoggedIn) {
     const from = location.state?.from;
     const destination = from
-      ? `${from.pathname || '/dashboard'}${from.search || ''}${from.hash || ''}`
-      : '/dashboard';
+      ? `${from.pathname || '/'}${from.search || ''}${from.hash || ''}`
+      : '/';
 
     return <Navigate to={destination} replace />;
   }

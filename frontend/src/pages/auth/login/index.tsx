@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAuth } from '../../../context/AuthContext';
+import { useAuth } from '../../../hooks/useAuth';
 import { sendOtpApi, verifyOtpApi } from '../../../services/auth';
 import { ROUTES } from '../../../constants/routes';
 
@@ -24,6 +24,8 @@ const LoginPage: React.FC = () => {
   const from = fromLocation
     ? `${fromLocation.pathname || '/dashboard'}${fromLocation.search || ''}${fromLocation.hash || ''}`
     : '/dashboard';
+  const sessionExpired = new URLSearchParams(location.search).get('reason') === 'session_expired';
+  const switchMethod = (m: Method) => { setMethod(m); setContact(''); setError(null); };
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -35,17 +37,25 @@ const LoginPage: React.FC = () => {
     if (step === 'otp') inputRefs.current[0]?.focus();
   }, [step]);
 
-  const switchMethod = (m: Method) => { setMethod(m); setContact(''); setError(null); };
-
   const handleSendOtp = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      await sendOtpApi(contact.trim(), method);
-      setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(30);
+      const data = await sendOtpApi(contact.trim(), method);
+      if (data?.otp_preview) {
+        const session = await verifyOtpApi(contact.trim(), data.otp_preview);
+        login(session, false);
+        navigate(from, { replace: true });
+      } else {
+        setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(30);
+      }
     } catch (err: any) {
       const d = err.response?.data?.detail;
-      setError(typeof d === 'string' ? d : 'Failed to send OTP. Please try again.');
+      if (typeof d === 'string') setError(d);
+      else if (err.response) setError(`Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
+      else if (err.request) setError(`Cannot reach server — check connection. (${err.message})`);
+      else setError(err.message || 'Failed to send OTP. Please try again.');
+      console.error('[Login] Send OTP error:', err.response?.status, err.response?.data, err.message);
     } finally { setLoading(false); }
   };
 
@@ -57,7 +67,8 @@ const LoginPage: React.FC = () => {
       setOtp(['', '', '', '', '', '']); setCountdown(30);
     } catch (err: any) {
       const d = err.response?.data?.detail;
-      setError(typeof d === 'string' ? d : 'Failed to resend OTP.');
+      if (typeof d === 'string') setError(d);
+      else setError('Failed to resend OTP. Please try again.');
     } finally { setLoading(false); }
   };
 
@@ -72,7 +83,11 @@ const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (err: any) {
       const d = err.response?.data?.detail;
-      setError(typeof d === 'string' ? d : 'Invalid OTP. Please try again.');
+      if (typeof d === 'string') setError(d);
+      else if (err.response) setError(`Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
+      else if (err.request) setError(`Cannot reach server — check connection. (${err.message})`);
+      else setError(err.message || 'Invalid OTP. Please try again.');
+      console.error('[Login] Verify OTP error:', err.response?.status, err.response?.data, err.message);
       setOtp(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally { setLoading(false); }
@@ -99,10 +114,6 @@ const LoginPage: React.FC = () => {
     inputRefs.current[Math.min(digits.length, 5)]?.focus();
   };
 
-  const maskedContact = method === 'phone'
-    ? `+91 ••••••${contact.slice(-4)}`
-    : `${contact.slice(0, 3)}•••${contact.slice(contact.indexOf('@'))}`;
-
   return (
     <div className="auth-page py-0">
       <div className="absolute inset-0 bg-noise opacity-20 pointer-events-none" />
@@ -119,13 +130,19 @@ const LoginPage: React.FC = () => {
             </p>
           </div>
 
+          {sessionExpired && (
+            <div className="mb-4 p-3 rounded-leta bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium text-center">
+              Your session has expired. Please log in again.
+            </div>
+          )}
+
           {error && (
             <div className="mb-6 p-3 rounded-leta bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium text-center">
               {error}
             </div>
           )}
 
-          {/* ── Step 1: Contact entry ── */}
+          {/* ── Step 1: Phone number entry ── */}
           {step === 'contact' && (
             <form onSubmit={handleSendOtp} className="space-y-6">
               {/* Method toggle */}
@@ -143,11 +160,17 @@ const LoginPage: React.FC = () => {
                 <label htmlFor="contact" className="label-auth">
                   {method === 'phone' ? 'Mobile Number' : 'Email Address'}
                 </label>
-                <input id="contact" type={method === 'phone' ? 'tel' : 'email'}
-                  value={contact} onChange={e => setContact(e.target.value)}
-                  required className="input-auth"
+                <input
+                  id="contact"
+                  type={method === 'phone' ? 'tel' : 'email'}
+                  value={contact}
+                  onChange={e => setContact(e.target.value)}
+                  required
+                  className="input-auth"
                   placeholder={method === 'phone' ? '10-digit mobile number' : 'you@example.com'}
-                  maxLength={method === 'phone' ? 15 : undefined} />
+                  maxLength={method === 'phone' ? 15 : undefined}
+                  autoFocus
+                />
               </div>
 
               <button type="submit" disabled={loading || !contact.trim()} className="btn-auth-primary">
@@ -169,10 +192,9 @@ const LoginPage: React.FC = () => {
           {step === 'otp' && (
             <form onSubmit={handleVerify} className="space-y-6">
               <p className="text-center text-xs text-leta-gray-900/50">
-                OTP sent to <span className="text-leta-primary font-bold">{maskedContact}</span>
+                OTP sent to <span className="text-leta-primary font-bold">+91 ••••••{contact.slice(-4)}</span>
               </p>
 
-              {/* 6-box OTP input */}
               <div className="flex gap-2 justify-center">
                 {otp.map((digit, i) => (
                   <input key={i} ref={el => { inputRefs.current[i] = el; }}
@@ -195,7 +217,7 @@ const LoginPage: React.FC = () => {
                 <button type="button"
                   onClick={() => { setStep('contact'); setError(null); setOtp(['', '', '', '', '', '']); }}
                   className="btn-auth-secondary">
-                  ← Change {method === 'phone' ? 'number' : 'email'}
+                  ← Change number
                 </button>
                 <button type="button" onClick={handleResend}
                   disabled={countdown > 0 || loading}

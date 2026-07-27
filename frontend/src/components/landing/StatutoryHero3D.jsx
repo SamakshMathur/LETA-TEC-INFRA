@@ -3,7 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, Environment, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 
-// Sovereign LETA Titan Color Palette
+// Sovereign LETA TEC Color Palette
 const COLORS = {
   blue: '#151922',  // Deep Graphite
   green: '#5EEAD4', // Sovereign Teal

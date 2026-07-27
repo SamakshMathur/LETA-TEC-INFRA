@@ -9,9 +9,32 @@ import {
 } from 'lucide-react';
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
+
+// Reads the stored JWT and returns an Authorization header object.
+// Used on every call so each request is tied to the logged-in user.
+const getAuthHeaders = (): Record<string, string> => {
+  try {
+    const stored = localStorage.getItem('pro.auth.session');
+    if (!stored) return {};
+    const s = JSON.parse(stored);
+    const token = s?.tokens?.accessToken;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch { return {}; }
+};
+
+const getSessionFirstName = (): string => {
+  try {
+    const stored = localStorage.getItem('pro.auth.session');
+    if (!stored) return '';
+    const s = JSON.parse(stored);
+    const fullName: string = s?.user?.full_name || '';
+    return fullName.split(' ')[0] || '';
+  } catch { return ''; }
+};
 import { LetaResponse } from '../components/leta';
 import { SimpleSearchLoader } from '../components/effects';
 import { DocumentViewer } from '../components/documents';
+import SessionClock from '../components/layout/SessionClock';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -438,15 +461,64 @@ const LetaWorkspace: React.FC = () => {
     el.style.height = Math.min(el.scrollHeight, 300) + 'px';
   };
 
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  useEffect(() => { scrollToBottom(); }, [messages, isLoading]);
+  const userScrolledUpRef = useRef(false);
+
+  // Only auto-scroll when the user is already near the bottom (ChatGPT behaviour)
+  const scrollToBottom = (force = false) => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (force || nearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Track when the user manually scrolls up so we stop pulling them down
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      userScrolledUpRef.current = !nearBottom;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!userScrolledUpRef.current) scrollToBottom();
+  }, [messages, isLoading]);
 
   // ─── Sessions ────────────────────────────────────────────────────────────────
+
+  // Persist the active session ID so a browser refresh restores where the user left off
   useEffect(() => {
-    fetchSessions();
+    if (currentSessionId) {
+      sessionStorage.setItem(`leta_active_session_${domainId}`, currentSessionId);
+    }
+  }, [currentSessionId, domainId]);
+
+  useEffect(() => {
+    // On mount: fetch sessions, then restore the last active session for this domain
+    const initSessions = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/api/sessions/list`, { headers: getAuthHeaders() });
+        const list: Session[] = res.data;
+        setSessions(list);
+
+        const savedId = sessionStorage.getItem(`leta_active_session_${domainId}`);
+        if (savedId && list.some(s => s.session_id === savedId)) {
+          handleSelectSession(savedId);
+        }
+      } catch (err) {
+        console.error('Failed to fetch sessions:', err);
+      }
+    };
+    initSessions();
     const interval = setInterval(fetchSessions, 60000);
     return () => clearInterval(interval);
-  }, [currentSessionId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     setMessages([]);
@@ -482,11 +554,13 @@ const LetaWorkspace: React.FC = () => {
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
-        // Re-acquire wake lock if a query is still active (browser releases it on hide)
         if (isActiveQueryRef.current) {
+          // Stream is still running — just re-acquire the wake lock the browser
+          // released on hide. Do NOT retry; the fetch is still in flight.
           acquireWakeLock();
+          return;
         }
-        // If we were processing when the screen went to sleep, auto-retry
+        // Stream was interrupted (network error while tab was hidden) — retry.
         if (pendingRetryRef.current) {
           const { query: retryQuery, file: retryFile } = pendingRetryRef.current;
           pendingRetryRef.current = null;
@@ -501,7 +575,7 @@ const LetaWorkspace: React.FC = () => {
 
   const fetchSessions = async () => {
     try {
-      const res = await axios.get(`${BASE_URL}/api/sessions/list`);
+      const res = await axios.get(`${BASE_URL}/api/sessions/list`, { headers: getAuthHeaders() });
       setSessions(res.data);
     } catch (err) {
       console.error('Failed to fetch sessions:', err);
@@ -512,7 +586,7 @@ const LetaWorkspace: React.FC = () => {
     try {
       setIsLoading(true);
       setCurrentSessionId(sessionId);
-      const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`);
+      const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`, { headers: getAuthHeaders() });
       setMessages(res.data.messages.map((msg: any) => ({
         role: msg.role,
         content: msg.content,
@@ -539,7 +613,7 @@ const LetaWorkspace: React.FC = () => {
   const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await axios.delete(`${BASE_URL}/api/sessions/${id}`);
+      await axios.delete(`${BASE_URL}/api/sessions/${id}`, { headers: getAuthHeaders() });
       fetchSessions();
       if (currentSessionId === id) handleNewSession();
     } catch (err) {
@@ -565,12 +639,14 @@ const LetaWorkspace: React.FC = () => {
     if (!activeQuery.trim() && !selectedFile) return;
 
     const userMsg: Message = { role: 'user', content: activeQuery || (selectedFile ? `[Attached: ${selectedFile.name}]` : '') };
-    const newAiMsg: Message = { role: 'assistant', content: '', confidence: 0.95, citations: [] };
 
-    setMessages(prev => [...prev, userMsg, newAiMsg]);
+    // Only add user message now; assistant message is added when first chunk arrives
+    setMessages(prev => [...prev, userMsg]);
     setQuery('');
     setIsLoading(true);
     setIsStreaming(false);
+    // Force scroll to bottom when user sends (reset any "scrolled up" state)
+    userScrolledUpRef.current = false;
     if (textareaRef.current) textareaRef.current.style.height = '90px';
 
     // Prevent screen sleep from killing the stream
@@ -606,7 +682,7 @@ const LetaWorkspace: React.FC = () => {
         }
 
         try {
-          const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title });
+          const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title }, { headers: getAuthHeaders() });
           activeSessionId = sessionRes.data.session_id;
           setCurrentSessionId(activeSessionId);
         } catch {
@@ -620,19 +696,27 @@ const LetaWorkspace: React.FC = () => {
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
-        const fileRes = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', body: formData, signal: controller.signal });
+        const fileRes = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
         if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
 
         const reader = fileRes.body?.getReader();
         const decoder = new TextDecoder('utf-8');
-        setIsLoading(false);
-        setIsStreaming(true);
 
         if (!reader) throw new Error('Response stream unavailable');
 
+        // Add assistant message now that we have a live stream
+        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        setIsStreaming(true);
+        // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
+
         let buffer = '';
+        let firstTextChunk = true;
         const appendChunk = (text: string) => {
+          if (firstTextChunk && text) {
+            firstTextChunk = false;
+            setIsLoading(false);
+          }
           setMessages(prev => {
             const next = [...prev];
             const last = next[next.length - 1];
@@ -718,12 +802,13 @@ const LetaWorkspace: React.FC = () => {
           }
         }
 
+        setIsLoading(false);
         setIsStreaming(false);
       } else {
-        // Text query path: use /ask streaming (SSE) so long drafts don't hit API Gateway timeout
+        // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
         const streamRes = await fetch(`${BASE_URL}/ask`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
           signal: controller.signal,
         });
@@ -732,13 +817,21 @@ const LetaWorkspace: React.FC = () => {
 
         const reader = streamRes.body?.getReader();
         const decoder = new TextDecoder('utf-8');
-        setIsLoading(false);
-        setIsStreaming(true);
 
         if (!reader) throw new Error('Response stream unavailable');
 
+        // Add assistant message now that we have a live stream
+        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        setIsStreaming(true);
+        // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
+
         let buffer = '';
+        let firstTextChunk = true;
         const appendChunk = (text: string) => {
+          if (firstTextChunk && text) {
+            firstTextChunk = false;
+            setIsLoading(false);
+          }
           setMessages(prev => {
             const next = [...prev];
             const last = next[next.length - 1];
@@ -824,6 +917,7 @@ const LetaWorkspace: React.FC = () => {
           }
         }
 
+        setIsLoading(false);
         setIsStreaming(false);
       }
 
@@ -840,6 +934,7 @@ const LetaWorkspace: React.FC = () => {
       if ((error as any)?.name === 'AbortError') {
         pendingRetryRef.current = null;
         setIsStreaming(false);
+        setIsLoading(false);
         return;
       }
       // If the error looks like a network interruption (screen sleep / tab hidden),
@@ -847,11 +942,16 @@ const LetaWorkspace: React.FC = () => {
       const isNetworkInterrupt = error?.name === 'TypeError' || error?.message?.includes('network') || error?.message?.includes('Failed to fetch');
       if (!isNetworkInterrupt) pendingRetryRef.current = null;
       console.error('LETA API Error:', error);
+      const errMsg = 'Unable to reach the advisory server. Please check your connection and try again.';
       setMessages(prev => {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last.role === 'assistant') {
-          next[next.length - 1] = { ...last, content: last.content + `\n\n[Advisory Workspace Error]: Unable to synthesize draft guidance. Please check connection.` };
+          // Error happened mid-stream — append to existing assistant bubble
+          next[next.length - 1] = { ...last, content: (last.content || '') + `\n\n⚠ ${errMsg}` };
+        } else {
+          // Error happened before assistant message was added — create one so the user sees feedback
+          next.push({ role: 'assistant', content: `⚠ ${errMsg}`, confidence: 0, citations: [] });
         }
         return next;
       });
@@ -1287,13 +1387,9 @@ const LetaWorkspace: React.FC = () => {
           {/* CHAT MESSAGE AREA */}
           <div
             ref={chatScrollRef}
+            data-lenis-prevent
             className="flex-1 min-h-0 overflow-y-auto relative scrollbar-thin"
             style={{ overflowX: 'clip', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
-            onWheel={(e) => {
-              if (chatScrollRef.current) {
-                chatScrollRef.current.scrollTop += e.deltaY;
-              }
-            }}
           >
             <div className="max-w-[920px] mx-auto w-full px-6 md:px-12 pt-10 pb-40 flex flex-col gap-8">
 
@@ -1310,7 +1406,7 @@ const LetaWorkspace: React.FC = () => {
                         lineHeight: 1.2,
                       }}
                     >
-                      Hi Samaksh, LETA is here to assist you.
+                      Hi {getSessionFirstName() || 'there'}, LETA is here to assist you.
                     </h2>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
@@ -1376,6 +1472,7 @@ const LetaWorkspace: React.FC = () => {
                               isDark
                               animate={!msg.isHistory}
                               onDocumentClick={handleDocumentClick}
+                              isStreaming={isStreaming && idx === messages.length - 1}
                             />
 
                             {/* ── Get Detailed Advisory CTA — prominent, inline ── */}
@@ -1608,11 +1705,11 @@ const LetaWorkspace: React.FC = () => {
                 className="w-full p-4 pr-40 pb-14 font-body text-xs leading-relaxed outline-none resize-none transition-all duration-200 bg-[#000000] border border-[#4FB7C5]/15 rounded-2xl text-[#F4F7FA] overflow-y-auto"
                 style={{ minHeight: '90px', maxHeight: '300px' }}
                 onFocus={e => {
-                  e.currentTarget.style.borderColor = 'rgba(79,183,197,0.3)';
-                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(79,183,197,0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(79,183,197,0.4)';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(79,183,197,0.06)';
                 }}
                 onBlur={e => {
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(79,183,197,0.15)';
                   e.currentTarget.style.boxShadow = 'none';
                 }}
                 onKeyDown={e => {
@@ -1622,6 +1719,11 @@ const LetaWorkspace: React.FC = () => {
                   }
                 }}
               />
+
+              {/* Session time remaining — bottom-left of input box */}
+              <div className="absolute bottom-4 left-4 pointer-events-none select-none">
+                <SessionClock />
+              </div>
 
               <div className="absolute bottom-4 right-4 flex items-center gap-2">
                 <input

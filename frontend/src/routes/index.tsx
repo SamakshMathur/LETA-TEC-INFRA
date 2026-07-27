@@ -1,9 +1,9 @@
 import { LawDashboard } from '../components/dashboard';
 import {
   Home, About, Documentation,
-  GST, GstTemplates, TemplateCustomization,
+  GST, TemplateCustomization,
   AdminTemplateDashboard, AdminUploadPortal,
-  SignupPage, LetaWorkspace,
+  SignupPage, LetaWorkspace, ModuleDashboard, LegalPolicies, MyDocs,
 } from '../pages';
 import LoginPage from '../pages/auth/login';
 import { ROUTES } from '../constants/routes';
@@ -25,7 +25,7 @@ export const protectedRoutes: RouteConfig[] = [
   { path: ROUTES.ABOUT, element: <About /> },
   { path: ROUTES.DOCS,  element: <Documentation /> },
 
-  { path: ROUTES.DASHBOARD, element: <GST /> },
+  { path: ROUTES.DASHBOARD, element: <ModuleDashboard /> },
   { path: ROUTES.GST.LETA, element: <LetaWorkspace /> },
   { path: ROUTES.INCOME_TAX_LETA, element: <LetaWorkspace /> },
   { path: ROUTES.FEMA_LETA, element: <LetaWorkspace /> },
@@ -44,8 +44,6 @@ export const protectedRoutes: RouteConfig[] = [
       />
     ),
   },
-  { path: ROUTES.GST.TEMPLATES, element: <GstTemplates /> },
-  { path: ROUTES.RESPONSES,     element: <GstTemplates /> },
   { path: ROUTES.GST.CUSTOMIZE, element: <TemplateCustomization /> },
 
   {
@@ -87,4 +85,7 @@ export const protectedRoutes: RouteConfig[] = [
 
   { path: ROUTES.ADMIN.TEMPLATES, element: <AdminTemplateDashboard /> },
   { path: ROUTES.ADMIN.UPLOAD,    element: <AdminUploadPortal /> },
+
+  { path: ROUTES.LEGAL,   element: <LegalPolicies /> },
+  { path: ROUTES.MY_DOCS, element: <MyDocs /> },
 ];

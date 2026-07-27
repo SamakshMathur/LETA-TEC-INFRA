@@ -99,7 +99,7 @@ const Hero = () => {
               transition={{ delay: 0.62 }}
               className="flex flex-wrap items-center gap-3"
             >
-              <Link to="/gst">
+              <Link to="/dashboard">
                 <button
                   className="flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-[14px] text-black transition-all duration-200"
                   style={{
@@ -196,7 +196,7 @@ const Hero = () => {
                 <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
                 <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
                 <span className="ml-3 text-[11px] font-mono uppercase tracking-[0.1em]" style={{ color: '#52525B' }}>
-                  LETA_TITAN // STATUTORY_OPERATING_SYSTEM
+                  LETA_TEC // STATUTORY_OPERATING_SYSTEM
                 </span>
               </div>
 

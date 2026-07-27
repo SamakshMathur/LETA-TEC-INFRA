@@ -6,7 +6,7 @@ const MODULES = [
   {
     num: '01', title: 'GST',
     desc: 'GSTR-1 to GSTR-9, ITC reconciliation, SCN replies, DRC-01 drafts, place of supply, e-invoicing, and appeal preparation.',
-    status: 'live', value: '98.4%', width: '98.4%', metric: 'Coverage', href: '/gst',
+    status: 'live', value: '98.4%', width: '98.4%', metric: 'Coverage', href: '/dashboard',
     orbitDur: ['18s', '26s', '14s'],
   },
   {

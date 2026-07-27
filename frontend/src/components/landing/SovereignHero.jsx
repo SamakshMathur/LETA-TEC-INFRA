@@ -130,7 +130,7 @@ const SovereignHero = () => {
               transition={{ duration: 0.8, delay: 0.84, ease: [0.16, 1, 0.3, 1] }}
             >
               <MagneticButton strength={0.22} className={cn('ctaFullWidth')}>
-                <Link to="/gst" className={cn('ctaButtonPrimary')}>
+                <Link to="/dashboard" className={cn('ctaButtonPrimary')}>
                   <span>Enter Command Center</span>
                   <ArrowRight size={16} />
                   <span className={cn('ctaButtonShine')} />

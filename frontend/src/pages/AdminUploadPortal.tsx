@@ -5,7 +5,7 @@ import {
   Users, Key, Webhook, CreditCard, Settings, Terminal, Compass, Activity, Server, HardDrive, BarChart3, BellRing
 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { useKnowledgePolling } from '../hooks/useKnowledgePolling';
 import { KnowledgeDocument, AuditLog, SystemStatus, IngestionJob } from '../types/admin';
 import { hasRole, getActiveRole } from '../lib/permissions';

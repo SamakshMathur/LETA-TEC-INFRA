@@ -9,6 +9,8 @@ build/
 
 # Python
 __pycache__/
+*.py[cod]
+*.pyd
 *.pyc
 *.pyo
 venv/

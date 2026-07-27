@@ -74,7 +74,7 @@ const SimulatedWorkspace = () => {
               paddingTop: '80px',
             }}
           >
-            <Link to="/gst">
+            <Link to="/dashboard">
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}

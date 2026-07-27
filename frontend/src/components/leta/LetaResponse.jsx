@@ -57,11 +57,20 @@ function linkifyLegalRefs(markdown, sources) {
   const placeholders = [];
   const shield = m => { placeholders.push(m); return `\x00LINK${placeholders.length - 1}\x00`; };
 
-  // Preserve existing doc links so we don't double-wrap them
-  let safe = markdown.replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, url) => {
-    if (url.includes('/api/documents/')) return shield(match);
-    return text;           // strip non-doc markdown links to plain text
-  });
+  // Preserve existing doc links so we don't double-wrap them.
+  // Strip whitespace/newlines from captured URLs — LLMs sometimes wrap long
+  // URLs across lines which embeds \n inside the URL, causing CommonMark to
+  // reject it as a link and render the raw (url) as plain text.
+  let safe = markdown
+    // Collapse split links: LLMs sometimes put the URL on a new line after ]
+    .replace(/\]\(\s*\n\s*(\/api\/)/g, ']($1')       // handles ](\n/api/
+    .replace(/\]\s*\n+\s*\((?=\s*\/api\/)/g, '](')   // handles ]\n(/api/
+    // Process all [text](url) patterns
+    .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, url) => {
+      const cleanUrl = url.replace(/\s+/g, ''); // strip embedded whitespace/newlines
+      if (cleanUrl.includes('/api/documents/')) return shield(`[${text}](${cleanUrl})`);
+      return text;           // strip non-doc markdown links to plain text
+    });
 
   const wrap = (text, src) => (src?.url ? `[${text}](${src.url})` : text);
 
@@ -117,24 +126,23 @@ function linkifyLegalRefs(markdown, sources) {
   safe = safe.replace(/\b(?:CBIC\s+)?Circular\s+No\.?\s*(\d+)[/\-](\d+)(?:[/\-]\w+)?\b/gi, (match, num) => {
     const src =
       sources.find(s => (s.title || '').toLowerCase().includes(num)) ||
-      findSrc('circular') ||
-      sources[0];
-    return wrap(match, src);
+      findSrc('circular');
+    return wrap(match, src);  // no fallback to sources[0] — unlink if no circular found
   });
 
   // ── 3. Notifications: "Notification No. 12/2023" ─────────────────────────
   safe = safe.replace(/\bNotification\s+No\.?\s*\d+\/\d{4}[-\w]*/gi, m =>
-    wrap(m, findSrc('notification', 'circular') || sources[0])
+    wrap(m, findSrc('notification', 'circular'))  // no sources[0] fallback
   );
 
   // ── 4. Sections: "Section 17(5)(c)" — handles any number of sub-clauses ──
   safe = safe.replace(/\bSection\s+\d+[A-Z]?(?:\([^)]{1,10}\))*/g, m =>
-    wrap(m, findSrc('act', 'cgst', 'igst', 'gst') || sources[0])
+    wrap(m, findSrc('act', 'cgst', 'igst', 'gst', 'rules'))  // no sources[0] fallback
   );
 
   // ── 5. Rules: "Rule 86A" ─────────────────────────────────────────────────
   safe = safe.replace(/\bRule\s+\d+[A-Z]?(?:\(\d+\))*/g, m =>
-    wrap(m, findSrc('rule', 'rules') || sources[0])
+    wrap(m, findSrc('rule', 'rules', 'cgst rules', 'igst rules'))  // no sources[0] fallback
   );
 
   // ── 6. GSTR forms: "GSTR-3B", "GSTR 9C" ─────────────────────────────────
@@ -143,14 +151,14 @@ function linkifyLegalRefs(markdown, sources) {
     return wrap(
       m,
       sources.find(s => (s.title || s.url || '').toLowerCase().replace(/[_\-.\s%20]/g, '').includes(norm)) ||
-      findSrc('gstr', 'form', 'return') ||
-      sources[0]
+      findSrc('gstr', 'form', 'return')
+      // no sources[0] fallback
     );
   });
 
   // ── 7. GST Act references ─────────────────────────────────────────────────
   safe = safe.replace(/\b(?:C|I|S|UT)?GST\s+Act(?:,?\s*\d{4})?\b/gi, m =>
-    wrap(m, findSrc('act', 'bare law', 'cgst', 'igst') || sources[0])
+    wrap(m, findSrc('act', 'bare law', 'cgst', 'igst'))  // no sources[0] fallback
   );
 
   // ── 8. Form codes: "DRC-01", "RFD-09", "PMT-06" ─────────────────────────
@@ -159,8 +167,8 @@ function linkifyLegalRefs(markdown, sources) {
     return wrap(
       m,
       sources.find(s => (s.title || s.url || '').toLowerCase().replace(/[_\-.\s]/g, '').includes(norm)) ||
-      findSrc('form', 'drc', 'rfd', 'pmt') ||
-      sources[0]
+      findSrc('form', 'drc', 'rfd', 'pmt')
+      // no sources[0] fallback
     );
   });
 
@@ -197,8 +205,9 @@ function linkifyLegalRefs(markdown, sources) {
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate }) => {
+const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
   const [hasCopied, setHasCopied] = useState(false);
+  const [activeSnippet, setActiveSnippet] = useState(null);
 
   const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
 
@@ -212,6 +221,16 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
   if (!data) return null;
 
   const sources = data.consulted_sources || [];
+
+  // Skip heavy linkification during streaming — only process once complete
+  const processedContent = React.useMemo(() => {
+    if (isStreaming) return data?.answer || '';
+    return linkifyLegalRefs(data?.answer || '', sources)
+      // Remove orphaned (/api/...) URLs not part of a markdown link
+      .replace(/(?<!\])\(\/api\/[^()\s)]+\)/g, '')
+      // Remove naked [text] brackets left when their URL was stripped
+      .replace(/\[([^\]\x00]{1,300})\](?!\()/g, '$1');
+  }, [data?.answer, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Open a source document in the right-panel viewer. */
   const openDoc = (src) => {
@@ -342,11 +361,25 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
               },
             }}
           >
-            {linkifyLegalRefs(data?.answer || '', sources)}
+            {processedContent}
           </ReactMarkdown>
+          {/* Blinking cursor during active streaming */}
+          {isStreaming && (
+            <span
+              style={{
+                display: 'inline-block',
+                width: '2px',
+                height: '1em',
+                background: '#4FB7C5',
+                marginLeft: '2px',
+                verticalAlign: 'text-bottom',
+                animation: 'leta-cursor-blink 0.8s step-end infinite',
+              }}
+            />
+          )}
         </div>
 
-        {/* ── Always-visible Referenced Documents bar ───────────────────── */}
+        {/* ── Referenced Documents + inline snippet panel ───────────────── */}
         {sources.length > 0 && (
           <div
             className="mt-6 pt-4"
@@ -363,37 +396,115 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
                 const label = (src.title || 'Document')
                   .replace(/%20/g, ' ')
                   .replace(/\.[a-z]{2,5}$/i, '');
+                const isActive = activeSnippet?.url === src.url && activeSnippet?.page === src.page;
                 return (
                   <button
                     key={i}
-                    onClick={() => openDoc(src)}
-                    title={`Open ${src.title} — page ${src.page || 1}`}
+                    onClick={() => setActiveSnippet(isActive ? null : src)}
+                    title={src.snippet ? 'Click to preview excerpt' : `Open ${label}`}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono transition-all"
                     style={{
-                      background: 'rgba(103,232,249,0.05)',
-                      border: '1px solid rgba(103,232,249,0.15)',
-                      color: '#94A3B8',
+                      background: isActive ? 'rgba(103,232,249,0.14)' : 'rgba(103,232,249,0.05)',
+                      border: `1px solid ${isActive ? 'rgba(103,232,249,0.5)' : 'rgba(103,232,249,0.15)'}`,
+                      color: isActive ? '#67E8F9' : '#94A3B8',
                     }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.borderColor = 'rgba(103,232,249,0.5)';
-                      e.currentTarget.style.background = 'rgba(103,232,249,0.12)';
-                      e.currentTarget.style.color = '#67E8F9';
+                      if (!isActive) {
+                        e.currentTarget.style.borderColor = 'rgba(103,232,249,0.5)';
+                        e.currentTarget.style.background = 'rgba(103,232,249,0.12)';
+                        e.currentTarget.style.color = '#67E8F9';
+                      }
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.borderColor = 'rgba(103,232,249,0.15)';
-                      e.currentTarget.style.background = 'rgba(103,232,249,0.05)';
-                      e.currentTarget.style.color = '#94A3B8';
+                      if (!isActive) {
+                        e.currentTarget.style.borderColor = 'rgba(103,232,249,0.15)';
+                        e.currentTarget.style.background = 'rgba(103,232,249,0.05)';
+                        e.currentTarget.style.color = '#94A3B8';
+                      }
                     }}
                   >
                     <FileText size={10} />
                     <span className="max-w-[180px] truncate">{label}</span>
                     {src.page && src.page > 1 && (
-                      <span style={{ color: '#475569' }}>p.{src.page}</span>
+                      <span style={{ color: isActive ? '#4FB7C5' : '#475569' }}>p.{src.page}</span>
                     )}
                   </button>
                 );
               })}
             </div>
+
+            {/* ── Snippet panel ─────────────────────────────────────────────── */}
+            {activeSnippet && (
+              <div
+                className="mt-3 rounded-xl overflow-hidden"
+                style={{ border: '1px solid rgba(103,232,249,0.2)', background: 'rgba(10,18,32,0.85)' }}
+              >
+                {/* Panel header */}
+                <div
+                  className="flex items-center justify-between px-4 py-2.5"
+                  style={{ borderBottom: '1px solid rgba(103,232,249,0.1)', background: 'rgba(103,232,249,0.06)' }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText size={11} style={{ color: '#4FB7C5', flexShrink: 0 }} />
+                    <span
+                      className="text-[10px] font-mono truncate"
+                      style={{ color: '#67E8F9' }}
+                    >
+                      {(activeSnippet.title || 'Document').replace(/%20/g, ' ').replace(/\.[a-z]{2,5}$/i, '')}
+                    </span>
+                    {activeSnippet.page && (
+                      <span
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0"
+                        style={{ background: 'rgba(103,232,249,0.12)', color: '#4FB7C5' }}
+                      >
+                        p.{activeSnippet.page}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => openDoc(activeSnippet)}
+                      className="text-[9px] font-mono px-2.5 py-1 rounded transition-all"
+                      style={{ border: '1px solid rgba(103,232,249,0.3)', color: '#4FB7C5' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(103,232,249,0.12)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      Full Document →
+                    </button>
+                    <button
+                      onClick={() => setActiveSnippet(null)}
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors"
+                      style={{ color: '#475569' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#94A3B8'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Snippet text */}
+                <div className="px-5 py-4 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(103,232,249,0.2) transparent' }}>
+                  {activeSnippet.snippet ? (
+                    <p
+                      className="leading-relaxed whitespace-pre-wrap"
+                      style={{
+                        fontFamily: "'Georgia', 'Times New Roman', serif",
+                        fontSize: '13px',
+                        color: '#CBD5E1',
+                        lineHeight: '1.75',
+                      }}
+                    >
+                      {activeSnippet.snippet}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] font-mono text-center py-4" style={{ color: '#475569' }}>
+                      No excerpt available — click Full Document to open the PDF.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

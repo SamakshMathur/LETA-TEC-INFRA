@@ -50,7 +50,7 @@ const SecuritySection = () => {
             </h2>
 
             <p className="text-lg leading-relaxed font-light mb-8 font-sans max-w-xl pl-6 border-l-2 border-[#4FB7C5]/30 text-[#A7B3C2]">
-              LETA Titan is architected with a profound understanding of the fiduciary
+              LETA TEC is architected with a profound understanding of the fiduciary
               obligations carried by tax and legal practitioners.
             </p>
 

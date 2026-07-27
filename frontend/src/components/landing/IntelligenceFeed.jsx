@@ -218,7 +218,7 @@ const IntelligenceFeed = () => {
                 <div className="flex items-center gap-2.5">
                   <span className={`w-2 h-2 rounded-full animate-pulse ${connected ? 'bg-[#67E8F9]' : 'bg-yellow-500'}`} />
                   <span className="font-mono text-xs uppercase tracking-widest text-[#F5F7FA] font-bold">
-                    TITAN_INDEX_LOGGER_ACTIVE
+                    LETA_INDEX_LOGGER_ACTIVE
                   </span>
                 </div>
                 <span className="font-mono text-[9px] text-[#6B7280]">

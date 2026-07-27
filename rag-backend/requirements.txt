@@ -37,3 +37,4 @@ gdown
 redis
 gunicorn
 tenacity
+razorpay

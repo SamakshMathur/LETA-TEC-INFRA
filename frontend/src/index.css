@@ -47,6 +47,11 @@
   100% { background-position: 0 0 }
 }
 
+@keyframes leta-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 
 /* ── Aurora background animation ────────────────────────────────────────── */
 @keyframes aurora {
@@ -393,19 +398,19 @@ img { image-rendering: -webkit-optimize-contrast; }
     background-clip: text;
   }
 
-  .text-gradient-titan {
+  .text-gradient-leta {
     background: linear-gradient(135deg, #F4F7FA 0%, #4FB7C5 60%, #6C7A99 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
-  /* ── Titan glow utilities ───────────────────────────────────────────────── */
-  .glow-titan    { box-shadow: none; }
-  .glow-titan-lg { box-shadow: none; }
+  /* ── LETA glow utilities ────────────────────────────────────────────────── */
+  .glow-leta    { box-shadow: none; }
+  .glow-leta-lg { box-shadow: none; }
 
   /* ── Interactive container border ───────────────────────────────────────── */
-  .border-titan {
+  .border-leta-accent {
     box-shadow: 0 0 0 1px rgba(255,255,255,0.05);
   }
 }

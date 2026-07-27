@@ -90,7 +90,6 @@ class SessionSummary(BaseModel):
     updated_at: datetime
     message_count: int
 
-
 # =============================================================================
 # HELPERS
 # =============================================================================
@@ -117,7 +116,6 @@ def create_session(
     data: SessionCreate,
     current_user: dict = Depends(get_current_user)
 ):
-
     collection = get_session_collection()
 
     if collection is None:

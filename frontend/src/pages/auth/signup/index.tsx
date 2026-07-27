@@ -52,11 +52,18 @@ const SignupPage: React.FC = () => {
       setTimeout(() => navigate(ROUTES.LOGIN), 2000);
     } catch (err: any) {
       const detail = err.response?.data?.detail;
-      setError(
-        typeof detail === 'string' ? detail
-          : Array.isArray(detail) ? (detail[0]?.msg ?? JSON.stringify(detail))
-          : 'Registration failed. Please try again.',
-      );
+      if (typeof detail === 'string') {
+        setError(detail);
+      } else if (Array.isArray(detail)) {
+        setError(detail[0]?.msg ?? JSON.stringify(detail));
+      } else if (err.response) {
+        setError(`Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
+      } else if (err.request) {
+        setError(`Cannot reach server — check your connection. (${err.message})`);
+      } else {
+        setError(err.message || 'Registration failed. Please try again.');
+      }
+      console.error('[Signup] Registration error:', err.response?.status, err.response?.data, err.message);
     } finally {
       setLoading(false);
     }
@@ -71,7 +78,7 @@ const SignupPage: React.FC = () => {
 
           <div className="mb-8 text-center">
             <h1 className="font-display font-bold text-3xl text-leta-gray-900 mb-2 uppercase tracking-tight">
-              LETA <span className="text-leta-primary">TITAN</span>
+              LETA <span className="text-leta-primary">TEC</span>
             </h1>
             <p className="text-xs font-mono text-leta-gray-500 uppercase tracking-widest">Account Setup</p>
           </div>

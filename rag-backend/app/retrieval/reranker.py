@@ -1,3 +1,4 @@
+import re
 import logging
 from typing import List, Dict, Any, Optional
 from app.retrieval.source_priority import source_priority
@@ -54,6 +55,9 @@ class LegalReranker:
 
         normalized_query_topic = _normalize_topic(query_topic) if query_topic else ""
 
+        # Pre-extract query keyword tokens for component 4 (shared across all chunks)
+        _query_kw = set(re.findall(r'\b[a-z]{3,}\b', query.lower()))
+
         reranked_chunks = []
         for chunk in chunks:
             # 1. Normalize semantic to 0-1 (min-max)
@@ -74,22 +78,43 @@ class LegalReranker:
                 if normalized_chunk_topic == normalized_query_topic:
                     topic_match = 1.0
 
-            # 4. Statute-First boost (Layer 1 bias)
+            # 4. Keyword overlap: fraction of query terms present in chunk text.
+            # Provides a direct term-matching signal that's independent of semantic
+            # similarity — critical when a user references a specific section number
+            # or form code that may not embed well.
+            chunk_text_lower = chunk.get("text", "").lower()
+            kw_hits = sum(1 for t in _query_kw if t in chunk_text_lower)
+            kw_match = min(kw_hits / max(len(_query_kw), 1), 1.0)
+
+            # 5. Statute-First boost (Layer 1 bias)
             layer1_boost = 0.5 if chunk.get("_is_statute_first", False) else 0.0
 
-            # Composite scoring
-            # Base components sum to 1.0, layer1_boost is additive for statute priority
-            final_score = (0.5 * semantic_score) + (0.3 * legal_weight) + (0.2 * topic_match) + layer1_boost
+            # Composite scoring:
+            # 0.45 semantic  — FlashRank cross-encoder relevance (primary signal)
+            # 0.20 legal     — Authority hierarchy (Acts > Rules > Circulars > AARs)
+            # 0.20 kw_match  — Direct keyword overlap (query terms in chunk text)
+            # 0.15 topic     — Topic/subtopic alignment
+            # +layer1_boost  — Additive boost for Statute-First Layer 1 results
+            final_score = (
+                (0.45 * semantic_score)
+                + (0.20 * legal_weight)
+                + (0.20 * kw_match)
+                + (0.15 * topic_match)
+                + layer1_boost
+            )
 
-            # Phase 2C: Draft mode — boost case law 1.3× so judgments compete with statutes
+            # Draft mode: boost case law so judgments compete with statutes
             if is_draft and _is_case_law(rel_path):
                 final_score *= 1.3
+            # Q&A: no penalty — legal_weight (30% of score) already naturally
+            # ranks Acts/Circulars above AARs; let semantic relevance decide
 
             chunk["_is_statute_first"] = chunk.get("_is_statute_first", False)
             chunk["_final_legal_score"] = final_score
             chunk["_debug_components"] = {
                 "semantic": round(semantic_score, 4),
                 "legal": round(legal_weight, 4),
+                "kw_match": round(kw_match, 4),
                 "topic": topic_match,
                 "layer1_boost": layer1_boost,
             }

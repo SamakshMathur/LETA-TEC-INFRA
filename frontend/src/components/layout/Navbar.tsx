@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FileText, Landmark, Globe, Briefcase, ChevronDown, Settings, LogOut, LayoutGrid } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { ROUTES } from '../../constants/routes';
 import { hasRole, getActiveRole } from '../../lib/permissions';
+import SessionClock from './SessionClock';
 
 const MODULES = [
   { label: 'GST Intelligence',  path: '/gst',          icon: FileText,  status: 'LIVE' },
@@ -14,8 +15,9 @@ const MODULES = [
 ];
 
 const NAV_LINKS = [
-  { label: 'About Us',     path: '/about' },
-  { label: 'Resources',    path: '/docs'  },
+  { label: 'Home',     path: '/'         },
+  { label: 'About Us', path: '/about'    },
+  { label: 'My Docs',  path: '/my-docs'  },
 ];
 
 const getInitials = (name: string) => {
@@ -258,6 +260,7 @@ const Navbar = () => {
 
         {/* ── Right Side ───────────────────────────────────────────────────── */}
         <div className="flex-1 flex justify-end items-center gap-3">
+          <SessionClock />
           {isLoggedIn ? (
             <div className="relative" ref={userRef}>
               <button

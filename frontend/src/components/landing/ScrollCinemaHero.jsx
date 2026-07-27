@@ -83,7 +83,7 @@ const ScrollCinemaHero = () => {
             FEMA, and Company Law — built for precision-engineered advisory.
           </p>
 
-          <Link to="/gst" className="cinema-cta">
+          <Link to="/dashboard" className="cinema-cta">
             <span>Enter Command Center</span>
             <ArrowRight size={15} />
           </Link>

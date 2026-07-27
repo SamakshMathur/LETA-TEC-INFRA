@@ -223,13 +223,16 @@ def _stream_claude(
     resolved_max_tokens = max_tokens_override if max_tokens_override is not None else (
         4000 if use_haiku else CLAUDE_MAX_TOKENS
     )
+    # Anthropic requires temperature=1 when extended thinking is enabled.
+    # For regular (non-thinking) calls, temperature=0 produces more precise
+    # and consistent legal answers, which is critical for a compliance tool.
     stream_kwargs = dict(
         model=model,
         max_tokens=resolved_max_tokens,
         system=system_blocks,
         messages=messages,
         stop_sequences=["[TERMINATE]"],
-        temperature=1,
+        temperature=1 if use_thinking else 0,
     )
 
     # Extended thinking: Sonnet only, and only when complexity warrants it
@@ -385,8 +388,23 @@ def synthesize_answer_stream(
         "what would be the gst", "legal opinion", "our client is",
         "we are engaged in", "facts of the case",
     ]
-    # Route as draft if: current message has draft keywords OR session history does
-    is_draft = session_is_draft or any(kw in question.lower() for kw in _DRAFT_KW)
+    # Definition/explanation queries MUST bypass DRAFTING_PROMPT even if session history
+    # has draft signals. A query like "define X" or "provide definition of X" has no
+    # missing facts and should never trigger the CHECK-3 clarification flow.
+    import re as _re
+    _NEVER_DRAFT_PATTERNS = [
+        r'\b(what\s+is|what\s+are|define|definition\s+of|explain|meaning\s+of)\b',
+        r'\b(provide|give|state|share)\s+(the\s+)?(definition|meaning|explanation|rate|provision)',
+        r'\b(relevant\s+circular|applicable\s+circular|circular\s+on)\b',
+        r'\b(full\s+form|abbreviation)\b',
+    ]
+    _is_never_draft = any(_re.search(p, question.lower()) for p in _NEVER_DRAFT_PATTERNS)
+
+    # Route as draft only when: current or session has draft signals, AND query is not
+    # a pure definition/knowledge query.
+    is_draft = (not _is_never_draft) and (
+        session_is_draft or any(kw in question.lower() for kw in _DRAFT_KW)
+    )
 
     if is_draft:
         prompt_template = DRAFTING_PROMPT

@@ -13,6 +13,7 @@ const TemplateCard = ({ template, isHero, onPreview }) => {
       <div className={`relative group ${cardWidth} ${cardHeight} rounded-leta overflow-visible cursor-pointer transition-all duration-500 ease-out 
       hover:scale-125 hover:z-[100] hover:shadow-[0_20px_50px_rgba(0,0,0,0.8)]`}>
 
+
          {/* Base Card - Static View */}
          <div className="absolute inset-0 bg-[#141414] rounded-leta border border-leta-gray-100 overflow-hidden flex flex-col">
             {/* Placeholder "Poster" with generic legal pattern */}

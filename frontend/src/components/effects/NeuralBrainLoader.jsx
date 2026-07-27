@@ -173,7 +173,7 @@ export default function NeuralBrainLoader() {
         {/* Overlay Text */}
         <div className="absolute inset-0 flex flex-col items-center justify-end pb-8 z-10 pointer-events-none">
             <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-blue-400 font-mono uppercase tracking-widest animate-pulse drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">
-                Synthesizing TITAN Intelligence
+                Synthesizing LETA Intelligence
             </h3>
             <p className="text-xs text-leta-gray-500 mt-2 font-mono tracking-wide">
                 Optimizing {nodeCount} statutory nodes...

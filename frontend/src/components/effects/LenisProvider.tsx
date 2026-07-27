@@ -1,9 +1,7 @@
-import { useEffect, useRef, createContext, useContext } from 'react';
+import { useEffect, useRef, createContext } from 'react';
 import Lenis from 'lenis';
 
-const LenisContext = createContext<Lenis | null>(null);
-
-export const useLenis = () => useContext(LenisContext);
+export const LenisContext = createContext<Lenis | null>(null);
 
 interface Props { children: React.ReactNode }
 
@@ -17,6 +15,10 @@ export default function LenisProvider({ children }: Props) {
       smoothWheel: true,
       wheelMultiplier: 1.2,
       touchMultiplier: 1.8,
+      // Don't intercept scroll events inside containers that opt out
+      prevent: (node: Element) =>
+        node.hasAttribute('data-lenis-prevent') ||
+        node.closest('[data-lenis-prevent]') !== null,
     });
 
     lenisRef.current = lenis;

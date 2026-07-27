@@ -121,9 +121,198 @@ def embed_query(text: str):
     return vec
 
 
+# GST compound phrases used to generate bigram tokens for BM25
+_GST_BIGRAMS = frozenset([
+    "input tax credit", "reverse charge mechanism", "reverse charge",
+    "place of supply", "time of supply", "zero rated supply",
+    "show cause notice", "input service distributor", "electronic cash ledger",
+    "electronic credit ledger", "inverted duty structure", "composite supply",
+    "mixed supply", "works contract", "capital goods", "job work",
+    "advance ruling", "high court", "supreme court", "annual return",
+    "inter state", "intra state", "e way bill", "transitional credit",
+    "input tax", "output tax", "zero rated", "exempt supply",
+])
+
+# Abbreviation → full-form expansion for BM25 query preprocessing
+_GST_ABBREV = [
+    (re.compile(r'\bitc\b', re.IGNORECASE), 'input tax credit ITC'),
+    (re.compile(r'\brcm\b', re.IGNORECASE), 'reverse charge mechanism RCM'),
+    (re.compile(r'\bscn\b', re.IGNORECASE), 'show cause notice SCN'),
+    (re.compile(r'\bisd\b', re.IGNORECASE), 'input service distributor ISD'),
+    (re.compile(r'\blut\b', re.IGNORECASE), 'letter of undertaking LUT'),
+    (re.compile(r'\bsez\b', re.IGNORECASE), 'special economic zone SEZ'),
+    (re.compile(r'\bcgst\b', re.IGNORECASE), 'central goods services tax CGST'),
+    (re.compile(r'\bigst\b', re.IGNORECASE), 'integrated goods services tax IGST'),
+    (re.compile(r'\bsgst\b', re.IGNORECASE), 'state goods services tax SGST'),
+    (re.compile(r'\bgstr\b', re.IGNORECASE), 'return GSTR'),
+    (re.compile(r'\bfaq\b', re.IGNORECASE), 'frequently asked questions FAQ'),
+    (re.compile(r'\baar\b', re.IGNORECASE), 'advance ruling AAR'),
+    (re.compile(r'\bpoc\b', re.IGNORECASE), 'place of supply POS'),
+    # Normalize section shorthand: "sec 16", "s.16", "s16" → "section 16"
+    (re.compile(r'\bsec\.?\s*(\d)', re.IGNORECASE), r'section \1'),
+    (re.compile(r'\bs\.\s*(\d)', re.IGNORECASE), r'section \1'),
+]
+
+
+def _expand_for_bm25(query: str) -> str:
+    """Expand GST abbreviations in a query string for better BM25 keyword coverage."""
+    result = query
+    for pattern, replacement in _GST_ABBREV:
+        result = pattern.sub(replacement, result)
+    return result
+
+
+# ─── Direct legal reference extraction ────────────────────────────────────────
+# Maps lowercase act keywords found near a section/rule citation to canonical codes
+_ACT_CODE_MAP = [
+    ("cgst", "CGST"), ("igst", "IGST"), ("sgst", "SGST"), ("utgst", "UTGST"),
+    ("central goods", "CGST"), ("integrated goods", "IGST"),
+    ("union territory", "UTGST"),
+]
+
+
+def _extract_query_refs(query: str) -> list:
+    """
+    Extracts normalized provision keys from a query, matching the format stored
+    in chunk.metadata.provisions (e.g. CGST_SEC_16, IGST_SEC_13, CGST_RUL_89).
+
+    Called before FAISS search so that explicitly-cited sections are pinned at
+    the top of the retrieval pool, bypassing ranking uncertainty.
+    """
+    q = query.lower()
+    refs = []
+    seen: set = set()
+
+    def _act_codes(ctx: str) -> list:
+        found = [code for kw, code in _ACT_CODE_MAP if kw in ctx]
+        # Remove duplicates while preserving order
+        seen_codes: set = set()
+        deduped = []
+        for c in found:
+            if c not in seen_codes:
+                seen_codes.add(c)
+                deduped.append(c)
+        return deduped if deduped else ["CGST", "IGST"]  # try both when no act named
+
+    # Section references: "section 16", "sec 16", "section 2(13)", "sec.16"
+    for m in re.finditer(r'\bsec(?:tion)?\s*\.?\s*(\d+)(?:\s*\([^)]{0,12}\))*', q):
+        sec = m.group(1)
+        ctx = q[max(0, m.start() - 40): m.end() + 40]
+        for code in _act_codes(ctx):
+            key = f"{code}_SEC_{sec}"
+            if key not in seen:
+                seen.add(key)
+                refs.append(key)
+
+    # Rule references: "rule 89", "rule 42(2)"
+    for m in re.finditer(r'\brule\s+(\d+)(?:\s*\([^)]{0,12}\))*', q):
+        rule = m.group(1)
+        ctx = q[max(0, m.start() - 40): m.end() + 40]
+        for code in _act_codes(ctx):
+            key = f"{code}_RUL_{rule}"
+            if key not in seen:
+                seen.add(key)
+                refs.append(key)
+
+    # Schedule references: "schedule ii", "schedule iii", "schedule 1"
+    for m in re.finditer(r'\bschedule\s+([ivxlcdm]+|\d+)\b', q):
+        sch = m.group(1).upper()
+        key = f"CGST_SCH_{sch}"
+        if key not in seen:
+            seen.add(key)
+            refs.append(key)
+
+    return refs
+
+
+def _expand_context_window(selected: list, pool: list, max_neighbors: int = 2) -> list:
+    """
+    Parent-child equivalent without re-indexing: for each selected chunk, find
+    adjacent chunks from the same document in the broader pool and merge their
+    text into context_text. The LLM receives richer context; the original text
+    field is preserved for scoring and snippet display.
+    """
+    from collections import defaultdict
+
+    if not pool or len(pool) <= 1:
+        return selected
+
+    # Build per-document list of (page, chunk) from the pool
+    doc_map: dict = defaultdict(list)
+    for chunk in pool:
+        rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
+        if not rel:
+            continue
+        pages = chunk.get("pages") or chunk.get("metadata", {}).get("pages") or []
+        page = min(pages) if pages else (
+            chunk.get("page") or chunk.get("metadata", {}).get("page") or 0
+        )
+        doc_map[rel].append((page, chunk))
+
+    for rel in doc_map:
+        doc_map[rel].sort(key=lambda x: x[0])
+
+    expanded = []
+    for chunk in selected:
+        rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
+        pages = chunk.get("pages") or chunk.get("metadata", {}).get("pages") or []
+        page = min(pages) if pages else (
+            chunk.get("page") or chunk.get("metadata", {}).get("page") or 0
+        )
+        cid = chunk.get("chunk_id")
+
+        if rel and rel in doc_map and len(doc_map[rel]) > 1:
+            neighbors = [
+                c for (p, c) in doc_map[rel]
+                if c.get("chunk_id") != cid and abs(p - page) <= 2
+            ]
+            if neighbors:
+                neighbors = neighbors[:max_neighbors]
+                neighbor_texts = [n.get("text", "").strip() for n in neighbors if n.get("text", "").strip()]
+                if neighbor_texts:
+                    chunk = chunk.copy()
+                    chunk["context_text"] = (
+                        chunk.get("text", "")
+                        + "\n\n[ADJACENT CONTEXT FROM SAME DOCUMENT]\n"
+                        + "\n\n".join(neighbor_texts)
+                    )
+
+        expanded.append(chunk)
+
+    return expanded
+
+
 def tokenize_text(text: str):
-    """Simple tokenizer for BM25."""
-    return [word.lower() for word in re.findall(r'\b\w+\b', text)]
+    """
+    Enhanced BM25 tokenizer that:
+    - Preserves section/rule compound references as additional tokens
+    - Keeps form codes (DRC-01, GSTR-3B) with hyphen intact
+    - Adds underscore-joined bigrams for critical GST compound phrases
+    - Falls back to standard word tokenization for everything else
+    """
+    text_lower = text.lower()
+    tokens = list(re.findall(r'\b\w+\b', text_lower))
+
+    # Preserve section/rule number references as compound tokens
+    # e.g. "section 16(2)(b)" → "section_16_2_b"
+    for m in re.finditer(
+        r'\b(section|rule|schedule|article|clause|sub-section|proviso)\s+(\d+(?:[(\w)]+)*)',
+        text_lower
+    ):
+        compound = re.sub(r'[^a-z0-9]', '_', m.group(0))
+        tokens.append(compound)
+
+    # Keep form/notification codes with hyphens as single tokens
+    # e.g. "DRC-01", "GSTR-3B", "RFD-01"
+    for m in re.finditer(r'\b[a-z]{2,5}-[\w\d]+\b', text_lower):
+        tokens.append(m.group(0))
+
+    # Add bigram tokens for GST compound phrases
+    for phrase in _GST_BIGRAMS:
+        if phrase in text_lower:
+            tokens.append(phrase.replace(' ', '_'))
+
+    return tokens
 
 
 def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
@@ -247,6 +436,21 @@ class Retriever:
         self.bm25 = BM25Okapi(tokenized_corpus)
         logger.info(f"BM25 index built: {len(tokenized_corpus)} documents")
 
+        # Build provision index for O(1) direct section/rule lookup.
+        # Maps citation key (e.g. "CGST_SEC_16") → list of chunk indices.
+        # Built once at startup; each query with explicit citations does a
+        # dict lookup instead of a linear scan over all chunks.
+        self._provision_index: dict = {}
+        for _ci, _chunk in enumerate(self.chunks):
+            _meta = _chunk.get("metadata", {})
+            for _ref in set(_meta.get("provisions", []) + _meta.get("citations", [])):
+                # Skip generic "ACT" citation — matches everything, not useful
+                if _ref and _ref not in ("ACT", "RULES", "NOTIFICATION"):
+                    if _ref not in self._provision_index:
+                        self._provision_index[_ref] = []
+                    self._provision_index[_ref].append(_ci)
+        logger.info(f"Provision index built: {len(self._provision_index)} citation keys")
+
         # Initialize FlashRank
         logger.info(f"Loading reranker: {RERANKING_MODEL}")
         try:
@@ -291,7 +495,7 @@ class Retriever:
         result = list(pool)  # start with the full pool
 
         if self.bm25:
-            tokenized_query = tokenize_text(query)
+            tokenized_query = tokenize_text(_expand_for_bm25(query))
             bm25_scores = self.bm25.get_scores(tokenized_query)
 
             for cat, quota in quotas.items():
@@ -326,6 +530,34 @@ class Retriever:
 
         return result
 
+    def _direct_ref_lookup(self, refs: list) -> list:
+        """
+        Returns chunks that explicitly cite any of the given provision keys,
+        using the pre-built provision index for O(1) lookup per key.
+        These chunks are pinned at the top of combined_results with
+        _statute_priority=1.0 so they survive FlashRank and LegalReranker.
+        Capped at 20 to avoid flooding the reranker with statute-only chunks.
+        """
+        if not refs or not hasattr(self, "_provision_index"):
+            return []
+        seen_ids: set = set()
+        pinned = []
+        for ref in refs:
+            for idx in self._provision_index.get(ref, []):
+                if idx >= len(self.chunks):
+                    continue
+                chunk = self.chunks[idx]
+                cid = chunk.get("chunk_id")
+                if cid and cid not in seen_ids:
+                    c = chunk.copy()
+                    c["_pinned_by_ref"] = True
+                    c["_statute_priority"] = 1.0
+                    pinned.append(c)
+                    seen_ids.add(cid)
+                if len(pinned) >= 20:
+                    return pinned
+        return pinned
+
     def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False, skip_rerank: bool = False):
         if not query or not query.strip():
             logger.warning("search() called with empty query")
@@ -345,6 +577,14 @@ class Retriever:
         if advanced_queries:
             topic = advanced_queries.get("topic", "General")
             subtopic = advanced_queries.get("subtopic")
+
+        # --- Direct section/rule reference lookup (pinned, bypasses FAISS ranking) ---
+        # Extracts explicit citations from query (e.g. "Section 16 CGST") and pins
+        # matching chunks at priority 1.0 so they always reach the top of the pool.
+        _query_refs = _extract_query_refs(query)
+        _pinned = self._direct_ref_lookup(_query_refs) if _query_refs else []
+        if _pinned:
+            logger.info(f"Direct ref lookup: {_query_refs} → {len(_pinned)} pinned chunks")
 
         # --- Layer 1: Statute-First Retrieval (Deterministic) ---
         statute_results = self.statute_retriever.search_statutes(self.chunks, topic, subtopic)
@@ -401,9 +641,10 @@ class Retriever:
                     for idx in I2[0]:
                         _add_to_pool(idx)
 
-        # 2. BM25 Search
+        # 2. BM25 Search — expand abbreviations before tokenizing so "ITC" matches
+        # chunks that say "Input Tax Credit", "sec 16" matches "Section 16", etc.
         if self.bm25:
-            tokenized_query = tokenize_text(query)
+            tokenized_query = tokenize_text(_expand_for_bm25(query))
             bm25_scores = self.bm25.get_scores(tokenized_query)
             top_bm25_idxs = np.argsort(bm25_scores)[::-1][:BM25_TOP_K]
             for idx in top_bm25_idxs:
@@ -442,21 +683,24 @@ class Retriever:
         # Drafts need: statute ≥10, case_law ≥10, circular ≥5
         # Q&A needs:   statute ≥8,  case_law ≥6,  circular ≥4
         _quotas = (
-            {"statute": 10, "case_law": 10, "circular": 5}
+            {"statute": 10, "case_law": 8, "circular": 6}   # drafts: need judgments + circulars
             if is_draft else
-            {"statute": 8,  "case_law": 6,  "circular": 4}
+            {"statute": 8, "case_law": 5, "circular": 6}    # Q&A: balanced; circulars boosted, relevance decides the rest
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
 
-        # Merge layers: Statute-First > Graph Expanded > Semantic (+quota fills)
-        combined_results = statute_results[:50] + graph_results[:30]
+        # Merge layers: Pinned (explicit citation) > Statute-First > Graph > Semantic
+        combined_results = _pinned + statute_results[:50] + graph_results[:30]
         existing_ids = {r.get("chunk_id") for r in combined_results}
         for r in candidate_pool:
             if r.get("chunk_id") not in existing_ids:
                 combined_results.append(r)
 
+        # Store full pool before capping — used for context window expansion later
+        _full_pool = list(combined_results)
+
         # Cap total candidates for reranker (FlashRank OOM above ~300)
-        RERANK_MAX = 200
+        RERANK_MAX = 80
         reranker_input = combined_results[:RERANK_MAX]
 
         t_retrieval_end = time.monotonic()
@@ -490,6 +734,11 @@ class Retriever:
         # --- Layer 4: MMR Deduplication ---
         reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k)
 
+        # --- Context Window Expansion ---
+        # Enrich each selected chunk with adjacent-page neighbors from the same
+        # document, giving the LLM wider context without re-indexing.
+        reranked_results = _expand_context_window(reranked_results, _full_pool)
+
         # Flatten metadata for final output (safe merge avoiding key collisions)
         final_results = []
         for res in reranked_results:
@@ -514,3 +763,84 @@ class Retriever:
             reranker_time_ms=(t_end - t_rerank_start) * 1000.0
         )
         return final_results[:top_k]
+
+    def supplement_and_rerank(self, base_chunks: list, advanced_queries: dict, query: str, top_k: int) -> list:
+        """
+        Called after fast retrieval (skip_rerank=True) + query expansion finish in parallel.
+        Supplements the fast pool with FAISS results from expanded queries, then runs ONE
+        FlashRank + LegalReranker + MMR pass on the merged pool capped at 80 chunks.
+        This replaces the old pattern of running FlashRank on 200 chunks twice.
+        """
+        if not advanced_queries:
+            return base_chunks[:top_k]
+
+        topic = advanced_queries.get("topic", "General")
+
+        # Direct ref lookup: pin explicitly-cited sections at top of pool
+        _query_refs = _extract_query_refs(query)
+        _pinned = self._direct_ref_lookup(_query_refs) if _query_refs else []
+
+        existing_ids = {c.get("chunk_id") for c in base_chunks}
+        for c in _pinned:
+            existing_ids.add(c.get("chunk_id"))
+
+        extra_queries = list(advanced_queries.get("queries", [])[1:])
+        hyde = advanced_queries.get("hyde_document", "")
+        if hyde:
+            extra_queries.append(hyde)
+
+        combined = _pinned + list(base_chunks)
+        if self.index:
+            for eq in extra_queries:
+                if not eq or not eq.strip():
+                    continue
+                vec = embed_query(eq)
+                if vec is not None:
+                    D, I = self.index.search(np.array([vec]).astype('float32'), VECTOR_EXPANDED_TOP_K)
+                    for idx in I[0]:
+                        if 0 <= idx < len(self.chunks):
+                            chunk = self.chunks[idx].copy()
+                            cid = chunk.get("chunk_id")
+                            if cid and cid not in existing_ids:
+                                existing_ids.add(cid)
+                                combined.append(chunk)
+
+        RERANK_CAP = 80
+        rerank_input = combined[:RERANK_CAP]
+        reranked = rerank_input
+
+        if rerank_input and self.ranker:
+            try:
+                from flashrank import RerankRequest
+                passages = [{"id": i, "text": c.get("text", ""), "meta": c} for i, c in enumerate(rerank_input)]
+                flash_results = self.ranker.rerank(RerankRequest(query=query, passages=passages))
+                reranked = []
+                for r in flash_results:
+                    item = r["meta"]
+                    item["_rerank_score"] = r["score"]
+                    reranked.append(item)
+            except Exception as e:
+                logger.warning(f"FlashRank failed in supplement_and_rerank: {e}")
+
+        reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
+
+        mmr_results = _mmr_deduplicate(reranked, top_k=top_k)
+
+        # Context window expansion using the full pre-rerank pool
+        mmr_results = _expand_context_window(mmr_results, combined)
+
+        final = []
+        for res in mmr_results:
+            if "metadata" in res:
+                meta = res.pop("metadata")
+                for key, val in meta.items():
+                    if key not in res:
+                        res[key] = val
+            final.append(res)
+
+        logger.info(
+            f"supplement_and_rerank: pinned={len(_pinned)} base={len(base_chunks)} "
+            f"expanded={len(combined)-len(base_chunks)-len(_pinned)} "
+            f"reranked={len(reranked)} final={len(final)}"
+        )
+        return final

@@ -1,12 +1,13 @@
 export interface User {
   id: string;
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  role: string;
+  username?: string;
+  full_name?: string;
+  email?: string;
   phone?: string;
+  role: string;
   gender?: string;
   profession?: string;
+  plan?: string;
   [key: string]: any;
 }
 
@@ -18,6 +19,7 @@ export interface Tokens {
   tokenType: string;
   expiresIn: number;
   refreshTokenExpiresIn: number;
+  session_end_ms?: number; // plan-based session expiry (absent for admin)
 }
 
 export interface Membership {

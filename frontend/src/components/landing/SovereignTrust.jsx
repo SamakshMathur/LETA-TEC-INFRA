@@ -160,7 +160,7 @@ const SovereignTrust = () => (
           </h3>
         </div>
 
-        <Link to="/gst" style={{ textDecoration: 'none', flexShrink: 0 }}>
+        <Link to="/dashboard" style={{ textDecoration: 'none', flexShrink: 0 }}>
           <motion.button
             whileHover={{ boxShadow: '0 0 40px rgba(79,183,197,0.35)', y: -2 }}
             whileTap={{ scale: 0.97 }}

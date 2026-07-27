@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import DocPreviewSidebar from './DocPreviewSidebar';
 import { BASE_URL as VITE_API_BASE } from '../../config/api';
+import { useSavedDocs } from '../../hooks/useSavedDocs';
 
 import cx from 'classnames/bind';
 import styles from './DocumentLibrary.module.css';
@@ -83,7 +84,9 @@ const DocCard: React.FC<{
   doc: DocItem;
   onClick: (d: DocItem) => void;
   onDownload: (d: DocItem) => void;
-}> = ({ doc, onClick, onDownload }) => {
+  isSaved?: boolean;
+  onToggleSave?: (d: DocItem) => void;
+}> = ({ doc, onClick, onDownload, isSaved = false, onToggleSave }) => {
   const meta = getDocumentContext(doc.title);
 
   return (
@@ -105,12 +108,13 @@ const DocCard: React.FC<{
             >
               <Download size={12} />
             </button>
-            <button 
-              onClick={(e) => { e.stopPropagation(); }}
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleSave?.(doc); }}
               className={cn('cardActionBtn')}
-              title="Save to Brief"
+              title={isSaved ? 'Remove from My Docs' : 'Save to My Docs'}
+              style={isSaved ? { color: '#4FB7C5' } : undefined}
             >
-              <Bookmark size={12} />
+              <Bookmark size={12} fill={isSaved ? '#4FB7C5' : 'none'} />
             </button>
           </div>
         </div>
@@ -152,7 +156,9 @@ const DocumentRow: React.FC<{
   onDocClick: (d: DocItem) => void;
   onDownload: (d: DocItem) => void;
   searchQuery: string;
-}> = ({ category, onDocClick, onDownload, searchQuery }) => {
+  isSaved: (id: string) => boolean;
+  onToggleSave: (d: DocItem) => void;
+}> = ({ category, onDocClick, onDownload, searchQuery, isSaved, onToggleSave }) => {
   const [docs, setDocs]       = useState<DocItem[]>([]);
   const [loading, setLoading] = useState(true);
   const scrollRef             = useRef<HTMLDivElement>(null);
@@ -214,7 +220,8 @@ const DocumentRow: React.FC<{
               />
             ))
           : filteredDocs.slice(0, 20).map(doc => (
-              <DocCard key={doc.id} doc={doc} onClick={onDocClick} onDownload={onDownload} />
+              <DocCard key={doc.id} doc={doc} onClick={onDocClick} onDownload={onDownload}
+                isSaved={isSaved(doc.id)} onToggleSave={onToggleSave} />
             ))
         }
       </div>
@@ -228,6 +235,7 @@ export const DocumentLibrary: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const { isSaved, toggle: toggleSave } = useSavedDocs();
 
   // All documents loaded once on mount for instant client-side search
   const [allDocs, setAllDocs] = useState<DocItem[]>([]);
@@ -396,7 +404,8 @@ export const DocumentLibrary: React.FC = () => {
             ) : instantResults.length > 0 ? (
               <div className={cn('aiResultsGrid')}>
                 {instantResults.map(doc => (
-                  <DocCard key={doc.id} doc={doc} onClick={setSelectedDoc} onDownload={handleDownload} />
+                  <DocCard key={doc.id} doc={doc} onClick={setSelectedDoc} onDownload={handleDownload}
+                    isSaved={isSaved(doc.id)} onToggleSave={toggleSave} />
                 ))}
               </div>
             ) : (
@@ -419,7 +428,8 @@ export const DocumentLibrary: React.FC = () => {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {group.rows.map(row => (
-                  <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload} searchQuery="" />
+                  <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
+                    searchQuery="" isSaved={isSaved} onToggleSave={toggleSave} />
                 ))}
               </div>
             </div>

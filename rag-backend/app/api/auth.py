@@ -215,39 +215,47 @@ class Token(BaseModel):
 # =============================================================================
 # HELPERS
 # =============================================================================
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+# DEV_MODE=true → return otp_preview in response and skip strict OTP check.
+_DEV_MODE: bool = os.getenv("DEV_MODE", "true").lower() == "true"
+
+# Session durations per plan (seconds). Admin role is exempt — no timer.
+PLAN_DURATIONS: dict[str, int] = {
+    "basic": 1 * 60 * 60,   # ₹500 → 1 hour
+    "pro":   3 * 60 * 60,   # ₹1000 → 3 hours
+}
+
+
+# ── OTP helpers ────────────────────────────────────────────────────────────────
 
 def _generate_otp() -> str:
     return str(_secrets.randbelow(900000) + 100000)
 
 
 def _hash_password(password: str) -> str:
-
     salt = _secrets.token_hex(16)
-
     pwd_hash = hashlib.pbkdf2_hmac(
         "sha256",
         password.encode(),
         salt.encode(),
         100000,
     )
-
     return f"{salt}${pwd_hash.hex()}"
 
 
 def _verify_password(password: str, stored_hash: str) -> bool:
-
     try:
         salt, hash_hex = stored_hash.split("$")
-
         pwd_hash = hashlib.pbkdf2_hmac(
             "sha256",
             password.encode(),
             salt.encode(),
             100000,
         )
-
         return _secrets.compare_digest(pwd_hash.hex(), hash_hex)
-
     except Exception:
         return False
 
@@ -255,16 +263,42 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 def _verify_secret(value: str, expected: str) -> bool:
     if not value or not expected:
         return False
-
     return _secrets.compare_digest(value, expected)
 
 
-def send_sms_otp(phone: str, otp: str) -> None:
+def _send_sms_otp(phone: str, otp: str) -> None:
+    """Send OTP via AWS SNS. Uses task role credentials — no API key needed."""
+    import boto3
+    # Normalise to E.164: strip leading zeros, prepend +91 for India
+    number = phone.strip().lstrip("+")
+    if len(number) == 10:
+        number = "91" + number
+    e164 = "+" + number
+    sns = boto3.client("sns", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-south-1"))
+    sns.publish(
+        PhoneNumber=e164,
+        Message=f"Your LETA OTP is {otp}. Valid for 10 minutes. Do not share.",
+        MessageAttributes={
+            "AWS.SNS.SMS.SMSType": {"DataType": "String", "StringValue": "Transactional"},
+            "AWS.SNS.SMS.SenderID": {"DataType": "String", "StringValue": "LETATEC"},
+        },
+    )
+    logger.info(f"SMS OTP sent via SNS | phone=***{phone[-4:]}")
 
+
+def send_sms_otp(phone: str, otp: str) -> None:
     if DEV_MODE:
-        logger.info(f"[DEV MODE] SMS OTP {otp} for {phone} (Fast2SMS call bypassed)")
+        logger.info(f"[DEV MODE] SMS OTP {otp} for {phone} (Fast2SMS/SNS call bypassed)")
         return
 
+    # Try AWS SNS first (from main)
+    try:
+        _send_sms_otp(phone, otp)
+        return
+    except Exception as e:
+        logger.warning(f"AWS SNS failed: {e}. Trying Fast2SMS fallback...")
+
+    # Fallback to Fast2SMS (from aditya-does)
     if not FAST2SMS_API_KEY:
         logger.warning("FAST2SMS_API_KEY missing — SMS not sent")
         return
@@ -283,13 +317,10 @@ def send_sms_otp(phone: str, otp: str) -> None:
             },
             timeout=10,
         )
-
         response.raise_for_status()
-
-        logger.info(f"SMS OTP sent to ***{phone[-4:]}")
-
-    except Exception as e:
-        logger.error(f"SMS sending failed: {e}")
+        logger.info(f"SMS OTP sent via Fast2SMS to ***{phone[-4:]}")
+    except Exception as err:
+        logger.error(f"Fast2SMS sending failed: {err}")
 
 
 def verify_sms_otp(phone: str, submitted_otp: str, expected_otp: str) -> bool:
@@ -335,7 +366,7 @@ def _send_email_otp(email: str, otp: str) -> None:
         logger.error(f"Email sending failed: {e}")
 
 
-def _build_auth_response(user_info: dict):
+def _build_auth_response(user_info: dict, session_end_ms: Optional[int] = None):
 
     access_token = create_access_token({
         "sub": user_info["username"]
@@ -347,14 +378,18 @@ def _build_auth_response(user_info: dict):
 
     now = int(datetime.now(timezone.utc).timestamp() * 1000)
 
+    tokens = {
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "expiresAt": now + (15 * 60 * 1000),
+        "refreshTokenExpiresAt": now + (7 * 24 * 60 * 60 * 1000),
+        "tokenType": "bearer",
+    }
+    if session_end_ms is not None:
+        tokens["session_end_ms"] = session_end_ms
+
     return {
-        "tokens": {
-            "accessToken": access_token,
-            "refreshToken": refresh_token,
-            "expiresAt": now + (15 * 60 * 1000),
-            "refreshTokenExpiresAt": now + (7 * 24 * 60 * 60 * 1000),
-            "tokenType": "bearer",
-        },
+        "tokens": tokens,
         "user": user_info,
         "memberships": [
             {
@@ -473,6 +508,7 @@ async def register_user(request: Request, user: UserRegister):
         "gender": user.gender,
         "verified": False,
         "role": "user",
+        "plan": "basic",
         "created_at": datetime.utcnow(),
         "last_login": None,
     })
@@ -792,14 +828,27 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
             detail="User not found",
         )
 
+    # Compute plan-based session window
+    plan = user.get("plan", "basic")
+    role = user.get("role", "user")
+    now_utc   = datetime.now(timezone.utc)
+    now_ms    = int(now_utc.timestamp() * 1000)
+
+    if role == "admin":
+        session_end_ms = None          # admin: unlimited
+        session_end_dt = None
+    else:
+        duration_s     = PLAN_DURATIONS.get(plan, PLAN_DURATIONS["basic"])
+        session_end_dt = now_utc + timedelta(seconds=duration_s)
+        session_end_ms = int(session_end_dt.timestamp() * 1000)
+
     users_col.update_one(
         {"_id": user["_id"]},
-        {
-            "$set": {
-                "verified": True,
-                "last_login": datetime.utcnow(),
-            }
-        },
+        {"$set": {
+            "verified":    True,
+            "last_login":  now_utc,
+            "session_end": session_end_dt,   # stored as UTC datetime for server-side check
+        }}
     )
 
     user_info = {
@@ -808,7 +857,8 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
         "email": user.get("email"),
         "phone": user.get("phone"),
         "full_name": user.get("full_name"),
-        "role": user.get("role", "user"),
+        "role":      role,
+        "plan":      plan,
     }
 
     _log_auth_activity(
@@ -819,7 +869,7 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
         metadata=_auth_contact_metadata(req.contact, otp_record.get("method")),
     )
 
-    return _build_auth_response(user_info)
+    return _build_auth_response(user_info, session_end_ms=session_end_ms)
 
 
 # =============================================================================
