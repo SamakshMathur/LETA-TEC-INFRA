@@ -29,6 +29,7 @@ interface DocItem {
   size: string;
   path?: string;
   category?: string;
+  year?: string | null;
 }
 
 interface CategoryRow {
@@ -229,6 +230,97 @@ const DocumentRow: React.FC<{
   );
 };
 
+// ── Circulars year-tab row ────────────────────────────────────────────────
+const CircularsRow: React.FC<{
+  category: CategoryRow;
+  onDocClick: (d: DocItem) => void;
+  onDownload: (d: DocItem) => void;
+  isSaved: (id: string) => boolean;
+  onToggleSave: (d: DocItem) => void;
+}> = ({ category, onDocClick, onDownload, isSaved, onToggleSave }) => {
+  const [byYear, setByYear]     = useState<Record<string, DocItem[]>>({});
+  const [loading, setLoading]   = useState(true);
+  const [activeYear, setActiveYear] = useState<string>('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/list/circulars/by-year`)
+      .then(r => r.json())
+      .then(data => {
+        setByYear(data);
+        const years = Object.keys(data).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
+        if (years.length) setActiveYear(years[0]);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const scroll = (dir: 'left' | 'right') => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTo({
+      left: scrollRef.current.scrollLeft + (dir === 'left' ? -scrollRef.current.clientWidth / 2 : scrollRef.current.clientWidth / 2),
+      behavior: 'smooth',
+    });
+  };
+
+  const years = Object.keys(byYear).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
+  const activeDocs = byYear[activeYear] || [];
+  const totalCount = Object.values(byYear).reduce((s, arr) => s + arr.length, 0);
+
+  return (
+    <div className={cn('documentRow')}>
+      <div className={cn('rowHeader')}>
+        <h3 className={cn('rowTitle')}>
+          <category.icon size={14} className={cn(category.colorClass as any)} />
+          {category.label}
+          <span className={cn('rowCount')}>[{totalCount}]</span>
+        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Year tabs */}
+          {!loading && years.map(y => (
+            <button
+              key={y}
+              onClick={() => { setActiveYear(y); scrollRef.current?.scrollTo({ left: 0 }); }}
+              style={{
+                padding: '2px 8px',
+                borderRadius: '4px',
+                fontSize: '10px',
+                fontFamily: 'monospace',
+                fontWeight: activeYear === y ? 700 : 400,
+                background: activeYear === y ? 'rgba(79,183,197,0.18)' : 'rgba(255,255,255,0.04)',
+                color: activeYear === y ? '#4FB7C5' : '#6B7280',
+                border: activeYear === y ? '1px solid rgba(79,183,197,0.4)' : '1px solid rgba(255,255,255,0.06)',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                letterSpacing: '0.05em',
+              }}
+            >
+              {y}
+            </button>
+          ))}
+          <div className={cn('rowControls')} style={{ marginLeft: '4px' }}>
+            <button onClick={() => scroll('left')}  className={cn('scrollButton')}><ChevronLeft size={13} /></button>
+            <button onClick={() => scroll('right')} className={cn('scrollButton')}><ChevronRight size={13} /></button>
+          </div>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className={cn('scrollContainer')}>
+        {loading
+          ? [1, 2, 3, 4].map(i => (
+              <div key={i} className={cn('docCard')} style={{ background: 'rgba(15,23,34,0.2)', opacity: 0.5, borderStyle: 'dashed' }} />
+            ))
+          : activeDocs.slice(0, 40).map(doc => (
+              <DocCard key={doc.id} doc={doc} onClick={onDocClick} onDownload={onDownload}
+                isSaved={isSaved(doc.id)} onToggleSave={onToggleSave} />
+            ))
+        }
+      </div>
+    </div>
+  );
+};
+
+
 // ── Redesigned Core DocumentLibrary Component ─────────────────────────────
 export const DocumentLibrary: React.FC = () => {
   const [selectedDoc, setSelectedDoc] = useState<DocItem | null>(null);
@@ -428,8 +520,11 @@ export const DocumentLibrary: React.FC = () => {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {group.rows.map(row => (
-                  <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
-                    searchQuery="" isSaved={isSaved} onToggleSave={toggleSave} />
+                  row.id === 'circulars'
+                    ? <CircularsRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
+                        isSaved={isSaved} onToggleSave={toggleSave} />
+                    : <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
+                        searchQuery="" isSaved={isSaved} onToggleSave={toggleSave} />
                 ))}
               </div>
             </div>

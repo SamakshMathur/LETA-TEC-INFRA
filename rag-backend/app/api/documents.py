@@ -302,12 +302,21 @@ def list_all_documents():
 
 # ─── List by category ─────────────────────────────────────────────────────────
 
+def _extract_year(key_parts: list) -> str | None:
+    """Extract a 4-digit year (2010-2030) from S3 key path parts."""
+    for part in key_parts:
+        if part.isdigit() and 2010 <= int(part) <= 2030:
+            return part
+    return None
+
+
 @router.get("/list/{category}")
 def list_documents(category: str):
     folder_name = CATEGORY_MAP.get(category.lower())
     if not folder_name:
         raise HTTPException(status_code=404, detail="Category not found")
 
+    is_circulars = category.lower() == "circulars"
     docs = []
 
     if not S3_BUCKET and BASE_DIR.exists():
@@ -316,7 +325,9 @@ def list_documents(category: str):
             return []
         all_files = [f for f in folder_path.rglob("*")
                      if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS]
-        for idx, file_path in enumerate(all_files[:100]):
+        for idx, file_path in enumerate(all_files[:300]):
+            rel = str(file_path.relative_to(BASE_DIR)).replace("\\", "/")
+            year = _extract_year(rel.split("/")) if is_circulars else None
             docs.append({
                 "id": f"{category}_{idx}",
                 "title": file_path.name,
@@ -324,7 +335,8 @@ def list_documents(category: str):
                 "date": "N/A",
                 "size": f"{round(file_path.stat().st_size / 1024, 1)} KB",
                 "filename": file_path.name,
-                "path": str(file_path.relative_to(BASE_DIR)).replace("\\", "/"),
+                "path": rel,
+                **({"year": year} if is_circulars else {}),
             })
         return docs
 
@@ -340,6 +352,7 @@ def list_documents(category: str):
                     if Path(key).suffix.lower() not in SUPPORTED_EXTS:
                         continue
                     rel = key[len(f"{S3_DOCS_PREFIX}/"):]
+                    year = _extract_year(key.split("/")) if is_circulars else None
                     docs.append({
                         "id": f"{category}_{len(docs)}",
                         "title": Path(key).name,
@@ -348,12 +361,28 @@ def list_documents(category: str):
                         "size": f"{round(obj['Size'] / 1024, 1)} KB",
                         "filename": Path(key).name,
                         "path": rel,
+                        **({"year": year} if is_circulars else {}),
                     })
-                    if len(docs) >= 100:
-                        break
         except Exception as e:
             print(f"S3 list error for {folder_name}: {e}")
     return docs
+
+
+@router.get("/list/circulars/by-year")
+def list_circulars_by_year():
+    """Return circulars grouped by year: { '2017': [...], '2018': [...], ... }"""
+    all_docs = list_documents("circulars")
+    grouped: dict = {}
+    for doc in all_docs:
+        year = doc.get("year") or "other"
+        grouped.setdefault(year, []).append(doc)
+    # Sort years descending (newest first), keep 'other' at end
+    sorted_grouped = {}
+    for y in sorted((k for k in grouped if k != "other"), reverse=True):
+        sorted_grouped[y] = grouped[y]
+    if "other" in grouped:
+        sorted_grouped["other"] = grouped["other"]
+    return sorted_grouped
 
 
 # ─── AI Search ────────────────────────────────────────────────────────────────
