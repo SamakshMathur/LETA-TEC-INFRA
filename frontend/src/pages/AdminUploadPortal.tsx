@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { BASE_URL } from '../config/api';
+import SelectSwitcher from '../components/ui/SelectSwitcher';
 
 const CATEGORIES = [
   { key: 'acts',         label: 'Acts' },
@@ -207,18 +208,14 @@ const AdminUploadPortal: React.FC = () => {
             {/* Category selector */}
             <div className="bg-secondary rounded-2xl border border-white/[0.05] p-6 shadow-xl">
               <p className="text-xs font-semibold text-white uppercase tracking-wider mb-4 font-mono">Target Category</p>
-              <div className="grid grid-cols-4 gap-2">
-                {CATEGORIES.map(({ key, label }) => (
-                  <button key={key} onClick={() => setSelectedCategory(key)}
-                    className={`py-2 px-1 rounded-leta text-[11px] font-medium transition-all text-center ${
-                      selectedCategory === key
-                        ? 'bg-[#67E8F9] text-[#07070A] shadow-lg shadow-[#67E8F9]/10 scale-[1.01] font-semibold'
-                        : 'bg-[#07070A] text-[#9a9a9a] hover:text-white border border-white/[0.05] hover:border-white/[0.1] hover:bg-hover'
-                    }`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <SelectSwitcher
+                options={CATEGORIES.map(({ key, label }) => ({ id: key, label }))}
+                value={selectedCategory}
+                onChange={setSelectedCategory}
+                variant="primary"
+                layout="grid"
+                columns={4}
+              />
             </div>
 
             {/* Drop zone */}

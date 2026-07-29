@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import SelectSwitcher from '../ui/SelectSwitcher';
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Bookmark, Download,
@@ -277,27 +278,15 @@ const CircularsRow: React.FC<{
         </h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {/* Year tabs */}
-          {!loading && years.map(y => (
-            <button
-              key={y}
-              onClick={() => { setActiveYear(y); scrollRef.current?.scrollTo({ left: 0 }); }}
-              style={{
-                padding: '2px 8px',
-                borderRadius: '4px',
-                fontSize: '10px',
-                fontFamily: 'monospace',
-                fontWeight: activeYear === y ? 700 : 400,
-                background: activeYear === y ? 'rgba(79,183,197,0.18)' : 'rgba(255,255,255,0.04)',
-                color: activeYear === y ? '#4FB7C5' : '#6B7280',
-                border: activeYear === y ? '1px solid rgba(79,183,197,0.4)' : '1px solid rgba(255,255,255,0.06)',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                letterSpacing: '0.05em',
-              }}
-            >
-              {y}
-            </button>
-          ))}
+          {!loading && (
+            <SelectSwitcher
+              options={years.map(y => ({ id: y, label: y }))}
+              value={activeYear}
+              onChange={y => { setActiveYear(y); scrollRef.current?.scrollTo({ left: 0 }); }}
+              variant="subtle"
+              layout="scroll"
+            />
+          )}
           <div className={cn('rowControls')} style={{ marginLeft: '4px' }}>
             <button onClick={() => scroll('left')}  className={cn('scrollButton')}><ChevronLeft size={13} /></button>
             <button onClick={() => scroll('right')} className={cn('scrollButton')}><ChevronRight size={13} /></button>
@@ -446,21 +435,13 @@ export const DocumentLibrary: React.FC = () => {
 
       {/* ── 2. STATUTORY DOCUMENT FILTERS ──────────────────────────────────── */}
       <div className={cn('filtersWrapper')}>
-        {FILTER_OPTIONS.map((opt) => {
-          const isSelected = selectedFilter === opt.id;
-          return (
-            <button
-              key={opt.id}
-              onClick={() => setSelectedFilter(opt.id)}
-              className={cn('filterButton', {
-                filterButtonActive: isSelected,
-                filterButtonInactive: !isSelected
-              })}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
+        <SelectSwitcher
+          options={FILTER_OPTIONS.map(o => ({ id: o.id, label: o.label }))}
+          value={selectedFilter}
+          onChange={setSelectedFilter}
+          variant="primary"
+          layout="flex"
+        />
       </div>
 
       {/* ── 3. INSTANT SEARCH RESULTS ─────────────────────────────────────── */}
