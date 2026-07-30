@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from app.security import get_current_user
+from app.security import get_jwt_user
 from app.database import get_user_collection
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ def create_order(req: CreateOrderRequest):
 @router.post("/verify")
 def verify_payment(
     req: VerifyPaymentRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_jwt_user),
 ):
     """Verify the HMAC signature returned by Razorpay and start the session timer."""
     key_secret = os.getenv("RAZORPAY_KEY_SECRET", "")

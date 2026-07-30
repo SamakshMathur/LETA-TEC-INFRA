@@ -162,8 +162,11 @@ const Payment: React.FC = () => {
               }
             } catch {}
             setSuccess(true);
+          } else if (verifyRes.status === 401) {
+            setPayError('Your session expired during checkout. Please log in again — your payment was received and will be credited once you log back in.');
+            setLoading(false);
           } else {
-            setPayError('Payment verification failed. Please contact support.');
+            setPayError('Payment verification failed. Please contact support with your payment ID.');
             setLoading(false);
           }
         },

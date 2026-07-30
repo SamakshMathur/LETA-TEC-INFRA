@@ -84,3 +84,19 @@ async def get_current_admin(current_user: dict = Depends(get_current_user)) -> d
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin clearance required")
     return current_user
+
+async def get_jwt_user(token: str = Depends(oauth2_scheme)) -> dict:
+    """Like get_current_user but skips session_end check — used for payment verify
+    so users with expired sessions can still renew by purchasing a new plan."""
+    payload = verify_token(token, "access")
+    username = payload.get("sub")
+    if username is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+    from app.database import get_user_collection
+    users_col = get_user_collection()
+    if users_col is not None:
+        user = users_col.find_one({"username": username}, {"_id": 0, "password": 0})
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        return user
+    return {"username": username, "role": "user", "verified": True}
