@@ -24,14 +24,14 @@ PLANS = {
     "1hr": {
         "name": "1-Hour Access",
         "description": "Full module access for 1 hour",
-        "amount": 49900,        # paise (₹499 × 100)
+        "amount": 1000,         # paise (₹10 × 100) — TEST AMOUNT
         "currency": "INR",
         "duration_hours": 1,
     },
     "3hr": {
         "name": "3-Hour Access",
         "description": "Full module access for 3 hours",
-        "amount": 99900,        # paise (₹999 × 100)
+        "amount": 1000,         # paise (₹10 × 100) — TEST AMOUNT
         "currency": "INR",
         "duration_hours": 3,
     },

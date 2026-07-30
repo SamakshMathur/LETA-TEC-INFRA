@@ -36,8 +36,8 @@ const PLANS: Array<{
   {
     id: '1hr',
     label: '1-Hour Access',
-    price: '₹499',
-    rawAmount: 499,
+    price: '₹10',
+    rawAmount: 10,
     duration: '1 hour',
     badge: null,
     features: ['Full AI workspace', ACCESS_DOCS, 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save'],
@@ -45,8 +45,8 @@ const PLANS: Array<{
   {
     id: '3hr',
     label: '3-Hour Access',
-    price: '₹999',
-    rawAmount: 999,
+    price: '₹10',
+    rawAmount: 10,
     duration: '3 hours',
     badge: 'Best Value',
     features: ['Full AI workspace', ACCESS_DOCS, 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save', 'Priority response'],
