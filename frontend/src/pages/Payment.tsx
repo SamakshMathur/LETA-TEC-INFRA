@@ -82,6 +82,30 @@ const getAuthHeader = (): Record<string, string> => {
   } catch { return {}; }
 };
 
+// Silently refresh access token before opening Razorpay so the 15-min expiry
+// doesn't bite if the user was already near the limit when they clicked Pay.
+const refreshAccessToken = async (): Promise<void> => {
+  try {
+    const raw = localStorage.getItem('pro.auth.session');
+    if (!raw) return;
+    const stored = JSON.parse(raw);
+    const refreshToken = stored?.tokens?.refreshToken;
+    if (!refreshToken) return;
+    const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem('pro.auth.session', JSON.stringify({
+        ...stored,
+        tokens: { ...stored.tokens, ...data.tokens },
+      }));
+    }
+  } catch { /* non-fatal — existing token used as fallback */ }
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 const Payment: React.FC = () => {
@@ -117,6 +141,8 @@ const Payment: React.FC = () => {
       const loaded = await loadRazorpay();
       if (!loaded) throw new Error('Razorpay SDK failed to load');
 
+      // Refresh token first — gives a fresh 15-min window before the modal opens
+      await refreshAccessToken();
       const authHeader = getAuthHeader();
       const orderRes = await fetch(`${BASE_URL}/api/payments/create-order`, {
         method: 'POST',
@@ -139,9 +165,11 @@ const Payment: React.FC = () => {
         prefill: { email: user?.email || '' },
         theme: { color: B.accent },
         handler: async (response: any) => {
+          // Re-read from localStorage so we use the token refreshed before modal opened
+          const verifyHeader = getAuthHeader();
           const verifyRes = await fetch(`${BASE_URL}/api/payments/verify`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeader },
+            headers: { 'Content-Type': 'application/json', ...verifyHeader },
             body: JSON.stringify({
               razorpay_order_id:   response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
