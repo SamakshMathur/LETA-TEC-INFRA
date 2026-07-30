@@ -276,34 +276,53 @@ const CircularsRow: React.FC<{
           {category.label}
           <span className={cn('rowCount')}>[{totalCount}]</span>
         </h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {/* Year tabs */}
-          {!loading && (
-            <SelectSwitcher
-              options={years.map(y => ({ id: y, label: y }))}
-              value={activeYear}
-              onChange={y => { setActiveYear(y); scrollRef.current?.scrollTo({ left: 0 }); }}
-              variant="subtle"
-              layout="scroll"
-            />
-          )}
-          <div className={cn('rowControls')} style={{ marginLeft: '4px' }}>
-            <button onClick={() => scroll('left')}  className={cn('scrollButton')}><ChevronLeft size={13} /></button>
-            <button onClick={() => scroll('right')} className={cn('scrollButton')}><ChevronRight size={13} /></button>
-          </div>
+        <div className={cn('rowControls')}>
+          <button onClick={() => scroll('left')}  className={cn('scrollButton')}><ChevronLeft size={13} /></button>
+          <button onClick={() => scroll('right')} className={cn('scrollButton')}><ChevronRight size={13} /></button>
         </div>
       </div>
 
-      <div ref={scrollRef} className={cn('scrollContainer')}>
-        {loading
-          ? [1, 2, 3, 4].map(i => (
-              <div key={i} className={cn('docCard')} style={{ background: 'rgba(15,23,34,0.2)', opacity: 0.5, borderStyle: 'dashed' }} />
-            ))
-          : activeDocs.slice(0, 40).map(doc => (
-              <DocCard key={doc.id} doc={doc} onClick={onDocClick} onDownload={onDownload}
-                isSaved={isSaved(doc.id)} onToggleSave={onToggleSave} />
-            ))
-        }
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+        {/* Vertical year pills */}
+        {!loading && years.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+            {years.map(y => (
+              <button
+                key={y}
+                onClick={() => { setActiveYear(y); scrollRef.current?.scrollTo({ left: 0 }); }}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontFamily: 'monospace',
+                  fontWeight: y === activeYear ? 700 : 400,
+                  border: `1px solid ${y === activeYear ? 'rgba(79,183,197,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                  background: y === activeYear ? 'rgba(79,183,197,0.18)' : 'rgba(255,255,255,0.03)',
+                  color: y === activeYear ? '#4FB7C5' : '#6B7280',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  whiteSpace: 'nowrap',
+                  textAlign: 'center',
+                }}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Horizontal doc scroll */}
+        <div ref={scrollRef} className={cn('scrollContainer')} style={{ flex: 1 }}>
+          {loading
+            ? [1, 2, 3, 4].map(i => (
+                <div key={i} className={cn('docCard')} style={{ background: 'rgba(15,23,34,0.2)', opacity: 0.5, borderStyle: 'dashed' }} />
+              ))
+            : activeDocs.slice(0, 40).map(doc => (
+                <DocCard key={doc.id} doc={doc} onClick={onDocClick} onDownload={onDownload}
+                  isSaved={isSaved(doc.id)} onToggleSave={onToggleSave} />
+              ))
+          }
+        </div>
       </div>
     </div>
   );

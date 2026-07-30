@@ -688,9 +688,9 @@ class Retriever:
         # Drafts need: statute ≥10, case_law ≥10, circular ≥5
         # Q&A needs:   statute ≥8,  case_law ≥6,  circular ≥4
         _quotas = (
-            {"statute": 10, "case_law": 8, "circular": 6}   # drafts: need judgments + circulars
+            {"statute": 10, "case_law": 8, "circular": 12}  # drafts: need judgments + circulars
             if is_draft else
-            {"statute": 8, "case_law": 5, "circular": 6}    # Q&A: balanced; circulars boosted, relevance decides the rest
+            {"statute": 8, "case_law": 5, "circular": 12}   # Q&A: always pull 12 circular chunks even for general queries
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
 
