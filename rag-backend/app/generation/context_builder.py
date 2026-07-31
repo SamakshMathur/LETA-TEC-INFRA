@@ -4,9 +4,9 @@ from pathlib import Path
 
 # Character caps — tuned for TITAN sub-5s target.
 # Q&A mode: 15 000 chars. Draft mode: 30 000 chars (needed for 5000-word replies).
-MAX_CONTEXT_CHARS_QA    = 15000
+MAX_CONTEXT_CHARS_QA    = 18000   # was 15000 — circulars are dense, more context helps
 MAX_CONTEXT_CHARS_DRAFT = 30000
-MAX_CHUNK_CHARS_QA      = 1000
+MAX_CHUNK_CHARS_QA      = 1400   # was 1000 — prevents circulars being truncated mid-clause
 MAX_CHUNK_CHARS_DRAFT   = 1800  # longer excerpts needed for verbatim statutory reproduction
 
 # ─────────────────────────────────────────────────────────────

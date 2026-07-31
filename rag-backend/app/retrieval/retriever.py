@@ -148,6 +148,8 @@ _GST_ABBREV = [
     (re.compile(r'\bfaq\b', re.IGNORECASE), 'frequently asked questions FAQ'),
     (re.compile(r'\baar\b', re.IGNORECASE), 'advance ruling AAR'),
     (re.compile(r'\bpoc\b', re.IGNORECASE), 'place of supply POS'),
+    # CBIC expands to full form — circulars/instructions are issued by CBIC
+    (re.compile(r'\bcbic\b', re.IGNORECASE), 'CBIC central board indirect taxes customs circular instruction'),
     # Normalize section shorthand: "sec 16", "s.16", "s16" → "section 16"
     (re.compile(r'\bsec\.?\s*(\d)', re.IGNORECASE), r'section \1'),
     (re.compile(r'\bs\.\s*(\d)', re.IGNORECASE), r'section \1'),
@@ -218,6 +220,14 @@ def _extract_query_refs(query: str) -> list:
     for m in re.finditer(r'\bschedule\s+([ivxlcdm]+|\d+)\b', q):
         sch = m.group(1).upper()
         key = f"CGST_SCH_{sch}"
+        if key not in seen:
+            seen.add(key)
+            refs.append(key)
+
+    # Circular references: "Circular No. 183", "Circular 183/15/2022", "CBIC Circular 183"
+    for m in re.finditer(r'\bcircular\s+(?:no\.?\s*)?(\d{2,3})\b', q):
+        cir_num = m.group(1)
+        key = f"CIRCULAR_{cir_num}"
         if key not in seen:
             seen.add(key)
             refs.append(key)
@@ -307,6 +317,14 @@ def tokenize_text(text: str):
     # e.g. "DRC-01", "GSTR-3B", "RFD-01"
     for m in re.finditer(r'\b[a-z]{2,5}-[\w\d]+\b', text_lower):
         tokens.append(m.group(0))
+
+    # Circular/notification number references as compound tokens
+    # e.g. "Circular No. 183" → "circular_no_183", "cir-183-15" → "circular_183"
+    for m in re.finditer(
+        r'\b(?:circular|cir)[-_.\s]*(?:no\.?[-_.\s]*)?(\d{2,3})\b',
+        text_lower
+    ):
+        tokens.append(f"circular_{m.group(1)}")
 
     # Add bigram tokens for GST compound phrases
     for phrase in _GST_BIGRAMS:
@@ -452,6 +470,32 @@ class Retriever:
                     self._provision_index[_ref].append(_ci)
         logger.info(f"Provision index built: {len(self._provision_index)} citation keys")
 
+        # Build circular number index for O(1) direct circular lookup.
+        # Maps "CIRCULAR_183" → list of chunk indices from circular filenames.
+        # Covers patterns: Circular-No-183, cir-183, circular-cgst-183, circularno-183.
+        self._circular_index: dict = {}
+        _cir_num_re = re.compile(
+            r'(?:circular[s]?[-_.\s]*(?:[a-z]*[-_.\s]*)?(?:no[-_.\s]*)?|cir[-_.](?:cgst[-_.])?|circularno[-_.])(\d{2,3})',
+            re.IGNORECASE,
+        )
+        _cir_leading_re = re.compile(r'^(\d{2,3})[-_]\d+[-_]\d{4}', re.IGNORECASE)
+        for _ci, _chunk in enumerate(self.chunks):
+            _meta = _chunk.get("metadata", {})
+            _cat = (_meta.get("category") or "").lower()
+            _dtype = (_meta.get("document_type") or "").lower()
+            if "circular" not in _cat and "circular" not in _dtype:
+                continue
+            _rel = _chunk.get("rel_path") or _meta.get("rel_path", "")
+            _fname = _rel.split("/")[-1].split("\\")[-1] if _rel else ""
+            _m = _cir_num_re.search(_fname) or _cir_leading_re.match(_fname)
+            if _m:
+                _key = f"CIRCULAR_{_m.group(1)}"
+                if _key not in self._circular_index:
+                    self._circular_index[_key] = []
+                if _ci not in self._circular_index[_key]:
+                    self._circular_index[_key].append(_ci)
+        logger.info(f"Circular index built: {len(self._circular_index)} circular numbers indexed")
+
         # Build full-corpus document map for context window expansion.
         # Maps rel_path → sorted list of (page_num, chunk_index).
         # Built once at startup so every query can fetch neighbors from the
@@ -547,28 +591,42 @@ class Retriever:
         """
         Returns chunks that explicitly cite any of the given provision keys,
         using the pre-built provision index for O(1) lookup per key.
+        CIRCULAR_N keys are resolved via _circular_index (filename-based).
         These chunks are pinned at the top of combined_results with
         _statute_priority=1.0 so they survive FlashRank and LegalReranker.
-        Capped at 20 to avoid flooding the reranker with statute-only chunks.
+        Capped at 20 to avoid flooding the reranker with pinned chunks.
         """
         if not refs or not hasattr(self, "_provision_index"):
             return []
         seen_ids: set = set()
         pinned = []
+
+        def _pin(idx: int) -> bool:
+            if idx >= len(self.chunks):
+                return False
+            chunk = self.chunks[idx]
+            cid = chunk.get("chunk_id")
+            if cid and cid not in seen_ids:
+                c = chunk.copy()
+                c["_pinned_by_ref"] = True
+                c["_statute_priority"] = 1.0
+                pinned.append(c)
+                seen_ids.add(cid)
+                return True
+            return False
+
         for ref in refs:
+            # Statutory provisions (CGST_SEC_16, CGST_RUL_89, etc.)
             for idx in self._provision_index.get(ref, []):
-                if idx >= len(self.chunks):
-                    continue
-                chunk = self.chunks[idx]
-                cid = chunk.get("chunk_id")
-                if cid and cid not in seen_ids:
-                    c = chunk.copy()
-                    c["_pinned_by_ref"] = True
-                    c["_statute_priority"] = 1.0
-                    pinned.append(c)
-                    seen_ids.add(cid)
+                _pin(idx)
                 if len(pinned) >= 20:
                     return pinned
+            # Circular number keys (CIRCULAR_183) — resolved from filename-based index
+            if ref.startswith("CIRCULAR_") and hasattr(self, "_circular_index"):
+                for idx in self._circular_index.get(ref, []):
+                    _pin(idx)
+                    if len(pinned) >= 20:
+                        return pinned
         return pinned
 
     def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False, skip_rerank: bool = False):
