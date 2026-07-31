@@ -186,14 +186,20 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         if len(chunk_text) > max_chunk:
             chunk_text = chunk_text[:max_chunk] + "... [truncated]"
 
-        # Use filename as the identifier so the LLM cites by name, not number.
-        # The frontend's linkifyLegalRefs then matches the name directly to a source URL.
+        # Include DOCUMENT LINK in the source block so the LLM can output clickable links.
+        # The frontend renders markdown hyperlinks; the model is instructed to use this URL.
+        year_tag = ""
+        doc_year = c.get("year") or c.get("metadata", {}).get("year")
+        if doc_year:
+            year_tag = f" | Year: {doc_year}"
+
         context_blocks.append(
             f"════════════════════════════════════════\n"
-            f"SOURCE: «{filename}» | {authority_rank} | {source_type}\n"
+            f"SOURCE: «{filename}» | {authority_rank} | {source_type}{year_tag}\n"
+            f"DOCUMENT LINK: {link}\n"
             f"Page: {c.get('page', 'N/A')}{relevance_tag}\n"
             f"════════════════════════════════════════\n"
-            f"[QUOTABLE TEXT — cite this document by its exact name «{filename}»]\n"
+            f"[QUOTABLE TEXT — cite «{filename}» verbatim and include its DOCUMENT LINK as [📄 View]({link})]\n"
             f"\"\"\"\n"
             f"{chunk_text}\n"
             f"\"\"\"\n"
