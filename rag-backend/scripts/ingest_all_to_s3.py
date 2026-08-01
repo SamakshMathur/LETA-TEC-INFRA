@@ -1,16 +1,26 @@
 """
-Ingest ALL missing documents from RAG_INFORMATION_DATABASE into FAISS and upload to S3.
+Ingest documents from RAG_INFORMATION_DATABASE into FAISS and upload to S3.
 
-Supports resume: if killed mid-run, restart and it picks up from the last checkpoint.
+Two modes:
 
-Run from rag-backend/ with:
-  .\.venv_win\Scripts\python.exe scripts\ingest_all_to_s3.py
+  Default (incremental):
+    Only ingests documents NOT already in the index.
+    .\.venv_win\Scripts\python.exe scripts\ingest_all_to_s3.py
 
-Files used for resume:
-  vectordb/pending_chunks.jsonl   — extracted chunks waiting to be embedded
-  vectordb/ingest_checkpoint.json — {batch_completed, total} saved every 20 batches
-  vectordb/index.checkpoint.faiss — FAISS state at last checkpoint
+  Rebuild (full re-ingestion with contextual retrieval):
+    Wipes the local index clean and re-ingests EVERY document.
+    Each document gets a 2-sentence Haiku context prefix baked into its
+    embeddings (Anthropic's contextual retrieval — cuts retrieval failure by ~49%).
+    Contexts are generated in parallel (20 workers, ~1 min for 1,400 docs).
+    Takes 2-4 hours total (embedding is the bottleneck). Safe to kill and resume.
+    .\.venv_win\Scripts\python.exe scripts\ingest_all_to_s3.py --rebuild
+
+Resume files (both modes):
+  vectordb/pending_chunks.jsonl       — extracted chunks waiting to be embedded
+  vectordb/ingest_checkpoint.json     — {batch_completed, total} saved every 10 batches
+  vectordb/index.checkpoint.faiss     — FAISS state at last checkpoint
   vectordb/index.checkpoint.meta.json
+  vectordb/doc_contexts.json          — cached Haiku context per document
 """
 
 import json
@@ -306,19 +316,26 @@ def ingest_pdf(pdf_path: Path, document_type: str, category_key: str,
 
 # ── Embedding ──────────────────────────────────────────────────────────────────
 
-def embed_and_append_all(all_new_chunks: list, resume_from_batch: int = 0):
+def embed_and_append_all(all_new_chunks: list, resume_from_batch: int = 0,
+                         fresh_index: bool = False):
     import faiss
     from sentence_transformers import SentenceTransformer
+
+    VECTOR_DIM = 1024  # BAAI/bge-large-en-v1.5
 
     log.info("Loading BAAI/bge-large-en-v1.5 model...")
     model = SentenceTransformer("BAAI/bge-large-en-v1.5")
     log.info("Model loaded.")
 
-    # Load from checkpoint if resuming, else from S3-downloaded base
+    # Rebuild: start from empty index.  Incremental: load S3 base or checkpoint.
     if resume_from_batch > 0 and INDEX_CKPT.exists():
         log.info(f"Resuming from checkpoint (batch {resume_from_batch})...")
         index     = faiss.read_index(str(INDEX_CKPT))
         meta_list = load_meta(META_CKPT)
+    elif fresh_index:
+        log.info("Creating fresh empty FAISS IndexFlatIP (rebuild mode)...")
+        index     = faiss.IndexFlatIP(VECTOR_DIM)
+        meta_list = []
     else:
         index     = faiss.read_index(str(INDEX_FILE))
         meta_list = load_meta(META_FILE)
@@ -359,25 +376,86 @@ def embed_and_append_all(all_new_chunks: list, resume_from_batch: int = 0):
     return total_added
 
 
+# ── Parallel context pre-generation ───────────────────────────────────────────
+
+def _generate_all_contexts_parallel(pdf_list: list, doc_contexts: dict,
+                                    workers: int = 20) -> dict:
+    """
+    Generate Haiku context for every PDF in parallel.
+    pdf_list: list of (pdf_path, document_type, cat_key, pages_text[0])
+    Returns updated doc_contexts dict.
+    """
+    import concurrent.futures
+
+    def _generate_one(item):
+        pdf_path, doc_type, cat_key, first_page = item
+        rel_path = str(pdf_path.relative_to(DB_ROOT)).replace("\\", "/")
+        ctx_key = rel_path.lower()
+        if ctx_key in doc_contexts:
+            return ctx_key, doc_contexts[ctx_key]   # already cached
+        ctx = _generate_doc_context(rel_path, doc_type, first_page)
+        return ctx_key, ctx
+
+    todo = [item for item in pdf_list
+            if str(item[0].relative_to(DB_ROOT)).replace("\\", "/").lower()
+            not in doc_contexts]
+    done = len(pdf_list) - len(todo)
+    log.info(f"  Context generation: {done} cached, {len(todo)} to generate "
+             f"({workers} parallel workers)")
+
+    if not todo:
+        return doc_contexts
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = {ex.submit(_generate_one, item): item for item in todo}
+        completed = 0
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                ctx_key, ctx = future.result()
+                doc_contexts[ctx_key] = ctx
+                completed += 1
+                if completed % 50 == 0 or completed == len(todo):
+                    log.info(f"  Contexts generated: {completed}/{len(todo)}")
+                    _save_doc_contexts(doc_contexts)
+            except Exception as e:
+                log.warning(f"  Context generation error: {e}")
+
+    _save_doc_contexts(doc_contexts)
+    return doc_contexts
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="LETA Ingestion Pipeline")
+    parser.add_argument(
+        "--rebuild", action="store_true",
+        help=(
+            "Full rebuild: wipe local index and re-ingest ALL documents with "
+            "contextual retrieval embeddings. Takes 2-4 hrs. Safe to interrupt "
+            "and resume (run again without --rebuild to continue)."
+        ),
+    )
+    args = parser.parse_args()
+    REBUILD = args.rebuild
+
     log.info("=" * 70)
-    log.info("LETA FULL DATABASE INGESTION PIPELINE (with resume support)")
+    mode = "FULL REBUILD (contextual retrieval)" if REBUILD else "INCREMENTAL"
+    log.info(f"LETA INGESTION PIPELINE — {mode}")
     log.info("=" * 70)
 
+    # ── Resume path (both modes) ────────────────────────────────────────────
     checkpoint = load_checkpoint()
-    resuming   = checkpoint is not None and PENDING_FILE.exists() and INDEX_CKPT.exists()
+    resuming   = (not REBUILD
+                  and checkpoint is not None
+                  and PENDING_FILE.exists()
+                  and INDEX_CKPT.exists())
 
     if resuming:
         resume_from = checkpoint["batch_completed"] + 1
-        log.info(f"\nRESUMING from batch {resume_from} (checkpoint saved at "
-                 f"{time.strftime('%H:%M:%S', time.localtime(checkpoint['saved_at']))})")
-
-        log.info("\n[SKIP] S3 download (using local checkpoint files)")
-        log.info("\n[SKIP] PDF extraction (using pending_chunks.jsonl)")
-
-        log.info(f"\nLoading {PENDING_FILE.name}...")
+        log.info(f"\nRESUMING from batch {resume_from} "
+                 f"(saved {time.strftime('%H:%M:%S', time.localtime(checkpoint['saved_at']))})")
         all_new_chunks = []
         with PENDING_FILE.open(encoding="utf-8", errors="replace") as f:
             for line in f:
@@ -385,108 +463,162 @@ def main():
                     all_new_chunks.append(json.loads(line))
                 except Exception:
                     pass
-        log.info(f"Loaded {len(all_new_chunks)} pending chunks.")
+        log.info(f"Loaded {len(all_new_chunks)} pending chunks from checkpoint.")
+        fresh = False
 
     else:
         resume_from = 0
+        fresh = REBUILD
 
-        # 1. Download fresh S3 base
-        log.info("\n[1/5] Downloading latest S3 base files...")
-        download_from_s3()
+        if REBUILD:
+            log.info("\n[REBUILD] Clearing checkpoint files for fresh start...")
+            cleanup_checkpoint()
+            log.info("[REBUILD] Will create empty FAISS index — NOT downloading from S3.")
+        else:
+            log.info("\n[1/5] Downloading latest S3 base files...")
+            download_from_s3()
 
-        # 2. Build indexed source set
-        log.info("\n[2/5] Scanning existing index...")
-        indexed = get_indexed_sources()
+        # Decide which documents to process
+        if REBUILD:
+            # All documents on disk
+            all_by_cat: dict = {}
+            grand_total_disk = 0
+            log.info("\n[2/5] Scanning all categories for full rebuild...")
+            for folder_name, doc_type, cat_key in CATEGORIES:
+                cat_root = DB_ROOT / folder_name
+                if not cat_root.exists():
+                    log.warning(f"  {folder_name}: NOT FOUND — skipping")
+                    continue
+                pdfs = sorted([
+                    p for p in cat_root.rglob("*.pdf")
+                    if p.is_file()
+                    and not any(sk in p.parts for sk in SKIP_FOLDERS)
+                    and not p.name.startswith("._")
+                ])
+                grand_total_disk += len(pdfs)
+                if pdfs:
+                    all_by_cat[folder_name] = (pdfs, doc_type, cat_key)
+                log.info(f"  {folder_name:<30} {len(pdfs):>4} files")
+            total_to_process = sum(len(v[0]) for v in all_by_cat.values())
+            log.info(f"\n  Total: {grand_total_disk} PDFs across all categories")
+        else:
+            log.info("\n[2/5] Scanning existing index...")
+            indexed = get_indexed_sources()
+            log.info("\n[3/5] Auditing all categories...")
+            all_by_cat: dict = {}
+            grand_total_disk = 0
+            for folder_name, doc_type, cat_key in CATEGORIES:
+                cat_root = DB_ROOT / folder_name
+                if not cat_root.exists():
+                    log.warning(f"  {folder_name}: NOT FOUND — skipping")
+                    continue
+                all_pdfs = sorted([
+                    p for p in cat_root.rglob("*.pdf")
+                    if p.is_file()
+                    and not any(sk in p.parts for sk in SKIP_FOLDERS)
+                    and not p.name.startswith("._")
+                ])
+                grand_total_disk += len(all_pdfs)
+                missing = [p for p in all_pdfs
+                           if str(p).replace("\\", "/").lower() not in indexed]
+                if missing:
+                    all_by_cat[folder_name] = (missing, doc_type, cat_key)
+                log.info(f"  {folder_name:<30} disk={len(all_pdfs):>4}  "
+                         f"indexed={len(all_pdfs)-len(missing):>4}  "
+                         f"MISSING={len(missing):>4}")
+            total_to_process = sum(len(v[0]) for v in all_by_cat.values())
+            log.info(f"\n  Disk total: {grand_total_disk} | To process: {total_to_process}")
 
-        # 3. Discover + extract all missing PDFs
-        log.info("\n[3/5] Auditing all categories...")
-        missing_by_cat: dict = defaultdict(list)
-        grand_total_disk = 0
-
-        for folder_name, doc_type, cat_key in CATEGORIES:
-            cat_root = DB_ROOT / folder_name
-            if not cat_root.exists():
-                log.warning(f"  {folder_name}: NOT FOUND — skipping")
-                continue
-            all_pdfs = [
-                p for p in cat_root.rglob("*.pdf")
-                if p.is_file()
-                and not any(sk in p.parts for sk in SKIP_FOLDERS)
-                and not p.name.startswith("._")   # skip Mac metadata stubs
-            ]
-            grand_total_disk += len(all_pdfs)
-            missing = [p for p in sorted(all_pdfs)
-                       if str(p).replace("\\", "/").lower() not in indexed]
-            if missing:
-                missing_by_cat[folder_name] = (missing, doc_type, cat_key)
-            log.info(f"  {folder_name:<30} disk={len(all_pdfs):>4}  "
-                     f"indexed={len(all_pdfs)-len(missing):>4}  MISSING={len(missing):>4}")
-
-        total_missing = sum(len(v[0]) for v in missing_by_cat.values())
-        log.info(f"\n  Disk total: {grand_total_disk} | Missing: {total_missing}")
-
-        if total_missing == 0:
-            log.info("All documents already indexed.")
+        if total_to_process == 0:
+            log.info("Nothing to process — index is complete.")
             return
 
-        log.info(f"\n[4/5] Extracting, contextualising, and chunking {total_missing} PDFs...")
-        log.info("      Contextual Retrieval: Claude Haiku generates a 2-sentence context")
-        log.info("      prefix per document baked into embeddings (cached to doc_contexts.json)")
-        doc_contexts = _load_doc_contexts()
+        # ── Step: extract text from all PDFs ─────────────────────────────────
+        log.info(f"\n[3/5] Extracting text from {total_to_process} PDFs...")
+        raw_chunks_by_doc: dict = {}   # rel_path → (list_of_chunks, doc_type, first_page)
+        all_pdfs_flat = []             # for parallel context generation
         all_new_chunks = []
+
         grand_idx = 0
-        for folder_name, (pdfs, doc_type, cat_key) in missing_by_cat.items():
-            log.info(f"\n  === {folder_name} ({len(pdfs)} files) ===")
+        for folder_name, (pdfs, doc_type, cat_key) in all_by_cat.items():
             for pdf in pdfs:
                 grand_idx += 1
-                log.info(f"  [{grand_idx}/{total_missing}] {pdf.relative_to(DB_ROOT)}")
-                new_chunks = ingest_pdf(pdf, doc_type, cat_key, doc_contexts=doc_contexts)
-                all_new_chunks.extend(new_chunks)
-                # Save context cache after each document so a crash loses at most 1 entry
-                if grand_idx % 10 == 0:
-                    _save_doc_contexts(doc_contexts)
-        _save_doc_contexts(doc_contexts)
-        log.info(f"  Context cache: {len(doc_contexts)} documents contextualised")
+                rel_path = str(pdf.relative_to(DB_ROOT)).replace("\\", "/")
+                if grand_idx % 100 == 1:
+                    log.info(f"  Extracting [{grand_idx}/{total_to_process}] {rel_path}")
+                chunks_no_ctx = ingest_pdf(pdf, doc_type, cat_key, doc_contexts=None)
+                if chunks_no_ctx:
+                    # Grab first-page text for context generation
+                    try:
+                        import fitz
+                        d = fitz.open(str(pdf))
+                        first_page = d[0].get_text().strip()[:800] if d.page_count else ""
+                        d.close()
+                    except Exception:
+                        first_page = chunks_no_ctx[0]["text"][:800]
+                    all_pdfs_flat.append((pdf, doc_type, cat_key, first_page))
+                    raw_chunks_by_doc[rel_path] = chunks_no_ctx
+        log.info(f"  Extracted {sum(len(v) for v in raw_chunks_by_doc.values())} chunks "
+                 f"from {len(raw_chunks_by_doc)} documents")
 
-        log.info(f"\nTotal chunks extracted: {len(all_new_chunks)}")
+        # ── Step: generate contexts in parallel ───────────────────────────────
+        log.info(f"\n[4/5] Generating contextual embeddings via Claude Haiku...")
+        log.info("      (2 sentences per document, 20 parallel workers)")
+        doc_contexts = _load_doc_contexts()
+        doc_contexts = _generate_all_contexts_parallel(all_pdfs_flat, doc_contexts, workers=20)
+        log.info(f"  Context cache now covers {len(doc_contexts)} documents")
+
+        # ── Step: apply contexts to chunks ────────────────────────────────────
+        log.info("\n  Applying context prefixes to chunks...")
+        for rel_path, chunks in raw_chunks_by_doc.items():
+            ctx_prefix = doc_contexts.get(rel_path.lower(), "")
+            for c in chunks:
+                c["embed_text"] = f"{ctx_prefix}\n\n{c['text']}" if ctx_prefix else c["text"]
+            all_new_chunks.extend(chunks)
+
+        log.info(f"  Total chunks ready for embedding: {len(all_new_chunks)}")
 
         if not all_new_chunks:
-            log.error("No chunks produced. Check PDFs.")
+            log.error("No chunks produced. Check PDFs and paths.")
             return
 
-        # Save pending chunks for resume capability
+        # Save pending chunks + append to chunks.jsonl
         PENDING_FILE.parent.mkdir(parents=True, exist_ok=True)
         with PENDING_FILE.open("w", encoding="utf-8") as f:
             for c in all_new_chunks:
                 f.write(json.dumps(c, ensure_ascii=False) + "\n")
-        log.info(f"Pending chunks saved to {PENDING_FILE.name} (resume-safe)")
+        log.info(f"  Pending chunks saved ({PENDING_FILE.name}) — resume-safe")
 
-        # Append new chunks to chunks.jsonl
-        log.info("\nAppending to chunks.jsonl...")
         CHUNKS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with CHUNKS_FILE.open("a", encoding="utf-8") as f:
+        write_mode = "w" if REBUILD else "a"
+        with CHUNKS_FILE.open(write_mode, encoding="utf-8") as f:
             for c in all_new_chunks:
                 f.write(json.dumps(c, ensure_ascii=False) + "\n")
-        log.info(f"  Appended {len(all_new_chunks)} chunks.")
+        action = "Written" if REBUILD else "Appended"
+        log.info(f"  {action} {len(all_new_chunks)} chunks to chunks.jsonl")
 
-    # Embed + update FAISS (with checkpointing)
-    log.info(f"\n[{'RESUME' if resuming else '5'}/5] Embedding {len(all_new_chunks)} chunks "
-             f"({'resuming from' if resuming else 'starting at'} batch {resume_from})...")
-    embed_and_append_all(all_new_chunks, resume_from_batch=resume_from)
+    # ── Embed ─────────────────────────────────────────────────────────────────
+    total = len(all_new_chunks)
+    log.info(f"\n[5/5] Embedding {total} chunks "
+             f"({'resuming' if resuming else 'fresh' if REBUILD else 'incremental'})...")
+    if REBUILD:
+        log.info("  ETA: roughly 2-4 hours on CPU. Safe to interrupt — "
+                 "run again without --rebuild to resume from last checkpoint.")
+    embed_and_append_all(all_new_chunks, resume_from_batch=resume_from,
+                         fresh_index=fresh)
 
-    # Upload to S3
-    log.info("\nUploading updated files to S3...")
+    # ── Upload + restart ──────────────────────────────────────────────────────
+    log.info("\nUploading updated index to S3...")
     upload_to_s3()
 
-    # Restart ECS
-    log.info("\nRestarting ECS service...")
+    log.info("\nRestarting ECS service with new index...")
     restart_ecs()
 
-    # Cleanup checkpoint files
     cleanup_checkpoint()
 
     log.info("\n" + "=" * 70)
-    log.info(f"DONE — ECS restarting with complete knowledge base.")
+    log.info("DONE — ECS is restarting with the fully contextualised knowledge base.")
+    log.info("All circulars, notifications, and laws now have contextual embeddings.")
     log.info("=" * 70)
 
 
