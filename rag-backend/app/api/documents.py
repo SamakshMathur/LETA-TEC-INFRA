@@ -316,7 +316,8 @@ def list_documents(category: str):
     if not folder_name:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    is_circulars = category.lower() == "circulars"
+    # Extract year from folder path for any category that organises files by year subfolder
+    is_year_tagged = category.lower() in ("circulars", "notifications")
     docs = []
 
     if not S3_BUCKET and BASE_DIR.exists():
@@ -327,7 +328,7 @@ def list_documents(category: str):
                      if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS]
         for idx, file_path in enumerate(all_files[:300]):
             rel = str(file_path.relative_to(BASE_DIR)).replace("\\", "/")
-            year = _extract_year(rel.split("/")) if is_circulars else None
+            year = _extract_year(rel.split("/")) if is_year_tagged else None
             docs.append({
                 "id": f"{category}_{idx}",
                 "title": file_path.name,
@@ -336,7 +337,7 @@ def list_documents(category: str):
                 "size": f"{round(file_path.stat().st_size / 1024, 1)} KB",
                 "filename": file_path.name,
                 "path": rel,
-                **({"year": year} if is_circulars else {}),
+                **({"year": year} if is_year_tagged else {}),
             })
         return docs
 
@@ -352,7 +353,7 @@ def list_documents(category: str):
                     if Path(key).suffix.lower() not in SUPPORTED_EXTS:
                         continue
                     rel = key[len(f"{S3_DOCS_PREFIX}/"):]
-                    year = _extract_year(key.split("/")) if is_circulars else None
+                    year = _extract_year(key.split("/")) if is_year_tagged else None
                     docs.append({
                         "id": f"{category}_{len(docs)}",
                         "title": Path(key).name,
@@ -361,7 +362,7 @@ def list_documents(category: str):
                         "size": f"{round(obj['Size'] / 1024, 1)} KB",
                         "filename": Path(key).name,
                         "path": rel,
-                        **({"year": year} if is_circulars else {}),
+                        **({"year": year} if is_year_tagged else {}),
                     })
         except Exception as e:
             print(f"S3 list error for {folder_name}: {e}")
