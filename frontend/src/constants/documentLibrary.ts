@@ -7,38 +7,42 @@ export const CATEGORY_GROUPS = [
   {
     title: 'GST STATUTORY ARCHIVES',
     rows: [
-      { id: 'circulars',    label: 'Circulars & Notifications',   icon: Layers,   colorClass: 'colorCirculars',  accentClass: 'accentCirculars' },
-      { id: 'aars',         label: 'Advance Rulings (AAR)',       icon: Gavel,    colorClass: 'colorAars',       accentClass: 'accentAars'   },
-      { id: 'highcourt',    label: 'High Court Case Laws',        icon: Book,     colorClass: 'colorHighcourt',  accentClass: 'accentHighcourt'  },
-      { id: 'supremecourt', label: 'Supreme Court Case Laws',     icon: Gavel,    colorClass: 'colorSupremecourt', accentClass: 'accentSupremecourt' },
+      { id: 'circulars',      label: 'CBIC Circulars (2017–2025)',     icon: Layers,   colorClass: 'colorCirculars',    accentClass: 'accentCirculars' },
+      { id: 'notifications',  label: 'CBIC Notifications (2017–2025)', icon: Scroll,   colorClass: 'colorNotifications', accentClass: 'accentNotifications' },
+      { id: 'aars',           label: 'Advance Rulings (AAR)',          icon: Gavel,    colorClass: 'colorAars',         accentClass: 'accentAars'   },
+      { id: 'highcourt',      label: 'High Court Case Laws',           icon: Book,     colorClass: 'colorHighcourt',    accentClass: 'accentHighcourt'  },
+      { id: 'supremecourt',   label: 'Supreme Court Case Laws',        icon: Gavel,    colorClass: 'colorSupremecourt', accentClass: 'accentSupremecourt' },
+    ],
+  },
+  {
+    title: 'ACTS & RULES',
+    rows: [
+      { id: 'acts',  label: 'GST Acts (CGST / IGST)',  icon: Book,     colorClass: 'colorActs',  accentClass: 'accentActs' },
+      { id: 'rules', label: 'GST Rules',               icon: Scroll,   colorClass: 'colorRules', accentClass: 'accentRules' },
+      { id: 'cgst',  label: 'CGST Act – Sections',     icon: FileText, colorClass: 'colorCgst',  accentClass: 'accentCgst' },
+      { id: 'igst',  label: 'IGST Act – Sections',     icon: Globe,    colorClass: 'colorIgst',  accentClass: 'accentIgst' },
+      { id: 'icai',  label: 'ICAI Guidance Notes',     icon: BookOpen, colorClass: 'colorIcai',  accentClass: 'accentIcai' },
     ],
   },
   {
     title: 'OPERATIONAL RESOURCES',
     rows: [
       { id: 'forms',     label: 'Statutory Forms',    icon: FileText, colorClass: 'colorForms',     accentClass: 'accentForms'   },
+      { id: 'faqs',      label: 'Official FAQs',      icon: Info,     colorClass: 'colorFaqs',      accentClass: 'accentFaqs'    },
       { id: 'brochures', label: 'Official Brochures', icon: BookOpen, colorClass: 'colorBrochures', accentClass: 'accentBrochures' },
-      { id: 'flyers',    label: 'Information Flyers', icon: Info,     colorClass: 'colorFlyers',    accentClass: 'accentFlyers'   },
-    ],
-  },
-  {
-    title: 'ACTS & FRAMEWORKS',
-    rows: [
-      { id: 'acts',  label: 'The GST Acts',          icon: Book,     colorClass: 'colorActs',  accentClass: 'accentActs' },
-      { id: 'rules', label: 'Statutory Rules',       icon: Scroll,   colorClass: 'colorRules', accentClass: 'accentRules' },
-      { id: 'cgst',  label: 'CGST Notifications',    icon: FileText, colorClass: 'colorCgst',  accentClass: 'accentCgst' },
-      { id: 'igst',  label: 'IGST Notifications',    icon: Globe,    colorClass: 'colorIgst',  accentClass: 'accentIgst'   },
+      { id: 'flyers',    label: 'AAR / App. Results', icon: Info,     colorClass: 'colorFlyers',    accentClass: 'accentFlyers'   },
     ],
   },
 ];
 
 export const FILTER_OPTIONS = [
-  { id: 'all',          label: 'All Material' },
-  { id: 'rules',        label: 'Acts & Rules' },
-  { id: 'circulars',    label: 'Circulars & Notices' },
-  { id: 'case-laws',    label: 'Appellate Cases' },
-  { id: 'aar',          label: 'AAR Rulings' },
-  { id: 'forms',        label: 'Forms & Briefs' },
+  { id: 'all',           label: 'All Material' },
+  { id: 'circulars',     label: 'Circulars' },
+  { id: 'notifications', label: 'Notifications' },
+  { id: 'rules',         label: 'Acts & Rules' },
+  { id: 'case-laws',     label: 'Appellate Cases' },
+  { id: 'aar',           label: 'AAR Rulings' },
+  { id: 'forms',         label: 'Forms & Briefs' },
 ];
 
 export const TRENDING_SEARCHES = [

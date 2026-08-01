@@ -373,11 +373,12 @@ export const DocumentLibrary: React.FC = () => {
 
     const filtered = selectedFilter === 'all' ? scored : scored.filter(({ doc }) => {
       const cat = doc.category || '';
-      if (selectedFilter === 'rules')     return cat === 'acts'      || cat === 'rules';
-      if (selectedFilter === 'circulars') return cat === 'circulars' || cat === 'cgst' || cat === 'igst';
-      if (selectedFilter === 'case-laws') return cat === 'highcourt' || cat === 'supremecourt';
-      if (selectedFilter === 'aar')       return cat === 'aars';
-      if (selectedFilter === 'forms')     return cat === 'forms'     || cat === 'brochures' || cat === 'flyers';
+      if (selectedFilter === 'circulars')     return cat === 'circulars';
+      if (selectedFilter === 'notifications') return cat === 'notifications';
+      if (selectedFilter === 'rules')         return cat === 'acts' || cat === 'rules' || cat === 'cgst' || cat === 'igst';
+      if (selectedFilter === 'case-laws')     return cat === 'highcourt' || cat === 'supremecourt';
+      if (selectedFilter === 'aar')           return cat === 'aars' || cat === 'flyers';
+      if (selectedFilter === 'forms')         return cat === 'forms' || cat === 'brochures' || cat === 'faqs';
       return true;
     });
 
@@ -394,11 +395,12 @@ export const DocumentLibrary: React.FC = () => {
     
     return CATEGORY_GROUPS.map(group => {
       const filteredRows = group.rows.filter(row => {
-        if (selectedFilter === 'rules') return row.id === 'acts' || row.id === 'rules';
-        if (selectedFilter === 'circulars') return row.id === 'circulars' || row.id === 'cgst' || row.id === 'igst';
-        if (selectedFilter === 'case-laws') return row.id === 'highcourt' || row.id === 'supremecourt';
-        if (selectedFilter === 'aar') return row.id === 'aars';
-        if (selectedFilter === 'forms') return row.id === 'forms' || row.id === 'brochures' || row.id === 'flyers';
+        if (selectedFilter === 'circulars')     return row.id === 'circulars';
+        if (selectedFilter === 'notifications') return row.id === 'notifications';
+        if (selectedFilter === 'rules')         return row.id === 'acts' || row.id === 'rules' || row.id === 'cgst' || row.id === 'igst';
+        if (selectedFilter === 'case-laws')     return row.id === 'highcourt' || row.id === 'supremecourt';
+        if (selectedFilter === 'aar')           return row.id === 'aars' || row.id === 'flyers';
+        if (selectedFilter === 'forms')         return row.id === 'forms' || row.id === 'brochures' || row.id === 'faqs';
         return true;
       });
       return { ...group, rows: filteredRows };
