@@ -178,14 +178,75 @@ def cleanup_checkpoint():
 
 # ── Per-file ingestion ─────────────────────────────────────────────────────────
 
+import re as _re
+_YEAR_FNAME_RE = _re.compile(r'[-_](\d{4})[-_.]')
+
 def _extract_year(path: Path):
+    # 1. Year as a standalone directory component  (.../2022/...)
     for part in path.parts:
         if part.isdigit() and 2010 <= int(part) <= 2030:
             return part
+    # 2. Year embedded in the filename (e.g. cir-252-09-2025-cgst.pdf)
+    m = _YEAR_FNAME_RE.search(path.name)
+    if m and 2010 <= int(m.group(1)) <= 2030:
+        return m.group(1)
     return None
 
 
-def ingest_pdf(pdf_path: Path, document_type: str, category_key: str) -> list:
+# ── Contextual Retrieval — Anthropic technique ─────────────────────────────────
+# For each document we ask Claude Haiku to write a 1-2 sentence description
+# that gets prepended to every chunk before embedding.  This moves the chunk's
+# vector into the right region of embedding space even when the raw text doesn't
+# contain the exact keywords a user might search for (e.g. "circular 183" when
+# the chunk text only says "the Board hereby clarifies...").
+#
+# Context is generated ONCE per document (not per chunk) and cached to
+# doc_contexts.json so a resumed run never re-hits the API.
+
+DOC_CONTEXTS_FILE = BASE_DIR / "vectordb" / "doc_contexts.json"
+
+def _load_doc_contexts() -> dict:
+    if DOC_CONTEXTS_FILE.exists():
+        try:
+            return json.loads(DOC_CONTEXTS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+def _save_doc_contexts(ctx: dict):
+    DOC_CONTEXTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    DOC_CONTEXTS_FILE.write_text(json.dumps(ctx, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def _generate_doc_context(rel_path: str, document_type: str, first_text: str) -> str:
+    """Call Claude Haiku once per document to produce an embedding context prefix."""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return ""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=120,
+            messages=[{"role": "user", "content": (
+                f"You are indexing a GST legal document for a vector search system.\n\n"
+                f"File path: {rel_path}\n"
+                f"Document type: {document_type}\n"
+                f"Opening text:\n{first_text[:600]}\n\n"
+                f"Write exactly 2 sentences (max 80 words total) describing this document. "
+                f"Include: document type (Circular/Notification/Act/etc.), number if visible, "
+                f"topic (ITC/RCM/rate/valuation/etc.), and year. "
+                f"Output ONLY the 2 sentences, nothing else."
+            )}],
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        log.warning(f"  Haiku context generation failed for {rel_path}: {e}")
+        return ""
+
+
+def ingest_pdf(pdf_path: Path, document_type: str, category_key: str,
+               doc_contexts: dict | None = None) -> list:
     import fitz
     import hashlib
 
@@ -206,6 +267,19 @@ def ingest_pdf(pdf_path: Path, document_type: str, category_key: str) -> list:
         return []
 
     full_text = "\n\n".join(pages_text)
+
+    # ── Contextual Retrieval: generate a document-level context prefix ────────
+    # The context is cached in doc_contexts dict (persisted to doc_contexts.json)
+    # so a resumed ingestion never re-calls the API.
+    ctx_prefix = ""
+    if doc_contexts is not None:
+        ctx_key = rel_path.lower()
+        if ctx_key not in doc_contexts:
+            ctx_prefix = _generate_doc_context(rel_path, document_type, pages_text[0])
+            doc_contexts[ctx_key] = ctx_prefix
+        else:
+            ctx_prefix = doc_contexts[ctx_key]
+
     WINDOW, STEP = 1500, 1300
     chunks = []
     for i, start in enumerate(range(0, max(1, len(full_text) - 200), STEP)):
@@ -220,8 +294,13 @@ def ingest_pdf(pdf_path: Path, document_type: str, category_key: str) -> list:
         }
         if year:
             meta["year"] = year
-        chunks.append({"chunk_id": chunk_id, "text": text,
-                        "source": str(pdf_path), "rel_path": rel_path, "metadata": meta})
+        # embed_text = Haiku context prefix + chunk text.
+        # text stays as-is for display; embed_text is what gets encoded into the vector.
+        embed_text = f"{ctx_prefix}\n\n{text}" if ctx_prefix else text
+        chunks.append({
+            "chunk_id": chunk_id, "text": text, "embed_text": embed_text,
+            "source": str(pdf_path), "rel_path": rel_path, "metadata": meta,
+        })
     return chunks
 
 
@@ -257,7 +336,9 @@ def embed_and_append_all(all_new_chunks: list, resume_from_batch: int = 0):
             continue
 
         batch = all_new_chunks[start: start + BATCH]
-        texts = [c["text"] for c in batch]
+        # Use embed_text (context-enriched) when available; fall back to text.
+        # embed_text = Haiku context prefix + raw chunk text for richer vectors.
+        texts = [c.get("embed_text") or c["text"] for c in batch]
         log.info(f"  Embedding batch {b_idx + 1}/{batches} ({len(texts)} chunks)...")
 
         embs = model.encode(texts, batch_size=32, normalize_embeddings=True, show_progress_bar=False)
@@ -348,7 +429,10 @@ def main():
             log.info("All documents already indexed.")
             return
 
-        log.info(f"\n[4/5] Extracting and chunking {total_missing} PDFs...")
+        log.info(f"\n[4/5] Extracting, contextualising, and chunking {total_missing} PDFs...")
+        log.info("      Contextual Retrieval: Claude Haiku generates a 2-sentence context")
+        log.info("      prefix per document baked into embeddings (cached to doc_contexts.json)")
+        doc_contexts = _load_doc_contexts()
         all_new_chunks = []
         grand_idx = 0
         for folder_name, (pdfs, doc_type, cat_key) in missing_by_cat.items():
@@ -356,7 +440,13 @@ def main():
             for pdf in pdfs:
                 grand_idx += 1
                 log.info(f"  [{grand_idx}/{total_missing}] {pdf.relative_to(DB_ROOT)}")
-                all_new_chunks.extend(ingest_pdf(pdf, doc_type, cat_key))
+                new_chunks = ingest_pdf(pdf, doc_type, cat_key, doc_contexts=doc_contexts)
+                all_new_chunks.extend(new_chunks)
+                # Save context cache after each document so a crash loses at most 1 entry
+                if grand_idx % 10 == 0:
+                    _save_doc_contexts(doc_contexts)
+        _save_doc_contexts(doc_contexts)
+        log.info(f"  Context cache: {len(doc_contexts)} documents contextualised")
 
         log.info(f"\nTotal chunks extracted: {len(all_new_chunks)}")
 

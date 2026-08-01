@@ -39,7 +39,7 @@ MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.72"))
 MAX_RESPONSE_POINTS = int(os.getenv("MAX_RESPONSE_POINTS", "15"))
 
 # ─── Reranking & Optimization ─────────────────────────────────────────────
-RERANKING_MODEL = "ms-marco-MiniLM-L-12-v2"
+RERANKING_MODEL = "BAAI/bge-reranker-v2-m3"
 CACHE_DIR = ".diskcache_v5"
 
 # ─── Token Budget & Cost Controls ─────────────────────────────────────────
