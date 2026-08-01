@@ -302,11 +302,23 @@ def list_all_documents():
 
 # ─── List by category ─────────────────────────────────────────────────────────
 
+import re as _re
+_YEAR_IN_PART_RE = _re.compile(r'[-_](\d{4})[-_.]')   # year embedded in filename
+
 def _extract_year(key_parts: list) -> str | None:
-    """Extract a 4-digit year (2010-2030) from S3 key path parts."""
+    """
+    Extract a 4-digit year (2010-2030) from S3 key path parts.
+    Checks both standalone folder names (e.g. .../2022/...) and
+    years embedded in filenames (e.g. cir-252-09-2025-cgst.pdf).
+    """
     for part in key_parts:
+        # Case 1: part is just the year (subfolder structure)
         if part.isdigit() and 2010 <= int(part) <= 2030:
             return part
+        # Case 2: year embedded inside filename like "cir-252-09-2025-cgst.pdf"
+        m = _YEAR_IN_PART_RE.search(part)
+        if m and 2010 <= int(m.group(1)) <= 2030:
+            return m.group(1)
     return None
 
 

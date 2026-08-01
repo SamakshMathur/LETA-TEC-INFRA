@@ -459,24 +459,25 @@ class Retriever:
         self.bm25 = BM25Okapi(tokenized_corpus)
         logger.info(f"BM25 index built: {len(tokenized_corpus)} documents")
 
-        # Backfill missing year metadata from subfolder path.
-        # Chunks from "Circulars/circulars/2022/circular-no-xxx.pdf" store the year
-        # in the folder name but ingestion didn't write it to metadata["year"].
+        # Backfill missing year metadata from path — checks both subfolder structure
+        # (Circulars/circulars/2022/file.pdf) and filename (cir-252-09-2025-cgst.pdf).
         # The reranker's _year_recency() reads this field — without it every circular
-        # gets the "unknown year" score of 0.55 regardless of actual age.
-        _year_re = re.compile(r'[/\\](\d{4})[/\\]')
+        # and notification gets the "unknown year" score of 0.55 regardless of actual age.
+        _year_dir_re  = re.compile(r'[/\\](\d{4})[/\\]')       # year as directory component
+        _year_fname_re = re.compile(r'[-_](\d{4})[-_.]')        # year embedded in filename
         _year_patched = 0
         for _chunk in self.chunks:
             _meta = _chunk.get("metadata", {})
             if not (_meta.get("year") or _chunk.get("year")):
                 _rel_path = _chunk.get("rel_path") or _meta.get("rel_path", "")
-                _ym = _year_re.search(_rel_path)
+                _ym = _year_dir_re.search(_rel_path) or _year_fname_re.search(_rel_path)
                 if _ym:
                     _yr = int(_ym.group(1))
-                    _chunk["year"] = _yr
-                    _meta["year"] = _yr
-                    _year_patched += 1
-        logger.info(f"Year backfill: patched {_year_patched} chunks from folder path")
+                    if 2010 <= _yr <= 2030:
+                        _chunk["year"] = _yr
+                        _meta["year"] = _yr
+                        _year_patched += 1
+        logger.info(f"Year backfill: patched {_year_patched} chunks from path/filename")
 
         # Build provision index for O(1) direct section/rule lookup.
         # Maps citation key (e.g. "CGST_SEC_16") → list of chunk indices.
@@ -498,7 +499,12 @@ class Retriever:
         # Covers patterns: Circular-No-183, cir-183, circular-cgst-183, circularno-183.
         self._circular_index: dict = {}
         _cir_num_re = re.compile(
-            r'(?:circular[s]?[-_.\s]*(?:[a-z]*[-_.\s]*)?(?:no[-_.\s]*)?|cir[-_.](?:cgst[-_.])?|circularno[-_.])(\d{2,3})',
+            # Handles: "Circular No. 183", "cir-252", "Cir251" (no sep), "circularno-183"
+            r'(?:circular[s]?[-_.\s]*(?:[a-z]*[-_.\s]*)?(?:no[-_.\s]*)?'
+            r'|cir[-_.](?:cgst[-_.])?'   # cir-252, cir_cgst_183
+            r'|cir(?=[0-9])'              # Cir251 — no separator before digits
+            r'|circularno[-_.])'
+            r'(\d{2,3})',
             re.IGNORECASE,
         )
         _cir_leading_re = re.compile(r'^(\d{2,3})[-_]\d+[-_]\d{4}', re.IGNORECASE)
