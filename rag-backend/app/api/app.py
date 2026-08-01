@@ -701,10 +701,11 @@ async def ask_question(request: Request, req: QuestionRequest):
                 route["use_sources"], _adv, domain_paths, True,
             )
 
-        elif _complexity >= 0.35:
-            # Complex non-draft: run query expansion + fast retrieval IN PARALLEL.
-            # Fast retrieval uses original query without expansion (skip_rerank for speed).
-            # When expansion arrives, we supplement the pool and do ONE final rerank.
+        else:
+            # All non-draft queries: run query expansion + fast retrieval IN PARALLEL.
+            # Expansion uses 4 angle-specific sub-queries (statutory/circular/notification/factual)
+            # + a corpus-authentic HyDE document. Parallel execution means the LLM expansion
+            # adds zero latency beyond what retrieval already takes.
             yield f"__STATUS__:{json.dumps({'msg': 'Expanding Query for Precision Retrieval...'})}__END_STATUS__"
 
             def _fast_retrieve():
@@ -727,14 +728,6 @@ async def ask_question(request: Request, req: QuestionRequest):
             chunks = await _asyncio.to_thread(
                 retriever.supplement_and_rerank,
                 fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
-            )
-
-        else:
-            # Simple query: direct retrieval (already fast)
-            _adv = {"queries": [_retrieval_q], "hyde_document": "", "topic": "General", "subtopic": None}
-            chunks = await _asyncio.to_thread(
-                retriever.search, _retrieval_q, _retrieval_top_k,
-                route["use_sources"], _adv, domain_paths, False,
             )
 
         # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
@@ -846,8 +839,9 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     ]
     _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW)
 
-    # Skip LLM-based query expansion in sync mode — saves ~10-15s from the extra Sonnet call.
-    # Use rule-based multi-query for drafts only (no LLM needed).
+    # Sync mode: use rule-based 4-angle multi-query (avoids extra LLM latency on the sync path).
+    # Covers statutory, circular, notification, and factual angles — same structure as the
+    # LLM expansion but keyword-driven so it completes in microseconds.
     refined_q = question
     if _is_draft:
         advanced_queries = {
@@ -860,7 +854,15 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
             "hyde_document": "", "topic": "General", "subtopic": None,
         }
     else:
-        advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
+        advanced_queries = {
+            "queries": [
+                refined_q,
+                refined_q + " section CGST Act rule proviso conditions eligibility",
+                refined_q + " CBIC Circular clarification instruction",
+                refined_q + " GST Notification Central Tax Rate exemption 2017 2018 2019 2020 2021 2022 2023 2024 2025",
+            ],
+            "hyde_document": "", "topic": "General", "subtopic": None,
+        }
 
     retriever = get_retriever()
     # skip_rerank: FlashRank takes 30-50s on 100+ candidates — bypassed to fit in 29s.

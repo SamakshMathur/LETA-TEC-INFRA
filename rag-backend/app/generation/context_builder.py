@@ -206,28 +206,30 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
             f"════════════════════════════════════════"
         )
 
-    # ── Step 2.5: Interleave circular blocks so they survive char-truncation ──────
-    # LegalReranker ranks Acts highest → without interleaving, all circular blocks
-    # appear at the end and get cut when Acts + Rules fill the char budget first.
-    # Pattern: 2 non-circular blocks, then 1 circular block, repeat.
-    _circ_blocks, _other_blocks = [], []
+    # ── Step 2.5: Interleave circulars AND notifications so they survive char-truncation ──
+    # LegalReranker ranks Acts/Rules highest → without interleaving, all circular and
+    # notification blocks appear at the end and get cut by the char budget.
+    # Notifications are just as query-critical as circulars for rate/exemption questions.
+    # Pattern: 2 primary-law blocks (Acts/Rules/Case law), then 1 secondary block
+    #          (Circular or Notification, alternating), repeat.
+    _secondary_blocks, _primary_blocks = [], []
     for _b, _c in zip(context_blocks, chunks):
         _rpath = (
             _c.get("rel_path") or _c.get("metadata", {}).get("rel_path", "") or _c.get("source", "")
         ).lower()
-        if "circular" in _rpath:
-            _circ_blocks.append(_b)
+        if "circular" in _rpath or "notification" in _rpath:
+            _secondary_blocks.append(_b)
         else:
-            _other_blocks.append(_b)
+            _primary_blocks.append(_b)
 
     ordered_blocks = []
     _oi, _ci = 0, 0
-    while _oi < len(_other_blocks) or _ci < len(_circ_blocks):
+    while _oi < len(_primary_blocks) or _ci < len(_secondary_blocks):
         for _ in range(2):
-            if _oi < len(_other_blocks):
-                ordered_blocks.append(_other_blocks[_oi]); _oi += 1
-        if _ci < len(_circ_blocks):
-            ordered_blocks.append(_circ_blocks[_ci]); _ci += 1
+            if _oi < len(_primary_blocks):
+                ordered_blocks.append(_primary_blocks[_oi]); _oi += 1
+        if _ci < len(_secondary_blocks):
+            ordered_blocks.append(_secondary_blocks[_ci]); _ci += 1
 
     sources_section = "\n\n".join(ordered_blocks)
 

@@ -19,9 +19,10 @@ from app.retrieval.provision_graph import ProvisionGraphRetriever
 logger = logging.getLogger(__name__)
 
 # ─── Pool classification — folder patterns per document category ───────────
-_CASE_LAW_FOLDERS  = {"high court case laws", "supreme court case laws", "aar", "other app result"}
-_STATUTE_FOLDERS   = {"act", "rules", "cgst", "igst", "utgst", "notification", "notifications", "export"}
-_CIRCULAR_FOLDERS  = {"circulars", "circular", "icai", "brochures", "faqs"}
+_CASE_LAW_FOLDERS     = {"high court case laws", "supreme court case laws", "aar", "other app result"}
+_STATUTE_FOLDERS      = {"act", "rules", "cgst", "igst", "utgst", "export"}
+_NOTIFICATION_FOLDERS = {"notification", "notifications"}
+_CIRCULAR_FOLDERS     = {"circulars", "circular", "icai", "brochures", "faqs"}
 
 
 def _chunk_category(chunk: dict) -> str:
@@ -33,6 +34,9 @@ def _chunk_category(chunk: dict) -> str:
     for folder in _CIRCULAR_FOLDERS:
         if f"/{folder}/" in path or path.startswith(folder + "/"):
             return "circular"
+    for folder in _NOTIFICATION_FOLDERS:
+        if f"/{folder}/" in path or path.startswith(folder + "/"):
+            return "notification"
     for folder in _STATUTE_FOLDERS:
         if f"/{folder}/" in path or path.startswith(folder + "/"):
             return "statute"
@@ -563,9 +567,9 @@ class Retriever:
         Guarantee minimum chunks from each document category.
         When a category is underrepresented in the semantic pool, fills it
         with targeted BM25 results restricted to that category's folders.
-        quotas = {"statute": N, "case_law": N, "circular": N}
+        quotas = {"statute": N, "case_law": N, "circular": N, "notification": N}
         """
-        by_cat = {"statute": [], "case_law": [], "circular": [], "other": []}
+        by_cat = {"statute": [], "case_law": [], "circular": [], "notification": [], "other": []}
         for chunk in pool:
             by_cat[_chunk_category(chunk)].append(chunk)
 
@@ -763,26 +767,28 @@ class Retriever:
                     f"domain_paths filter too aggressive ({len(filtered)} results) — skipping"
                 )
 
-        # ── Phase 2A: Enforce pool quotas — guarantee case law + circulars ──────
-        # Drafts need: statute ≥10, case_law ≥10, circular ≥5
-        # Q&A needs:   statute ≥8,  case_law ≥6,  circular ≥4
+        # ── Phase 2A: Enforce pool quotas — guarantee representation from all source types ──
+        # Drafts need:      statute ≥10, case_law ≥10, circular ≥5,  notification ≥4
+        # Q&A needs:        statute ≥6,  case_law ≥4,  circular ≥10, notification ≥6
+        # Notifications now have their own slot — they were previously lumped into "statute",
+        # causing rate/exemption questions to get 0-1 notification chunks instead of 6+.
         _quotas = (
-            {"statute": 10, "case_law": 8, "circular": 12}  # drafts: need judgments + circulars
+            {"statute": 10, "case_law": 8, "circular": 8, "notification": 4}
             if is_draft else
-            {"statute": 8, "case_law": 5, "circular": 12}   # Q&A: always pull 12 circular chunks even for general queries
+            {"statute": 6, "case_law": 4, "circular": 10, "notification": 6}
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
 
-        # Merge layers: Pinned > Circular quota fills > Statute-First > Graph > Semantic
-        # Circular fills must come BEFORE statute/graph to survive the 80-cap.
+        # Merge layers: Pinned > Circular/Notification quota fills > Statute-First > Graph > Semantic
+        # Quota fills must come BEFORE statute/graph to survive the 80-cap.
         # Without this, statute_results[:50] + graph_results[:30] = 80 and all
-        # circular fills (from _enforce_pool_quotas) get silently dropped.
-        _circ_fills = [r for r in candidate_pool
-                       if r.get("_targeted_fill") and r.get("_fill_category") == "circular"]
-        _circ_fill_ids = {r.get("chunk_id") for r in _circ_fills}
-        _rest_pool = [r for r in candidate_pool if r.get("chunk_id") not in _circ_fill_ids]
+        # quota fills (circulars + notifications) get silently dropped.
+        _priority_fills = [r for r in candidate_pool
+                           if r.get("_targeted_fill") and r.get("_fill_category") in ("circular", "notification")]
+        _priority_fill_ids = {r.get("chunk_id") for r in _priority_fills}
+        _rest_pool = [r for r in candidate_pool if r.get("chunk_id") not in _priority_fill_ids]
 
-        combined_results = _pinned + _circ_fills + statute_results[:40] + graph_results[:20]
+        combined_results = _pinned + _priority_fills + statute_results[:40] + graph_results[:20]
         existing_ids = {r.get("chunk_id") for r in combined_results}
         for r in _rest_pool:
             if r.get("chunk_id") not in existing_ids:
@@ -800,7 +806,7 @@ class Retriever:
             try:
                 from flashrank import RerankRequest
                 passages = [
-                    {"id": idx, "text": res.get("text", ""), "meta": res}
+                    {"id": idx, "text": res.get("context_text") or res.get("text", ""), "meta": res}
                     for idx, res in enumerate(reranker_input)
                 ]
                 rank_request = RerankRequest(query=query, passages=passages)
@@ -884,17 +890,17 @@ class Retriever:
                                 existing_ids.add(cid)
                                 combined.append(chunk)
 
-        # Enforce circular quotas — supplement_and_rerank is the primary path for
-        # complex queries but previously had no quota guarantee.
-        _sr_quotas = {"statute": 8, "case_law": 5, "circular": 12}
+        # Enforce category quotas — supplement_and_rerank is the primary path for all queries.
+        # Notifications split out of "statute" so rate/exemption queries always get ≥6 slots.
+        _sr_quotas = {"statute": 6, "case_law": 4, "circular": 10, "notification": 6}
         combined = self._enforce_pool_quotas(combined, query, _sr_quotas)
 
-        # Pull circular fills to the front so they survive the 80-cap
-        _sr_circ_fills = [r for r in combined
-                          if r.get("_targeted_fill") and r.get("_fill_category") == "circular"]
-        _sr_circ_ids = {r.get("chunk_id") for r in _sr_circ_fills}
-        _sr_rest = [r for r in combined if r.get("chunk_id") not in _sr_circ_ids]
-        combined = _sr_circ_fills + _sr_rest
+        # Pull circular + notification fills to the front so they survive the 80-cap
+        _sr_priority_fills = [r for r in combined
+                              if r.get("_targeted_fill") and r.get("_fill_category") in ("circular", "notification")]
+        _sr_priority_ids = {r.get("chunk_id") for r in _sr_priority_fills}
+        _sr_rest = [r for r in combined if r.get("chunk_id") not in _sr_priority_ids]
+        combined = _sr_priority_fills + _sr_rest
 
         RERANK_CAP = 80
         rerank_input = combined[:RERANK_CAP]
