@@ -231,21 +231,24 @@ const DocumentRow: React.FC<{
   );
 };
 
-// ── Circulars year-tab row ────────────────────────────────────────────────
-const CircularsRow: React.FC<{
+// ── Reusable year-tab row (used by circulars AND notifications) ───────────
+const YearTabRow: React.FC<{
   category: CategoryRow;
+  endpoint: string;
+  activeColor: string;
+  activeBg: string;
   onDocClick: (d: DocItem) => void;
   onDownload: (d: DocItem) => void;
   isSaved: (id: string) => boolean;
   onToggleSave: (d: DocItem) => void;
-}> = ({ category, onDocClick, onDownload, isSaved, onToggleSave }) => {
-  const [byYear, setByYear]     = useState<Record<string, DocItem[]>>({});
-  const [loading, setLoading]   = useState(true);
+}> = ({ category, endpoint, activeColor, activeBg, onDocClick, onDownload, isSaved, onToggleSave }) => {
+  const [byYear, setByYear]         = useState<Record<string, DocItem[]>>({});
+  const [loading, setLoading]       = useState(true);
   const [activeYear, setActiveYear] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/list/circulars/by-year`)
+    fetch(endpoint)
       .then(r => r.json())
       .then(data => {
         setByYear(data);
@@ -254,7 +257,7 @@ const CircularsRow: React.FC<{
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [endpoint]);
 
   const scroll = (dir: 'left' | 'right') => {
     if (!scrollRef.current) return;
@@ -296,13 +299,13 @@ const CircularsRow: React.FC<{
                   fontSize: '11px',
                   fontFamily: 'monospace',
                   fontWeight: y === activeYear ? 700 : 400,
-                  border: `1px solid ${y === activeYear ? 'rgba(79,183,197,0.4)' : 'rgba(255,255,255,0.06)'}`,
-                  background: y === activeYear ? 'rgba(79,183,197,0.18)' : 'rgba(255,255,255,0.03)',
-                  color: y === activeYear ? '#4FB7C5' : '#6B7280',
+                  border: `1px solid ${y === activeYear ? activeColor.replace(')', ', 0.4)').replace('rgb', 'rgba') : 'rgba(255,255,255,0.06)'}`,
+                  background: y === activeYear ? activeBg : 'rgba(255,255,255,0.03)',
+                  color: y === activeYear ? activeColor : '#6B7280',
                   cursor: 'pointer',
                   transition: 'all 0.15s',
                   whiteSpace: 'nowrap',
-                  textAlign: 'center',
+                  textAlign: 'center' as const,
                 }}
               >
                 {y}
@@ -327,6 +330,38 @@ const CircularsRow: React.FC<{
     </div>
   );
 };
+
+// ── Circulars year-tab row (teal theme) ──────────────────────────────────
+const CircularsRow: React.FC<{
+  category: CategoryRow;
+  onDocClick: (d: DocItem) => void;
+  onDownload: (d: DocItem) => void;
+  isSaved: (id: string) => boolean;
+  onToggleSave: (d: DocItem) => void;
+}> = (props) => (
+  <YearTabRow
+    {...props}
+    endpoint={`${API_BASE}/list/circulars/by-year`}
+    activeColor="#4FB7C5"
+    activeBg="rgba(79,183,197,0.18)"
+  />
+);
+
+// ── Notifications year-tab row (violet theme) ─────────────────────────────
+const NotificationsRow: React.FC<{
+  category: CategoryRow;
+  onDocClick: (d: DocItem) => void;
+  onDownload: (d: DocItem) => void;
+  isSaved: (id: string) => boolean;
+  onToggleSave: (d: DocItem) => void;
+}> = (props) => (
+  <YearTabRow
+    {...props}
+    endpoint={`${API_BASE}/list/notifications/by-year`}
+    activeColor="#8B5CF6"
+    activeBg="rgba(139,92,246,0.18)"
+  />
+);
 
 
 // ── Redesigned Core DocumentLibrary Component ─────────────────────────────
@@ -524,6 +559,9 @@ export const DocumentLibrary: React.FC = () => {
                 {group.rows.map(row => (
                   row.id === 'circulars'
                     ? <CircularsRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
+                        isSaved={isSaved} onToggleSave={toggleSave} />
+                    : row.id === 'notifications'
+                    ? <NotificationsRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
                         isSaved={isSaved} onToggleSave={toggleSave} />
                     : <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
                         searchQuery="" isSaved={isSaved} onToggleSave={toggleSave} />

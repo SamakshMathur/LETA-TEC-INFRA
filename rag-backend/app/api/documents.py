@@ -368,21 +368,31 @@ def list_documents(category: str):
     return docs
 
 
-@router.get("/list/circulars/by-year")
-def list_circulars_by_year():
-    """Return circulars grouped by year: { '2017': [...], '2018': [...], ... }"""
-    all_docs = list_documents("circulars")
+def _group_by_year(category_id: str) -> dict:
+    """Shared helper: fetch all docs for a category and bucket them by year."""
+    all_docs = list_documents(category_id)
     grouped: dict = {}
     for doc in all_docs:
         year = doc.get("year") or "other"
         grouped.setdefault(year, []).append(doc)
-    # Sort years descending (newest first), keep 'other' at end
     sorted_grouped = {}
     for y in sorted((k for k in grouped if k != "other"), reverse=True):
         sorted_grouped[y] = grouped[y]
     if "other" in grouped:
         sorted_grouped["other"] = grouped["other"]
     return sorted_grouped
+
+
+@router.get("/list/circulars/by-year")
+def list_circulars_by_year():
+    """Return circulars grouped by year: { '2017': [...], '2018': [...], ... }"""
+    return _group_by_year("circulars")
+
+
+@router.get("/list/notifications/by-year")
+def list_notifications_by_year():
+    """Return notifications grouped by year: { '2017': [...], '2018': [...], ... }"""
+    return _group_by_year("notifications")
 
 
 # ─── AI Search ────────────────────────────────────────────────────────────────
