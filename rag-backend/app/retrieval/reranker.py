@@ -1,5 +1,6 @@
 import re
 import logging
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from app.retrieval.source_priority import source_priority
 
@@ -36,10 +37,57 @@ def _normalize_topic(topic: str) -> str:
     return _TOPIC_ALIASES.get(lower, lower)
 
 
+_CURRENT_YEAR = datetime.now().year
+
+def _year_recency(chunk: dict) -> float:
+    """
+    Returns 0.0–1.0 recency score for circular/notification chunks.
+    Acts and Rules are year-invariant; return neutral 0.6 for them.
+    Only boosts documents where freshness genuinely matters (CBIC circulars,
+    notifications), which change frequently in GST.
+    """
+    metadata = chunk.get("metadata", {})
+    rel_path = (chunk.get("rel_path") or metadata.get("rel_path", "")).lower()
+    doc_type = (metadata.get("document_type") or "").lower()
+
+    is_temporal = (
+        "circular" in rel_path or "circular" in doc_type
+        or "notification" in rel_path or "notification" in doc_type
+    )
+    if not is_temporal:
+        return 0.6  # neutral — no recency concept for statutes/case law
+
+    raw_year = metadata.get("year") or chunk.get("year")
+    if not raw_year:
+        return 0.55  # unknown year — slight below-neutral
+
+    try:
+        year = int(str(raw_year).strip()[:4])
+    except (ValueError, TypeError):
+        return 0.55
+
+    age = _CURRENT_YEAR - year
+    if age <= 0:
+        return 1.00
+    elif age == 1:
+        return 0.92
+    elif age == 2:
+        return 0.84
+    elif age == 3:
+        return 0.76
+    elif age <= 5:
+        return 0.65
+    elif age <= 7:
+        return 0.50
+    else:
+        return 0.35
+
+
 class LegalReranker:
     """
     Stage-2 Reranking for Legal RAG.
-    Composite Score = (0.5 * Semantic) + (0.3 * Legal Weight) + (0.2 * Topic Match) + Layer1 Boost
+    Composite Score = (0.40 * Semantic) + (0.18 * Legal Weight) + (0.18 * KW Match)
+                    + (0.14 * Topic Match) + (0.10 * Year Recency) + Layer1 Boost
     """
 
     @staticmethod
@@ -89,17 +137,23 @@ class LegalReranker:
             # 5. Statute-First boost (Layer 1 bias)
             layer1_boost = 0.5 if chunk.get("_is_statute_first", False) else 0.0
 
+            # 6. Year recency — boosts recent circulars/notifications over older ones;
+            # returns neutral 0.6 for Acts/Rules/case-law (no recency concept there).
+            recency = _year_recency(chunk)
+
             # Composite scoring:
-            # 0.45 semantic  — FlashRank cross-encoder relevance (primary signal)
-            # 0.20 legal     — Authority hierarchy (Acts > Rules > Circulars > AARs)
-            # 0.20 kw_match  — Direct keyword overlap (query terms in chunk text)
-            # 0.15 topic     — Topic/subtopic alignment
+            # 0.40 semantic  — FlashRank cross-encoder relevance (primary signal)
+            # 0.18 legal     — Authority hierarchy (Acts > Rules > Circulars > AARs)
+            # 0.18 kw_match  — Direct keyword overlap (query terms in chunk text)
+            # 0.14 topic     — Topic/subtopic alignment
+            # 0.10 recency   — Year recency for circulars/notifications
             # +layer1_boost  — Additive boost for Statute-First Layer 1 results
             final_score = (
-                (0.45 * semantic_score)
-                + (0.20 * legal_weight)
-                + (0.20 * kw_match)
-                + (0.15 * topic_match)
+                (0.40 * semantic_score)
+                + (0.18 * legal_weight)
+                + (0.18 * kw_match)
+                + (0.14 * topic_match)
+                + (0.10 * recency)
                 + layer1_boost
             )
 
@@ -116,6 +170,7 @@ class LegalReranker:
                 "legal": round(legal_weight, 4),
                 "kw_match": round(kw_match, 4),
                 "topic": topic_match,
+                "recency": round(recency, 4),
                 "layer1_boost": layer1_boost,
             }
             reranked_chunks.append(chunk)

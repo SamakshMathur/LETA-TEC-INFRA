@@ -126,10 +126,16 @@ def generate_advanced_queries(raw_query: str) -> dict:
 Optimise a user query for a vector database search.
 Output a valid JSON object with EXACTLY four keys:
 1. "queries": A list of exactly 3 distinct, highly technical search queries derived
-   from the user's raw query. Cover different angles (Section numbers, specific rules,
-   terminology).
+   from the user's raw query. MANDATORY query structure:
+   (a) Statutory angle — focus on the relevant CGST/IGST Act section or Rule number.
+   (b) CBIC Circular/Notification angle — rephrase to specifically find CBIC Circulars,
+       Instructions, or Notifications that clarify, address or interpret this topic.
+       Always include "CBIC Circular" or "Notification" in this query.
+   (c) Factual/scenario angle — use the technical scenario terminology and any
+       specific facts from the original query.
 2. "hyde_document": A 3 to 4 sentence hypothetical, perfect legal answer to the user's
-   query using the dense, formal vocabulary of official GST Acts, Rules, or Notifications.
+   query using the dense, formal vocabulary of official GST Acts, Rules, Circulars, and
+   Notifications. Mention the relevant CBIC Circular number if known.
 3. "topic": Classify into exactly ONE topic from: [ITC, RCM, Export, Refund, Registration,
    Place_of_Supply, Time_of_Supply, Valuation, Exemption, Returns, Penalty, Audit,
    Classification, Supply, Payment, Appeals, Intermediary, Cross_Border_Services, General]

@@ -21,6 +21,9 @@ from app.ingestion.pdf_text import extract_text_from_pdf
 from app.ingestion.docx_reader import extract_text_from_docx
 from app.ingestion.excel_reader import extract_text_from_excel
 
+_S3_BUCKET = os.getenv("S3_DATA_BUCKET", "")
+_S3_REGION = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+
 logger = logging.getLogger(__name__)
 
 CHUNKS_FILE = Path(CHUNKS_PATH)
@@ -167,6 +170,28 @@ def _append_to_chunks_file(chunks: List[Dict]):
             f.write(json.dumps(chunk, ensure_ascii=False) + "\n")
 
 
+# ── S3 persistence ────────────────────────────────────────────────────────────
+
+def _persist_to_s3():
+    """Upload the updated FAISS index and chunks.jsonl back to S3 so the next
+    ECS task restart picks them up instead of re-downloading the stale versions."""
+    if not _S3_BUCKET:
+        return
+    try:
+        import boto3
+        s3 = boto3.client("s3", region_name=_S3_REGION)
+        for local, key in [
+            (INDEX_FILE,  "vectordb/index.faiss"),
+            (META_FILE,   "vectordb/index.meta.json"),
+            (CHUNKS_FILE, "data/chunks/chunks.jsonl"),
+        ]:
+            if local.exists():
+                s3.upload_file(str(local), _S3_BUCKET, key)
+                logger.info(f"Persisted {local.name} → s3://{_S3_BUCKET}/{key}")
+    except Exception as e:
+        logger.warning(f"S3 persistence failed (index still updated in-memory): {e}")
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def ingest_file(file_path: Path, rel_path: str) -> Dict:
@@ -186,6 +211,9 @@ def ingest_file(file_path: Path, rel_path: str) -> Dict:
 
     _append_to_chunks_file(chunks)
     vectors_added = _embed_and_append(chunks)
+
+    # Persist updated index to S3 so it survives ECS task restarts
+    _persist_to_s3()
 
     # Signal the live retriever to reload so new docs are searchable immediately
     try:

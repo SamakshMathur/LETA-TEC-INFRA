@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import SelectSwitcher from '../ui/SelectSwitcher';
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Bookmark, Download,
@@ -29,6 +30,7 @@ interface DocItem {
   size: string;
   path?: string;
   category?: string;
+  year?: string | null;
 }
 
 interface CategoryRow {
@@ -229,6 +231,104 @@ const DocumentRow: React.FC<{
   );
 };
 
+// ── Circulars year-tab row ────────────────────────────────────────────────
+const CircularsRow: React.FC<{
+  category: CategoryRow;
+  onDocClick: (d: DocItem) => void;
+  onDownload: (d: DocItem) => void;
+  isSaved: (id: string) => boolean;
+  onToggleSave: (d: DocItem) => void;
+}> = ({ category, onDocClick, onDownload, isSaved, onToggleSave }) => {
+  const [byYear, setByYear]     = useState<Record<string, DocItem[]>>({});
+  const [loading, setLoading]   = useState(true);
+  const [activeYear, setActiveYear] = useState<string>('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/list/circulars/by-year`)
+      .then(r => r.json())
+      .then(data => {
+        setByYear(data);
+        const years = Object.keys(data).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
+        if (years.length) setActiveYear(years[0]);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const scroll = (dir: 'left' | 'right') => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTo({
+      left: scrollRef.current.scrollLeft + (dir === 'left' ? -scrollRef.current.clientWidth / 2 : scrollRef.current.clientWidth / 2),
+      behavior: 'smooth',
+    });
+  };
+
+  const years = Object.keys(byYear).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
+  const activeDocs = byYear[activeYear] || [];
+  const totalCount = Object.values(byYear).reduce((s, arr) => s + arr.length, 0);
+
+  return (
+    <div className={cn('documentRow')}>
+      <div className={cn('rowHeader')}>
+        <h3 className={cn('rowTitle')}>
+          <category.icon size={14} className={cn(category.colorClass as any)} />
+          {category.label}
+          <span className={cn('rowCount')}>[{totalCount}]</span>
+        </h3>
+        <div className={cn('rowControls')}>
+          <button onClick={() => scroll('left')}  className={cn('scrollButton')}><ChevronLeft size={13} /></button>
+          <button onClick={() => scroll('right')} className={cn('scrollButton')}><ChevronRight size={13} /></button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+        {/* Vertical year pills */}
+        {!loading && years.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+            {years.map(y => (
+              <button
+                key={y}
+                onClick={() => { setActiveYear(y); scrollRef.current?.scrollTo({ left: 0 }); }}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontFamily: 'monospace',
+                  fontWeight: y === activeYear ? 700 : 400,
+                  border: `1px solid ${y === activeYear ? 'rgba(79,183,197,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                  background: y === activeYear ? 'rgba(79,183,197,0.18)' : 'rgba(255,255,255,0.03)',
+                  color: y === activeYear ? '#4FB7C5' : '#6B7280',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  whiteSpace: 'nowrap',
+                  textAlign: 'center',
+                }}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Horizontal doc scroll */}
+        <div ref={scrollRef} className={cn('scrollContainer')} style={{ flex: 1 }}>
+          {loading
+            ? [1, 2, 3, 4].map(i => (
+                <div key={i} className={cn('docCard')} style={{ background: 'rgba(15,23,34,0.2)', opacity: 0.5, borderStyle: 'dashed' }} />
+              ))
+            : activeDocs.slice(0, 40).map(doc => (
+                <DocCard key={doc.id} doc={doc} onClick={onDocClick} onDownload={onDownload}
+                  isSaved={isSaved(doc.id)} onToggleSave={onToggleSave} />
+              ))
+          }
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 // ── Redesigned Core DocumentLibrary Component ─────────────────────────────
 export const DocumentLibrary: React.FC = () => {
   const [selectedDoc, setSelectedDoc] = useState<DocItem | null>(null);
@@ -354,21 +454,13 @@ export const DocumentLibrary: React.FC = () => {
 
       {/* ── 2. STATUTORY DOCUMENT FILTERS ──────────────────────────────────── */}
       <div className={cn('filtersWrapper')}>
-        {FILTER_OPTIONS.map((opt) => {
-          const isSelected = selectedFilter === opt.id;
-          return (
-            <button
-              key={opt.id}
-              onClick={() => setSelectedFilter(opt.id)}
-              className={cn('filterButton', {
-                filterButtonActive: isSelected,
-                filterButtonInactive: !isSelected
-              })}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
+        <SelectSwitcher
+          options={FILTER_OPTIONS.map(o => ({ id: o.id, label: o.label }))}
+          value={selectedFilter}
+          onChange={setSelectedFilter}
+          variant="primary"
+          layout="flex"
+        />
       </div>
 
       {/* ── 3. INSTANT SEARCH RESULTS ─────────────────────────────────────── */}
@@ -428,8 +520,11 @@ export const DocumentLibrary: React.FC = () => {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {group.rows.map(row => (
-                  <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
-                    searchQuery="" isSaved={isSaved} onToggleSave={toggleSave} />
+                  row.id === 'circulars'
+                    ? <CircularsRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
+                        isSaved={isSaved} onToggleSave={toggleSave} />
+                    : <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
+                        searchQuery="" isSaved={isSaved} onToggleSave={toggleSave} />
                 ))}
               </div>
             </div>

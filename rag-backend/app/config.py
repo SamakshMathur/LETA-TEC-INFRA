@@ -21,7 +21,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")           # used only when provider
 # Claude Models (used when LLM_PROVIDER=anthropic)
 CLAUDE_MAIN_MODEL = os.getenv("CLAUDE_MAIN_MODEL", "claude-sonnet-4-6")
 CLAUDE_UTILITY_MODEL = os.getenv("CLAUDE_UTILITY_MODEL", "claude-haiku-4-5-20251001")
-CLAUDE_THINKING_BUDGET = int(os.getenv("CLAUDE_THINKING_BUDGET", "1500"))
+CLAUDE_THINKING_BUDGET = int(os.getenv("CLAUDE_THINKING_BUDGET", "5000"))
 CLAUDE_MAX_TOKENS = int(os.getenv("CLAUDE_MAX_TOKENS", "8000"))
 VISUAL_LLM_MODEL = "claude-sonnet-4-6"
 

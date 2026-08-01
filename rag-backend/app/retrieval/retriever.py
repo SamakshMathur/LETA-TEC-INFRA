@@ -148,6 +148,8 @@ _GST_ABBREV = [
     (re.compile(r'\bfaq\b', re.IGNORECASE), 'frequently asked questions FAQ'),
     (re.compile(r'\baar\b', re.IGNORECASE), 'advance ruling AAR'),
     (re.compile(r'\bpoc\b', re.IGNORECASE), 'place of supply POS'),
+    # CBIC expands to full form — circulars/instructions are issued by CBIC
+    (re.compile(r'\bcbic\b', re.IGNORECASE), 'CBIC central board indirect taxes customs circular instruction'),
     # Normalize section shorthand: "sec 16", "s.16", "s16" → "section 16"
     (re.compile(r'\bsec\.?\s*(\d)', re.IGNORECASE), r'section \1'),
     (re.compile(r'\bs\.\s*(\d)', re.IGNORECASE), r'section \1'),
@@ -222,35 +224,37 @@ def _extract_query_refs(query: str) -> list:
             seen.add(key)
             refs.append(key)
 
+    # Circular references: "Circular No. 183", "Circular 183/15/2022", "CBIC Circular 183"
+    for m in re.finditer(r'\bcircular\s+(?:no\.?\s*)?(\d{2,3})\b', q):
+        cir_num = m.group(1)
+        key = f"CIRCULAR_{cir_num}"
+        if key not in seen:
+            seen.add(key)
+            refs.append(key)
+
     return refs
 
 
-def _expand_context_window(selected: list, pool: list, max_neighbors: int = 2) -> list:
+def _expand_context_window(
+    selected: list,
+    doc_map: dict,
+    all_chunks: list,
+    max_neighbors: int = 2,
+) -> list:
     """
-    Parent-child equivalent without re-indexing: for each selected chunk, find
-    adjacent chunks from the same document in the broader pool and merge their
-    text into context_text. The LLM receives richer context; the original text
-    field is preserved for scoring and snippet display.
-    """
-    from collections import defaultdict
+    Full-corpus context window expansion.
 
-    if not pool or len(pool) <= 1:
+    For each selected chunk, looks up its document in the startup-built doc_map
+    (rel_path → sorted [(page, chunk_index)]) and fetches adjacent-page neighbors
+    directly from all_chunks by index. Neighbors can be anywhere in the full corpus,
+    not just the 80-chunk retrieval pool — this is the key improvement over the
+    previous pool-only version.
+
+    Stores the enriched text in context_text; original text is preserved for
+    scoring, snippet display, and the source panel.
+    """
+    if not doc_map or not all_chunks:
         return selected
-
-    # Build per-document list of (page, chunk) from the pool
-    doc_map: dict = defaultdict(list)
-    for chunk in pool:
-        rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
-        if not rel:
-            continue
-        pages = chunk.get("pages") or chunk.get("metadata", {}).get("pages") or []
-        page = min(pages) if pages else (
-            chunk.get("page") or chunk.get("metadata", {}).get("page") or 0
-        )
-        doc_map[rel].append((page, chunk))
-
-    for rel in doc_map:
-        doc_map[rel].sort(key=lambda x: x[0])
 
     expanded = []
     for chunk in selected:
@@ -262,13 +266,20 @@ def _expand_context_window(selected: list, pool: list, max_neighbors: int = 2) -
         cid = chunk.get("chunk_id")
 
         if rel and rel in doc_map and len(doc_map[rel]) > 1:
-            neighbors = [
-                c for (p, c) in doc_map[rel]
-                if c.get("chunk_id") != cid and abs(p - page) <= 2
-            ]
-            if neighbors:
-                neighbors = neighbors[:max_neighbors]
-                neighbor_texts = [n.get("text", "").strip() for n in neighbors if n.get("text", "").strip()]
+            neighbor_chunks = []
+            for (p, idx) in doc_map[rel]:
+                if abs(p - page) <= 2 and 0 <= idx < len(all_chunks):
+                    nbr = all_chunks[idx]
+                    if nbr.get("chunk_id") != cid:
+                        neighbor_chunks.append(nbr)
+
+            if neighbor_chunks:
+                neighbor_chunks = neighbor_chunks[:max_neighbors]
+                neighbor_texts = [
+                    n.get("text", "").strip()
+                    for n in neighbor_chunks
+                    if n.get("text", "").strip()
+                ]
                 if neighbor_texts:
                     chunk = chunk.copy()
                     chunk["context_text"] = (
@@ -306,6 +317,14 @@ def tokenize_text(text: str):
     # e.g. "DRC-01", "GSTR-3B", "RFD-01"
     for m in re.finditer(r'\b[a-z]{2,5}-[\w\d]+\b', text_lower):
         tokens.append(m.group(0))
+
+    # Circular/notification number references as compound tokens
+    # e.g. "Circular No. 183" → "circular_no_183", "cir-183-15" → "circular_183"
+    for m in re.finditer(
+        r'\b(?:circular|cir)[-_.\s]*(?:no\.?[-_.\s]*)?(\d{2,3})\b',
+        text_lower
+    ):
+        tokens.append(f"circular_{m.group(1)}")
 
     # Add bigram tokens for GST compound phrases
     for phrase in _GST_BIGRAMS:
@@ -451,6 +470,56 @@ class Retriever:
                     self._provision_index[_ref].append(_ci)
         logger.info(f"Provision index built: {len(self._provision_index)} citation keys")
 
+        # Build circular number index for O(1) direct circular lookup.
+        # Maps "CIRCULAR_183" → list of chunk indices from circular filenames.
+        # Covers patterns: Circular-No-183, cir-183, circular-cgst-183, circularno-183.
+        self._circular_index: dict = {}
+        _cir_num_re = re.compile(
+            r'(?:circular[s]?[-_.\s]*(?:[a-z]*[-_.\s]*)?(?:no[-_.\s]*)?|cir[-_.](?:cgst[-_.])?|circularno[-_.])(\d{2,3})',
+            re.IGNORECASE,
+        )
+        _cir_leading_re = re.compile(r'^(\d{2,3})[-_]\d+[-_]\d{4}', re.IGNORECASE)
+        for _ci, _chunk in enumerate(self.chunks):
+            _meta = _chunk.get("metadata", {})
+            _cat = (_meta.get("category") or "").lower()
+            _dtype = (_meta.get("document_type") or "").lower()
+            if "circular" not in _cat and "circular" not in _dtype:
+                continue
+            _rel = _chunk.get("rel_path") or _meta.get("rel_path", "")
+            _fname = _rel.split("/")[-1].split("\\")[-1] if _rel else ""
+            _m = _cir_num_re.search(_fname) or _cir_leading_re.match(_fname)
+            if _m:
+                _key = f"CIRCULAR_{_m.group(1)}"
+                if _key not in self._circular_index:
+                    self._circular_index[_key] = []
+                if _ci not in self._circular_index[_key]:
+                    self._circular_index[_key].append(_ci)
+        logger.info(f"Circular index built: {len(self._circular_index)} circular numbers indexed")
+
+        # Build full-corpus document map for context window expansion.
+        # Maps rel_path → sorted list of (page_num, chunk_index).
+        # Built once at startup so every query can fetch neighbors from the
+        # entire corpus by index, not just from the 80-chunk retrieval pool.
+        self._doc_map: dict = {}
+        for _ci, _chunk in enumerate(self.chunks):
+            _meta = _chunk.get("metadata", {})
+            _rel = _chunk.get("rel_path") or _meta.get("rel_path", "")
+            if not _rel:
+                continue
+            _pages = _chunk.get("pages") or _meta.get("pages") or []
+            _page = min(_pages) if _pages else (
+                _chunk.get("page") or _meta.get("page") or 0
+            )
+            if _rel not in self._doc_map:
+                self._doc_map[_rel] = []
+            self._doc_map[_rel].append((_page, _ci))
+        for _rel in self._doc_map:
+            self._doc_map[_rel].sort(key=lambda x: x[0])
+        logger.info(
+            f"Doc map built: {len(self._doc_map)} documents, "
+            f"{len(self.chunks)} total chunks"
+        )
+
         # Initialize FlashRank
         logger.info(f"Loading reranker: {RERANKING_MODEL}")
         try:
@@ -534,28 +603,42 @@ class Retriever:
         """
         Returns chunks that explicitly cite any of the given provision keys,
         using the pre-built provision index for O(1) lookup per key.
+        CIRCULAR_N keys are resolved via _circular_index (filename-based).
         These chunks are pinned at the top of combined_results with
         _statute_priority=1.0 so they survive FlashRank and LegalReranker.
-        Capped at 20 to avoid flooding the reranker with statute-only chunks.
+        Capped at 20 to avoid flooding the reranker with pinned chunks.
         """
         if not refs or not hasattr(self, "_provision_index"):
             return []
         seen_ids: set = set()
         pinned = []
+
+        def _pin(idx: int) -> bool:
+            if idx >= len(self.chunks):
+                return False
+            chunk = self.chunks[idx]
+            cid = chunk.get("chunk_id")
+            if cid and cid not in seen_ids:
+                c = chunk.copy()
+                c["_pinned_by_ref"] = True
+                c["_statute_priority"] = 1.0
+                pinned.append(c)
+                seen_ids.add(cid)
+                return True
+            return False
+
         for ref in refs:
+            # Statutory provisions (CGST_SEC_16, CGST_RUL_89, etc.)
             for idx in self._provision_index.get(ref, []):
-                if idx >= len(self.chunks):
-                    continue
-                chunk = self.chunks[idx]
-                cid = chunk.get("chunk_id")
-                if cid and cid not in seen_ids:
-                    c = chunk.copy()
-                    c["_pinned_by_ref"] = True
-                    c["_statute_priority"] = 1.0
-                    pinned.append(c)
-                    seen_ids.add(cid)
+                _pin(idx)
                 if len(pinned) >= 20:
                     return pinned
+            # Circular number keys (CIRCULAR_183) — resolved from filename-based index
+            if ref.startswith("CIRCULAR_") and hasattr(self, "_circular_index"):
+                for idx in self._circular_index.get(ref, []):
+                    _pin(idx)
+                    if len(pinned) >= 20:
+                        return pinned
         return pinned
 
     def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False, skip_rerank: bool = False):
@@ -683,9 +766,9 @@ class Retriever:
         # Drafts need: statute ≥10, case_law ≥10, circular ≥5
         # Q&A needs:   statute ≥8,  case_law ≥6,  circular ≥4
         _quotas = (
-            {"statute": 10, "case_law": 8, "circular": 6}   # drafts: need judgments + circulars
+            {"statute": 10, "case_law": 8, "circular": 12}  # drafts: need judgments + circulars
             if is_draft else
-            {"statute": 8, "case_law": 5, "circular": 6}    # Q&A: balanced; circulars boosted, relevance decides the rest
+            {"statute": 8, "case_law": 5, "circular": 12}   # Q&A: always pull 12 circular chunks even for general queries
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
 
@@ -695,9 +778,6 @@ class Retriever:
         for r in candidate_pool:
             if r.get("chunk_id") not in existing_ids:
                 combined_results.append(r)
-
-        # Store full pool before capping — used for context window expansion later
-        _full_pool = list(combined_results)
 
         # Cap total candidates for reranker (FlashRank OOM above ~300)
         RERANK_MAX = 80
@@ -735,9 +815,9 @@ class Retriever:
         reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k)
 
         # --- Context Window Expansion ---
-        # Enrich each selected chunk with adjacent-page neighbors from the same
-        # document, giving the LLM wider context without re-indexing.
-        reranked_results = _expand_context_window(reranked_results, _full_pool)
+        # Enrich each selected chunk with adjacent-page neighbors from the full
+        # corpus (self._doc_map covers all chunks, not just the 80-chunk pool).
+        reranked_results = _expand_context_window(reranked_results, self._doc_map, self.chunks)
 
         # Flatten metadata for final output (safe merge avoiding key collisions)
         final_results = []
@@ -826,8 +906,8 @@ class Retriever:
 
         mmr_results = _mmr_deduplicate(reranked, top_k=top_k)
 
-        # Context window expansion using the full pre-rerank pool
-        mmr_results = _expand_context_window(mmr_results, combined)
+        # Context window expansion using the full-corpus doc map
+        mmr_results = _expand_context_window(mmr_results, self._doc_map, self.chunks)
 
         final = []
         for res in mmr_results:

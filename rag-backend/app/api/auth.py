@@ -220,7 +220,8 @@ class RefreshRequest(BaseModel):
 
 
 # DEV_MODE=true → return otp_preview in response and skip strict OTP check.
-_DEV_MODE: bool = os.getenv("DEV_MODE", "true").lower() == "true"
+# Default is false (production-safe). Set DEV_MODE=true only for local testing.
+_DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() == "true"
 
 # Session durations per plan (seconds). Admin role is exempt — no timer.
 PLAN_DURATIONS: dict[str, int] = {
@@ -828,26 +829,17 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
             detail="User not found",
         )
 
-    # Compute plan-based session window
-    plan = user.get("plan", "basic")
-    role = user.get("role", "user")
-    now_utc   = datetime.now(timezone.utc)
-    now_ms    = int(now_utc.timestamp() * 1000)
+    role    = user.get("role", "user")
+    plan    = user.get("plan", "basic")
+    now_utc = datetime.now(timezone.utc)
+    now_ms  = int(now_utc.timestamp() * 1000)
 
-    if role == "admin":
-        session_end_ms = None          # admin: unlimited
-        session_end_dt = None
-    else:
-        duration_s     = PLAN_DURATIONS.get(plan, PLAN_DURATIONS["basic"])
-        session_end_dt = now_utc + timedelta(seconds=duration_s)
-        session_end_ms = int(session_end_dt.timestamp() * 1000)
-
+    # Session timer is NOT started at login — it only starts after payment (see payments.py).
     users_col.update_one(
         {"_id": user["_id"]},
         {"$set": {
-            "verified":    True,
-            "last_login":  now_utc,
-            "session_end": session_end_dt,   # stored as UTC datetime for server-side check
+            "verified":   True,
+            "last_login": now_utc,
         }}
     )
 
@@ -861,6 +853,7 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
         "plan":      plan,
     }
 
+<<<<<<< HEAD
     _log_auth_activity(
         request=request,
         started_at=started_at,
@@ -868,6 +861,16 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
         user=user_info,
         metadata=_auth_contact_metadata(req.contact, otp_record.get("method")),
     )
+=======
+    tokens: dict = {
+        "accessToken":           access_token,
+        "refreshToken":          refresh_token,
+        "expiresAt":             now_ms + (15 * 60 * 1000),
+        "refreshTokenExpiresAt": now_ms + (7 * 24 * 60 * 60 * 1000),
+        "tokenType":             "bearer",
+        # session_end_ms absent here — clock only starts after payment (see /api/payments/verify)
+    }
+>>>>>>> origin/main
 
     return _build_auth_response(user_info, session_end_ms=session_end_ms)
 

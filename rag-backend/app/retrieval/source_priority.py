@@ -13,11 +13,13 @@ _AUTHORITY_MAP = [
     # Weight 4 — Rules + High Court judgments
     (4, ["rules", "rule", "high court case laws", "tribunal", "judgement", "judgment"]),
 
-    # Weight 3 — AAR / Notifications / Export
-    (3, ["notification", "notifications", "aar", "advance ruling", "other app result", "export"]),
+    # Weight 3 — AAR / Notifications / Circulars / Instructions
+    # Circulars are the primary CBIC interpretive tool for GST — on par with notifications.
+    (3, ["notification", "notifications", "aar", "advance ruling", "other app result", "export",
+         "circulars", "circular", "instruction", "trade notice"]),
 
-    # Weight 2 — Circulars, Instructions, ICAI
-    (2, ["circulars", "circular", "instruction", "trade notice", "press release", "icai"]),
+    # Weight 2 — ICAI, press releases, misc guidance
+    (2, ["press release", "icai"]),
 
     # Weight 1 — Forms, Brochures, FAQs, Misc
     (1, ["forms", "form", "brochures", "brochure", "faqs", "faq", "flyer",

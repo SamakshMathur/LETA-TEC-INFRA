@@ -10,8 +10,11 @@ import os
 import hmac
 import hashlib
 import logging
-from fastapi import APIRouter, HTTPException
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from app.security import get_jwt_user
+from app.database import get_user_collection
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/payments", tags=["payments"])
@@ -21,14 +24,14 @@ PLANS = {
     "1hr": {
         "name": "1-Hour Access",
         "description": "Full module access for 1 hour",
-        "amount": 49900,        # paise (₹499 × 100)
+        "amount": 1000,         # paise (₹10 × 100) — TEST AMOUNT
         "currency": "INR",
         "duration_hours": 1,
     },
     "3hr": {
         "name": "3-Hour Access",
         "description": "Full module access for 3 hours",
-        "amount": 99900,        # paise (₹999 × 100)
+        "amount": 1000,         # paise (₹10 × 100) — TEST AMOUNT
         "currency": "INR",
         "duration_hours": 3,
     },
@@ -96,8 +99,11 @@ def create_order(req: CreateOrderRequest):
 
 
 @router.post("/verify")
-def verify_payment(req: VerifyPaymentRequest):
-    """Verify the HMAC signature returned by Razorpay after payment."""
+def verify_payment(
+    req: VerifyPaymentRequest,
+    current_user: dict = Depends(get_jwt_user),
+):
+    """Verify the HMAC signature returned by Razorpay and start the session timer."""
     key_secret = os.getenv("RAZORPAY_KEY_SECRET", "")
     if not key_secret:
         raise HTTPException(status_code=503, detail="Payment system not configured.")
@@ -110,12 +116,38 @@ def verify_payment(req: VerifyPaymentRequest):
     if not hmac.compare_digest(expected, req.razorpay_signature):
         raise HTTPException(status_code=400, detail="Payment verification failed.")
 
-    plan = PLANS.get(req.plan_id, {})
-    logger.info(f"Payment verified: {req.razorpay_payment_id} | {req.module}/{req.plan_id}")
+    plan_cfg       = PLANS.get(req.plan_id, {})
+    duration_hours = plan_cfg.get("duration_hours", 1)
+    now_utc        = datetime.now(timezone.utc)
+    session_end_dt = now_utc + timedelta(hours=duration_hours)
+    session_end_ms = int(session_end_dt.timestamp() * 1000)
+
+    # Map plan_id to the internal plan name stored on the user record
+    plan_name = "pro" if duration_hours >= 3 else "basic"
+
+    username  = current_user.get("username")
+    users_col = get_user_collection()
+    if users_col and username:
+        users_col.update_one(
+            {"username": username},
+            {"$set": {
+                "plan":             plan_name,
+                "session_end":      session_end_dt,   # UTC datetime — enforced by security.py
+                "last_payment_id":  req.razorpay_payment_id,
+                "last_payment_at":  now_utc,
+            }},
+        )
+        logger.info(
+            f"Session started: user={username} plan={plan_name} "
+            f"payment={req.razorpay_payment_id} expires={session_end_dt.isoformat()}"
+        )
+
     return {
-        "verified": True,
-        "module": req.module,
-        "plan_id": req.plan_id,
-        "duration_hours": plan.get("duration_hours", 1),
-        "payment_id": req.razorpay_payment_id,
+        "verified":       True,
+        "module":         req.module,
+        "plan_id":        req.plan_id,
+        "plan_name":      plan_name,        # "pro" | "basic" — frontend updates user.plan in session
+        "duration_hours": duration_hours,
+        "payment_id":     req.razorpay_payment_id,
+        "session_end_ms": session_end_ms,  # frontend writes into localStorage → SessionClock starts
     }

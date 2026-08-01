@@ -3,7 +3,7 @@ import {
   Home, About, Documentation,
   GST, TemplateCustomization,
   AdminTemplateDashboard, AdminUploadPortal,
-  SignupPage, LetaWorkspace, ModuleDashboard, LegalPolicies, MyDocs,
+  SignupPage, LetaWorkspace, ModuleDashboard, LegalPolicies, MyDocs, Payment,
 } from '../pages';
 import LoginPage from '../pages/auth/login';
 import { ROUTES } from '../constants/routes';
@@ -13,6 +13,13 @@ export interface RouteConfig {
   element: React.ReactNode;
 }
 
+/** No auth check — anyone can visit regardless of login state */
+export const openRoutes: RouteConfig[] = [
+  { path: ROUTES.HOME,  element: <Home /> },
+  { path: ROUTES.ABOUT, element: <About /> },
+  { path: ROUTES.DOCS,  element: <Documentation /> },
+];
+
 /** Redirect to /dashboard if already logged in */
 export const authRoutes: RouteConfig[] = [
   { path: ROUTES.LOGIN,  element: <LoginPage /> },
@@ -21,10 +28,6 @@ export const authRoutes: RouteConfig[] = [
 
 /** Require login — redirect to /login if not authenticated */
 export const protectedRoutes: RouteConfig[] = [
-  { path: ROUTES.HOME,  element: <Home /> },
-  { path: ROUTES.ABOUT, element: <About /> },
-  { path: ROUTES.DOCS,  element: <Documentation /> },
-
   { path: ROUTES.DASHBOARD, element: <ModuleDashboard /> },
   { path: ROUTES.GST.LETA, element: <LetaWorkspace /> },
   { path: ROUTES.INCOME_TAX_LETA, element: <LetaWorkspace /> },
@@ -88,4 +91,5 @@ export const protectedRoutes: RouteConfig[] = [
 
   { path: ROUTES.LEGAL,   element: <LegalPolicies /> },
   { path: ROUTES.MY_DOCS, element: <MyDocs /> },
+  { path: ROUTES.PAYMENT, element: <Payment /> },
 ];
