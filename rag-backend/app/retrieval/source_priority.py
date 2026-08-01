@@ -10,13 +10,16 @@ _AUTHORITY_MAP = [
     # Weight 5 — Primary Statute + Supreme Court (both are highest authority)
     (5, ["act", "cgst", "igst", "utgst", "sgst", "supreme court case laws"]),
 
-    # Weight 4 — Rules + High Court judgments
-    (4, ["rules", "rule", "high court case laws", "tribunal", "judgement", "judgment"]),
+    # Weight 4 — Rules + High Court + CBIC Circulars
+    # CBIC Circulars are binding interpretive instruments under CGST Act s.168.
+    # They have mandatory force on field officers and practitioners — not merely
+    # persuasive like AARs. Weight 4 puts them on par with Rules and High Court.
+    (4, ["rules", "rule", "high court case laws", "tribunal", "judgement", "judgment",
+         "circulars", "circular"]),
 
-    # Weight 3 — AAR / Notifications / Circulars / Instructions
-    # Circulars are the primary CBIC interpretive tool for GST — on par with notifications.
+    # Weight 3 — Notifications / AARs / Instructions / Trade Notices
     (3, ["notification", "notifications", "aar", "advance ruling", "other app result", "export",
-         "circulars", "circular", "instruction", "trade notice"]),
+         "instruction", "trade notice"]),
 
     # Weight 2 — ICAI, press releases, misc guidance
     (2, ["press release", "icai"]),

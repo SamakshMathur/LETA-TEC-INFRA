@@ -206,10 +206,33 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
             f"════════════════════════════════════════"
         )
 
-    sources_section = "\n\n".join(context_blocks)
+    # ── Step 2.5: Interleave circular blocks so they survive char-truncation ──────
+    # LegalReranker ranks Acts highest → without interleaving, all circular blocks
+    # appear at the end and get cut when Acts + Rules fill the char budget first.
+    # Pattern: 2 non-circular blocks, then 1 circular block, repeat.
+    _circ_blocks, _other_blocks = [], []
+    for _b, _c in zip(context_blocks, chunks):
+        _rpath = (
+            _c.get("rel_path") or _c.get("metadata", {}).get("rel_path", "") or _c.get("source", "")
+        ).lower()
+        if "circular" in _rpath:
+            _circ_blocks.append(_b)
+        else:
+            _other_blocks.append(_b)
+
+    ordered_blocks = []
+    _oi, _ci = 0, 0
+    while _oi < len(_other_blocks) or _ci < len(_circ_blocks):
+        for _ in range(2):
+            if _oi < len(_other_blocks):
+                ordered_blocks.append(_other_blocks[_oi]); _oi += 1
+        if _ci < len(_circ_blocks):
+            ordered_blocks.append(_circ_blocks[_ci]); _ci += 1
+
+    sources_section = "\n\n".join(ordered_blocks)
 
     # ── Step 3: Assemble Full Context ─────────────────────────
-    full_context = (
+    _header = (
         f"╔══════════════════════════════════════════╗\n"
         f"║   VERIFIED CITATION REGISTRY             ║\n"
         f"╚══════════════════════════════════════════╝\n"
@@ -217,11 +240,21 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         f"╔══════════════════════════════════════════╗\n"
         f"║   RETRIEVED SOURCE DOCUMENTS             ║\n"
         f"╚══════════════════════════════════════════╝\n"
-        f"{sources_section}"
     )
+    full_context = _header + sources_section
 
     if len(full_context) > max_context:
-        full_context = full_context[:max_context] + "\n\n[Context truncated to stay within token limits]"
+        # Block-aware truncation: never cut mid-document.
+        # Rebuild incrementally, adding whole source blocks until budget is exhausted.
+        _kept = _header
+        _sep = ""
+        for _blk in ordered_blocks:
+            _candidate = _kept + _sep + _blk
+            if len(_candidate) > max_context:
+                break
+            _kept = _candidate
+            _sep = "\n\n"
+        full_context = _kept + "\n\n[Context truncated to stay within token limits]"
 
     return full_context
 

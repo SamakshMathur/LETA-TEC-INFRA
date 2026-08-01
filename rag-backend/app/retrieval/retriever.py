@@ -455,6 +455,25 @@ class Retriever:
         self.bm25 = BM25Okapi(tokenized_corpus)
         logger.info(f"BM25 index built: {len(tokenized_corpus)} documents")
 
+        # Backfill missing year metadata from subfolder path.
+        # Chunks from "Circulars/circulars/2022/circular-no-xxx.pdf" store the year
+        # in the folder name but ingestion didn't write it to metadata["year"].
+        # The reranker's _year_recency() reads this field — without it every circular
+        # gets the "unknown year" score of 0.55 regardless of actual age.
+        _year_re = re.compile(r'[/\\](\d{4})[/\\]')
+        _year_patched = 0
+        for _chunk in self.chunks:
+            _meta = _chunk.get("metadata", {})
+            if not (_meta.get("year") or _chunk.get("year")):
+                _rel_path = _chunk.get("rel_path") or _meta.get("rel_path", "")
+                _ym = _year_re.search(_rel_path)
+                if _ym:
+                    _yr = int(_ym.group(1))
+                    _chunk["year"] = _yr
+                    _meta["year"] = _yr
+                    _year_patched += 1
+        logger.info(f"Year backfill: patched {_year_patched} chunks from folder path")
+
         # Build provision index for O(1) direct section/rule lookup.
         # Maps citation key (e.g. "CGST_SEC_16") → list of chunk indices.
         # Built once at startup; each query with explicit citations does a
@@ -483,9 +502,11 @@ class Retriever:
             _meta = _chunk.get("metadata", {})
             _cat = (_meta.get("category") or "").lower()
             _dtype = (_meta.get("document_type") or "").lower()
-            if "circular" not in _cat and "circular" not in _dtype:
-                continue
             _rel = _chunk.get("rel_path") or _meta.get("rel_path", "")
+            # Also check rel_path: 1,541 circular-file chunks were tagged document_type="Statute"
+            # (because the chunker classified the quoted statutory text, not the container doc).
+            if "circular" not in _cat and "circular" not in _dtype and "circular" not in _rel.lower():
+                continue
             _fname = _rel.split("/")[-1].split("\\")[-1] if _rel else ""
             _m = _cir_num_re.search(_fname) or _cir_leading_re.match(_fname)
             if _m:
@@ -752,12 +773,21 @@ class Retriever:
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
 
-        # Merge layers: Pinned (explicit citation) > Statute-First > Graph > Semantic
-        combined_results = _pinned + statute_results[:50] + graph_results[:30]
+        # Merge layers: Pinned > Circular quota fills > Statute-First > Graph > Semantic
+        # Circular fills must come BEFORE statute/graph to survive the 80-cap.
+        # Without this, statute_results[:50] + graph_results[:30] = 80 and all
+        # circular fills (from _enforce_pool_quotas) get silently dropped.
+        _circ_fills = [r for r in candidate_pool
+                       if r.get("_targeted_fill") and r.get("_fill_category") == "circular"]
+        _circ_fill_ids = {r.get("chunk_id") for r in _circ_fills}
+        _rest_pool = [r for r in candidate_pool if r.get("chunk_id") not in _circ_fill_ids]
+
+        combined_results = _pinned + _circ_fills + statute_results[:40] + graph_results[:20]
         existing_ids = {r.get("chunk_id") for r in combined_results}
-        for r in candidate_pool:
+        for r in _rest_pool:
             if r.get("chunk_id") not in existing_ids:
                 combined_results.append(r)
+                existing_ids.add(r.get("chunk_id"))
 
         # Cap total candidates for reranker (FlashRank OOM above ~300)
         RERANK_MAX = 80
@@ -853,6 +883,18 @@ class Retriever:
                             if cid and cid not in existing_ids:
                                 existing_ids.add(cid)
                                 combined.append(chunk)
+
+        # Enforce circular quotas — supplement_and_rerank is the primary path for
+        # complex queries but previously had no quota guarantee.
+        _sr_quotas = {"statute": 8, "case_law": 5, "circular": 12}
+        combined = self._enforce_pool_quotas(combined, query, _sr_quotas)
+
+        # Pull circular fills to the front so they survive the 80-cap
+        _sr_circ_fills = [r for r in combined
+                          if r.get("_targeted_fill") and r.get("_fill_category") == "circular"]
+        _sr_circ_ids = {r.get("chunk_id") for r in _sr_circ_fills}
+        _sr_rest = [r for r in combined if r.get("chunk_id") not in _sr_circ_ids]
+        combined = _sr_circ_fills + _sr_rest
 
         RERANK_CAP = 80
         rerank_input = combined[:RERANK_CAP]
