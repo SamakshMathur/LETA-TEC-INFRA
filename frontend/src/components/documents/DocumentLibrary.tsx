@@ -251,9 +251,15 @@ const YearTabRow: React.FC<{
     fetch(endpoint)
       .then(r => r.json())
       .then(data => {
-        setByYear(data);
-        const years = Object.keys(data).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
-        if (years.length) setActiveYear(years[0]);
+        // Validate: must be a plain object where every value is an array.
+        // Guards against 404 JSON errors like {"detail":"Not Found"} which would
+        // set activeYear="detail", then activeDocs="Not Found" (string → .map crash).
+        if (data && typeof data === 'object' && !Array.isArray(data) &&
+            Object.values(data).every(v => Array.isArray(v))) {
+          setByYear(data);
+          const years = Object.keys(data).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
+          if (years.length) setActiveYear(years[0]);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -268,7 +274,9 @@ const YearTabRow: React.FC<{
   };
 
   const years = Object.keys(byYear).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
-  const activeDocs = byYear[activeYear] || [];
+  // Always guarantee an array — guards against any malformed API response slipping through
+  const rawDocs = byYear[activeYear];
+  const activeDocs: DocItem[] = Array.isArray(rawDocs) ? rawDocs : [];
   const totalCount = Object.values(byYear).reduce((s, arr) => s + arr.length, 0);
 
   return (
