@@ -537,6 +537,10 @@ _ask_logger = logging.getLogger("leta.ask")
 @app.post("/ask")
 @limiter.limit("30/minute")
 async def ask_question(request: Request, req: QuestionRequest):
+    if not _warmup_complete:
+        from starlette.responses import JSONResponse as _jr
+        return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
+
     question = req.question.strip()
     session_id = req.session_id
     query_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
@@ -779,6 +783,10 @@ async def ask_question(request: Request, req: QuestionRequest):
 async def ask_question_sync(request: Request, req: QuestionRequest):
     """Non-streaming version of /ask — returns complete JSON response.
     Required for AWS API Gateway HTTP_PROXY compatibility (no SSE streaming support)."""
+    if not _warmup_complete:
+        from starlette.responses import JSONResponse as _jr
+        return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
+
     import asyncio as _asyncio
     import urllib.parse as _urlparse
     from fastapi.responses import JSONResponse as _JSONResponse
@@ -935,6 +943,10 @@ async def ask_question_with_file(
     question: str = Form(...),
     session_id: Optional[str] = Form(None),
 ):
+    if not _warmup_complete:
+        from starlette.responses import JSONResponse as _jr
+        return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
+
     question_text = question.strip()
 
     # 1. Read the file

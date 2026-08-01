@@ -64,7 +64,7 @@ exec gunicorn main:app \
   --workers "${WORKERS}" \
   --bind "0.0.0.0:${PORT:-8080}" \
   --timeout 180 \
-  --graceful-timeout 30 \
+  --graceful-timeout 180 \
   --keep-alive 5 \
   --max-requests 1000 \
   --max-requests-jitter 100 \

@@ -633,6 +633,32 @@ const LetaWorkspace: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // ─── Retry fetch on 503 (service warming up after deployment) ────────────────
+  const showRetryStatus = (msg: string) => {
+    setMessages(prev => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last?.role === 'assistant') {
+        next[next.length - 1] = { ...last, current_status: msg };
+      }
+      return next;
+    });
+  };
+
+  const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3, delayMs = 8000): Promise<Response> => {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const res = await fetch(url, options);
+      if (res.status !== 503) return res;
+      if (attempt < maxRetries - 1) {
+        const secs = Math.round(delayMs / 1000);
+        showRetryStatus(`LETA is starting up — retrying in ${secs}s… (${attempt + 1}/${maxRetries - 1})`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+    // Final attempt — return whatever we get (503 or otherwise)
+    return fetch(url, options);
+  };
+
   // ─── Main ask handler ─────────────────────────────────────────────────────────
   const handleAsk = async (queryOverride?: string) => {
     const activeQuery = typeof queryOverride === 'string' ? queryOverride : query;
@@ -696,7 +722,9 @@ const LetaWorkspace: React.FC = () => {
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
-        const fileRes = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
+        // Add placeholder assistant bubble so showRetryStatus has a target
+        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        const fileRes = await fetchWithRetry(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
         if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
 
@@ -705,8 +733,7 @@ const LetaWorkspace: React.FC = () => {
 
         if (!reader) throw new Error('Response stream unavailable');
 
-        // Add assistant message now that we have a live stream
-        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        // Assistant bubble already added before fetchWithRetry
         setIsStreaming(true);
         // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
 
@@ -806,7 +833,9 @@ const LetaWorkspace: React.FC = () => {
         setIsStreaming(false);
       } else {
         // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
-        const streamRes = await fetch(`${BASE_URL}/ask`, {
+        // Add placeholder assistant bubble before fetch so showRetryStatus has a target during 503 retries
+        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        const streamRes = await fetchWithRetry(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
@@ -820,8 +849,7 @@ const LetaWorkspace: React.FC = () => {
 
         if (!reader) throw new Error('Response stream unavailable');
 
-        // Add assistant message now that we have a live stream
-        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        // Assistant bubble already added before fetchWithRetry
         setIsStreaming(true);
         // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
 
@@ -942,7 +970,12 @@ const LetaWorkspace: React.FC = () => {
       const isNetworkInterrupt = error?.name === 'TypeError' || error?.message?.includes('network') || error?.message?.includes('Failed to fetch');
       if (!isNetworkInterrupt) pendingRetryRef.current = null;
       console.error('LETA API Error:', error);
-      const errMsg = 'Unable to reach the advisory server. Please check your connection and try again.';
+      const status = error?.message?.match(/status: (\d+)/)?.[1];
+      const errMsg = status === '503'
+        ? 'LETA is starting up after a deployment — please wait a moment and try again.'
+        : status === '401'
+        ? 'Your session has expired. Please refresh the page and log in again.'
+        : 'Unable to reach the advisory server. Please check your connection and try again.';
       setMessages(prev => {
         const next = [...prev];
         const last = next[next.length - 1];
