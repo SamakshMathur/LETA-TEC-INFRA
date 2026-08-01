@@ -46,6 +46,7 @@ CATEGORIES = [
     ("Notification",            "Notification","notifications"),
     ("High Court Case Laws",    "Case Law",    "highcourt"),
     ("Supreme Court Case Laws", "Case Law",    "supremecourt"),
+    ("Other APP Result",        "AAR",         "aar"),
     ("AAR",                     "AAR",         "aar"),
     ("Circulars",               "Circular",    "circulars"),
     ("Act",                     "Act",         "acts"),
@@ -58,8 +59,9 @@ CATEGORIES = [
     ("ICAI",                    "ICAI",        "icai"),
 ]
 
-SKIP_FOLDERS   = {"generated_reports", "Other APP Result"}
-CHECKPOINT_EVERY = 20
+# __MACOSX = Mac ZIP ghost folders — contain duplicate .docx stubs, never ingest
+SKIP_FOLDERS   = {"generated_reports", "__MACOSX"}
+CHECKPOINT_EVERY = 10
 
 
 # ── S3 ─────────────────────────────────────────────────────────────────────────
@@ -295,6 +297,7 @@ def main():
                 if p.is_file()
                 and p.suffix.lower() in {".docx", ".doc"}
                 and not any(sk in p.parts for sk in SKIP_FOLDERS)
+                and not p.name.startswith("._")   # skip Mac metadata stubs
             ]
             missing = [p for p in sorted(all_docs)
                        if str(p).replace("\\", "/").lower() not in indexed]

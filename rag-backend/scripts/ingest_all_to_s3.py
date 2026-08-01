@@ -50,6 +50,7 @@ CATEGORIES = [
     ("AAR",                     "AAR",          "aar"),
     ("High Court Case Laws",    "Case Law",     "highcourt"),
     ("Supreme Court Case Laws", "Case Law",     "supremecourt"),
+    ("Other APP Result",        "AAR",          "aar"),        # Appellate Authority rulings
     ("Responses",               "Response",     "responses"),
     ("Act",                     "Act",          "acts"),
     ("CGST",                    "CGST Act",     "cgst"),
@@ -63,8 +64,10 @@ CATEGORIES = [
     ("Circulars",               "Circular",     "circulars"),
 ]
 
-SKIP_FOLDERS   = {"generated_reports", "Other APP Result"}
-CHECKPOINT_EVERY = 20
+# generated_reports = system output PDFs, not source law — never ingest
+# __MACOSX          = Mac ZIP ghost folders containing duplicate metadata stubs
+SKIP_FOLDERS   = {"generated_reports", "__MACOSX"}
+CHECKPOINT_EVERY = 10
 
 
 # ── S3 ─────────────────────────────────────────────────────────────────────────
@@ -326,7 +329,9 @@ def main():
                 continue
             all_pdfs = [
                 p for p in cat_root.rglob("*.pdf")
-                if p.is_file() and not any(sk in p.parts for sk in SKIP_FOLDERS)
+                if p.is_file()
+                and not any(sk in p.parts for sk in SKIP_FOLDERS)
+                and not p.name.startswith("._")   # skip Mac metadata stubs
             ]
             grand_total_disk += len(all_pdfs)
             missing = [p for p in sorted(all_pdfs)
