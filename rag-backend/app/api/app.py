@@ -60,6 +60,10 @@ app = FastAPI(
     description="In-house GST knowledge assistant",
 )
 
+# Readiness gate: ALB health check returns 503 until models are loaded.
+# Prevents live traffic from hitting a task that isn't ready to serve yet.
+_warmup_complete: bool = False
+
 @app.on_event("startup")
 async def _startup_tasks():
     """Seed feed store and pre-warm AI models in background."""
@@ -79,12 +83,15 @@ async def _startup_tasks():
     # 2. Pre-load embedding model + FAISS index so the first /ask-sync request
     #    doesn't pay the ~15-20s cold-start cost and timeout at API Gateway.
     async def _warmup():
+        global _warmup_complete
         try:
             from app.dependencies import preload_all_models
             await _asyncio.to_thread(preload_all_models)
             logger.info("Startup model warmup complete")
         except Exception as e:
             logger.warning(f"Startup warmup failed (non-fatal): {e}")
+        finally:
+            _warmup_complete = True  # always unblock health check, even on error
 
     _asyncio.ensure_future(_warmup())
 
@@ -302,6 +309,21 @@ from datetime import datetime
 # ---------- Endpoint ----------
 @app.get("/api/health")
 async def health_check():
+    from starlette.responses import JSONResponse
+
+    # Return 503 while models are still loading so ALB withholds live traffic
+    # until this task is genuinely ready to serve requests.
+    if not _warmup_complete:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "warming_up",
+                "timestamp": datetime.now().isoformat(),
+                "message": "Model warmup in progress — retry in 30s",
+            },
+            headers={"Retry-After": "30"},
+        )
+
     health_status = {
         "status": "active",
         "timestamp": datetime.now().isoformat(),
@@ -311,7 +333,7 @@ async def health_check():
             "retriever": "unknown"
         }
     }
-    
+
     # Check Database
     try:
         from app.database import get_db

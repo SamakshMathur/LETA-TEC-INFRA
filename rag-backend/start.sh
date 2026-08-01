@@ -54,9 +54,10 @@ PYEOF
 
 echo "[START] DATA SYNC COMPLETE — starting gunicorn"
 
-# Worker count: default 2 (each worker loads ~600 MB of models).
-# Increase WORKERS if your instance has ≥ 4 GB free RAM per extra worker.
-WORKERS=${WORKERS:-2}
+# Worker count: default 4 (each gunicorn worker forks its own copy of the
+# embedding model — ~600 MB each).  Requires ≥ 6 GB free RAM in the ECS task.
+# Override via WORKERS env var in the ECS task definition if RAM is tighter.
+WORKERS=${WORKERS:-4}
 
 exec gunicorn main:app \
   --worker-class uvicorn.workers.UvicornWorker \
