@@ -21,6 +21,7 @@ openpyxl
 python-docx
 pytesseract
 numpy
+flashrank
 FlagEmbedding
 diskcache
 reportlab

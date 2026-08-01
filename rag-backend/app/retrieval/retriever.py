@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 
 from rank_bm25 import BM25Okapi
+from flashrank import Ranker as FlashRanker, RerankRequest
 from FlagEmbedding import FlagReranker
 from app.config import (
     RERANKING_MODEL, EMBEDDING_MODEL, VECTOR_DIM,
@@ -551,15 +552,27 @@ class Retriever:
             f"{len(self.chunks)} total chunks"
         )
 
-        # Initialize BGE Reranker v2-m3 (replaces FlashRank ms-marco).
-        # bge-reranker-v2-m3 is trained on dense multilingual corpora and outperforms
-        # ms-marco by 8-15 points on domain-specific retrieval benchmarks.
-        # use_fp16=True halves memory (~285 MB per worker vs 570 MB full precision).
-        logger.info(f"Loading reranker: {RERANKING_MODEL}")
+        # 2-stage cascade reranker:
+        #   Stage 1 — FlashRank ms-marco (22 MB ONNX, ~0.3s): 80 candidates → top 30
+        #   Stage 2 — BGE reranker v2-m3 (570 MB fp16, ~1.5s on top-30): final ranking
+        # Total reranking: ~2s vs 8s (BGE alone on 80) or 0.3s (FlashRank alone).
+        # Quality gain: BGE was trained on dense legal/multilingual corpora, ms-marco
+        # on general web search — the cascade gets speed from stage-1, precision from stage-2.
+        logger.info("Loading 2-stage cascade reranker...")
+        try:
+            self.flash_ranker = FlashRanker(
+                model_name="ms-marco-MiniLM-L-12-v2",
+                cache_dir=".flashrank_cache",
+            )
+            logger.info("  Stage 1: FlashRank ms-marco loaded")
+        except Exception as e:
+            logger.error(f"Failed to load FlashRank (stage 1): {e}", exc_info=True)
+            self.flash_ranker = None
         try:
             self.ranker = FlagReranker(RERANKING_MODEL, use_fp16=True)
+            logger.info("  Stage 2: BGE reranker v2-m3 loaded")
         except Exception as e:
-            logger.error(f"Failed to load FlagReranker: {e}", exc_info=True)
+            logger.error(f"Failed to load BGE reranker (stage 2): {e}", exc_info=True)
             self.ranker = None
 
         # Initialize Layer 1 (Statute-First)
@@ -570,6 +583,55 @@ class Retriever:
         self.graph_retriever = ProvisionGraphRetriever(graph_path)
 
         logger.info("Retriever initialized: 3-Layer Architecture + Provision Graph + MMR")
+
+    def _cascade_rerank(self, query: str, candidates: list,
+                        stage1_keep: int = 30) -> list:
+        """
+        2-stage cascade reranker.
+
+        Stage 1 — FlashRank (fast ONNX, ~0.3s):
+          Scores all `candidates` and keeps the top `stage1_keep`.
+        Stage 2 — BGE reranker v2-m3 (high quality, ~1.5s on 30 pairs):
+          Precisely scores the stage-1 survivors and returns them sorted.
+
+        Falls back gracefully: if stage 2 unavailable → stage 1 only.
+        If stage 1 also unavailable → returns candidates unsorted.
+        """
+        pool = list(candidates)
+
+        # ── Stage 1: FlashRank ────────────────────────────────────────────────
+        if self.flash_ranker and pool:
+            try:
+                passages = [
+                    {"id": i, "text": (c.get("context_text") or c.get("text", ""))[:2048],
+                     "meta": c}
+                    for i, c in enumerate(pool)
+                ]
+                flash_out = self.flash_ranker.rerank(RerankRequest(query=query, passages=passages))
+                for r in flash_out:
+                    r["meta"]["_rerank_score"] = r["score"]
+                pool = [r["meta"] for r in flash_out]
+                pool = pool[:stage1_keep]           # keep only top-N for stage 2
+                logger.debug(f"Stage-1 FlashRank: {len(candidates)} → {len(pool)}")
+            except Exception as e:
+                logger.warning(f"FlashRank stage-1 failed: {e}")
+
+        # ── Stage 2: BGE reranker ─────────────────────────────────────────────
+        if self.ranker and pool:
+            try:
+                texts = [(c.get("context_text") or c.get("text", ""))[:2048] for c in pool]
+                pairs = [[query, t] for t in texts]
+                scores = self.ranker.compute_score(pairs, normalize=True)
+                if not isinstance(scores, list):
+                    scores = [scores]
+                for chunk, score in zip(pool, scores):
+                    chunk["_rerank_score"] = float(score)
+                pool = sorted(pool, key=lambda x: x.get("_rerank_score", 0), reverse=True)
+                logger.debug(f"Stage-2 BGE: scored {len(pool)} survivors")
+            except Exception as e:
+                logger.warning(f"BGE stage-2 failed: {e}")
+
+        return pool
 
     def _enforce_pool_quotas(self, pool: list, query: str, quotas: dict) -> list:
         """
@@ -826,20 +888,13 @@ class Retriever:
         # --- Semantic Reranking (FlashRank) ---
         # skip_rerank=True bypasses the cross-encoder to stay within API Gateway's 29s timeout
         reranked_results = reranker_input
-        if reranker_input and self.ranker and not skip_rerank:
-            try:
-                texts = [r.get("context_text") or r.get("text", "") for r in reranker_input]
-                pairs = [[query, t[:2048]] for t in texts]   # cap per-passage length
-                scores = self.ranker.compute_score(pairs, normalize=True)
-                if not isinstance(scores, list):
-                    scores = [scores]
-                for chunk, score in zip(reranker_input, scores):
-                    chunk["_rerank_score"] = float(score)
-                reranked_results = sorted(reranker_input, key=lambda x: x.get("_rerank_score", 0), reverse=True)
-                logger.info(f"BGE reranked {len(reranker_input)} chunks | top_score={reranked_results[0].get('_rerank_score', 0):.3f}")
-            except Exception as e:
-                logger.warning(f"BGE reranking failed (falling back to unranked): {e}")
-                reranked_results = reranker_input
+        if reranker_input and not skip_rerank:
+            reranked_results = self._cascade_rerank(query, reranker_input)
+            if reranked_results:
+                logger.info(
+                    f"Cascade rerank: {len(reranker_input)} → {len(reranked_results)} | "
+                    f"top_score={reranked_results[0].get('_rerank_score', 0):.3f}"
+                )
 
         # --- Layer 3: Legal Reranking (Composite Scoring) ---
         reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic, is_draft=is_draft)
@@ -920,18 +975,8 @@ class Retriever:
         rerank_input = combined[:RERANK_CAP]
         reranked = rerank_input
 
-        if rerank_input and self.ranker:
-            try:
-                texts = [c.get("context_text") or c.get("text", "") for c in rerank_input]
-                pairs = [[query, t[:2048]] for t in texts]
-                scores = self.ranker.compute_score(pairs, normalize=True)
-                if not isinstance(scores, list):
-                    scores = [scores]
-                for chunk, score in zip(rerank_input, scores):
-                    chunk["_rerank_score"] = float(score)
-                reranked = sorted(rerank_input, key=lambda x: x.get("_rerank_score", 0), reverse=True)
-            except Exception as e:
-                logger.warning(f"BGE reranking failed in supplement_and_rerank: {e}")
+        if rerank_input:
+            reranked = self._cascade_rerank(query, rerank_input)
 
         reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
 
