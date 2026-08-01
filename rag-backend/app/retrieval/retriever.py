@@ -564,11 +564,22 @@ class Retriever:
 
     def _enforce_pool_quotas(self, pool: list, query: str, quotas: dict) -> list:
         """
-        Guarantee minimum chunks from each document category.
-        When a category is underrepresented in the semantic pool, fills it
-        with targeted BM25 results restricted to that category's folders.
-        quotas = {"statute": N, "case_law": N, "circular": N, "notification": N}
+        Guarantee minimum chunks from each document category — BUT ONLY from
+        chunks that actually score above the BM25 relevance threshold.
+
+        Statutes (Acts/Rules) get an unconditional floor because they are
+        the legal foundation for every GST answer.  Circulars/notifications
+        only fill the quota if the BM25 cross-encoder agrees they are
+        topically relevant — this prevents irrelevant circulars being forced
+        into a pure statutory answer (e.g. "define supply") and displacing
+        better-ranked Acts chunks from the 80-candidate reranker window.
+
+        min_bm25_by_cat: per-category BM25 score floor.
+          statute / case_law = 0.0  (always include to ensure legal foundation)
+          circular / notification = 1.5 (only add if there is real keyword overlap)
         """
+        MIN_BM25 = {"statute": 0.0, "case_law": 0.0, "circular": 1.5, "notification": 1.5}
+
         by_cat = {"statute": [], "case_law": [], "circular": [], "notification": [], "other": []}
         for chunk in pool:
             by_cat[_chunk_category(chunk)].append(chunk)
@@ -586,11 +597,14 @@ class Retriever:
                     continue  # already enough — no action needed
 
                 needed = quota - have
-                # Build sorted list of (chunk_index, score) for this category
+                min_score = MIN_BM25.get(cat, 0.0)
+
+                # Build sorted list of (chunk_index, score) for this category,
+                # filtered by the per-category BM25 floor.
                 cat_indices = [
                     (i, bm25_scores[i])
                     for i, c in enumerate(self.chunks)
-                    if _chunk_category(c) == cat
+                    if _chunk_category(c) == cat and bm25_scores[i] >= min_score
                 ]
                 cat_indices.sort(key=lambda x: x[1], reverse=True)
 
@@ -608,7 +622,15 @@ class Retriever:
                         added += 1
 
                 if added:
-                    logger.info(f"Pool quota fill: +{added} {cat} chunks (had {have}, needed {quota})")
+                    logger.info(
+                        f"Pool quota fill: +{added} {cat} chunks "
+                        f"(had {have}, needed {quota}, min_bm25={min_score})"
+                    )
+                elif have < quota:
+                    logger.debug(
+                        f"Pool quota fill: no relevant {cat} chunks above "
+                        f"BM25={min_score} — query may not need {cat} documents"
+                    )
 
         return result
 
@@ -768,29 +790,22 @@ class Retriever:
                 )
 
         # ── Phase 2A: Enforce pool quotas — guarantee representation from all source types ──
-        # Drafts need:      statute ≥10, case_law ≥10, circular ≥5,  notification ≥4
-        # Q&A needs:        statute ≥6,  case_law ≥4,  circular ≥10, notification ≥6
-        # Notifications now have their own slot — they were previously lumped into "statute",
-        # causing rate/exemption questions to get 0-1 notification chunks instead of 6+.
+        # Statutes always get a floor (Acts/Rules are the foundation of every GST answer).
+        # Circulars/notifications only fill in when BM25 confirms topical relevance (see
+        # _enforce_pool_quotas min_bm25 threshold) — prevents irrelevant circulars being
+        # forced into a pure statutory answer and displacing better-ranked Acts chunks.
         _quotas = (
-            {"statute": 10, "case_law": 8, "circular": 8, "notification": 4}
+            {"statute": 10, "case_law": 8, "circular": 4, "notification": 3}
             if is_draft else
-            {"statute": 6, "case_law": 4, "circular": 10, "notification": 6}
+            {"statute": 6,  "case_law": 4, "circular": 4, "notification": 3}
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
 
-        # Merge layers: Pinned > Circular/Notification quota fills > Statute-First > Graph > Semantic
-        # Quota fills must come BEFORE statute/graph to survive the 80-cap.
-        # Without this, statute_results[:50] + graph_results[:30] = 80 and all
-        # quota fills (circulars + notifications) get silently dropped.
-        _priority_fills = [r for r in candidate_pool
-                           if r.get("_targeted_fill") and r.get("_fill_category") in ("circular", "notification")]
-        _priority_fill_ids = {r.get("chunk_id") for r in _priority_fills}
-        _rest_pool = [r for r in candidate_pool if r.get("chunk_id") not in _priority_fill_ids]
-
-        combined_results = _pinned + _priority_fills + statute_results[:40] + graph_results[:20]
+        # Merge layers: Pinned > Statute-First > Graph > Semantic pool (including any fills).
+        # Fills now compete on merit via FlashRank+LegalReranker instead of being force-promoted.
+        combined_results = _pinned + statute_results[:40] + graph_results[:20]
         existing_ids = {r.get("chunk_id") for r in combined_results}
-        for r in _rest_pool:
+        for r in candidate_pool:
             if r.get("chunk_id") not in existing_ids:
                 combined_results.append(r)
                 existing_ids.add(r.get("chunk_id"))
@@ -890,17 +905,11 @@ class Retriever:
                                 existing_ids.add(cid)
                                 combined.append(chunk)
 
-        # Enforce category quotas — supplement_and_rerank is the primary path for all queries.
-        # Notifications split out of "statute" so rate/exemption queries always get ≥6 slots.
-        _sr_quotas = {"statute": 6, "case_law": 4, "circular": 10, "notification": 6}
+        # Enforce category quotas — circulars/notifications only fill in when BM25
+        # confirms topical relevance; statutes always get their floor.
+        _sr_quotas = {"statute": 6, "case_law": 4, "circular": 4, "notification": 3}
         combined = self._enforce_pool_quotas(combined, query, _sr_quotas)
-
-        # Pull circular + notification fills to the front so they survive the 80-cap
-        _sr_priority_fills = [r for r in combined
-                              if r.get("_targeted_fill") and r.get("_fill_category") in ("circular", "notification")]
-        _sr_priority_ids = {r.get("chunk_id") for r in _sr_priority_fills}
-        _sr_rest = [r for r in combined if r.get("chunk_id") not in _sr_priority_ids]
-        combined = _sr_priority_fills + _sr_rest
+        # No priority-front promotion — fills compete on merit via FlashRank + LegalReranker.
 
         RERANK_CAP = 80
         rerank_input = combined[:RERANK_CAP]
