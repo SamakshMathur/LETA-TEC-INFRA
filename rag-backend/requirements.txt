@@ -22,7 +22,6 @@ python-docx
 pytesseract
 numpy
 flashrank
-FlagEmbedding
 diskcache
 reportlab
 markdown2

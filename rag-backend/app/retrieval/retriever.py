@@ -8,9 +8,8 @@ import re
 
 from rank_bm25 import BM25Okapi
 from flashrank import Ranker as FlashRanker, RerankRequest
-from FlagEmbedding import FlagReranker
 from app.config import (
-    RERANKING_MODEL, EMBEDDING_MODEL, VECTOR_DIM,
+    EMBEDDING_MODEL, VECTOR_DIM,
     VECTOR_SEARCH_TOP_K, VECTOR_EXPANDED_TOP_K, BM25_TOP_K, MMR_LAMBDA,
 )
 from app.retrieval.reranker import LegalReranker
@@ -552,28 +551,16 @@ class Retriever:
             f"{len(self.chunks)} total chunks"
         )
 
-        # 2-stage cascade reranker:
-        #   Stage 1 — FlashRank ms-marco (22 MB ONNX, ~0.3s): 80 candidates → top 30
-        #   Stage 2 — BGE reranker v2-m3 (570 MB fp16, ~1.5s on top-30): final ranking
-        # Total reranking: ~2s vs 8s (BGE alone on 80) or 0.3s (FlashRank alone).
-        # Quality gain: BGE was trained on dense legal/multilingual corpora, ms-marco
-        # on general web search — the cascade gets speed from stage-1, precision from stage-2.
-        logger.info("Loading 2-stage cascade reranker...")
+        logger.info("Loading FlashRank reranker (ms-marco-MiniLM-L-12-v2)...")
         try:
             self.flash_ranker = FlashRanker(
                 model_name="ms-marco-MiniLM-L-12-v2",
                 cache_dir=".flashrank_cache",
             )
-            logger.info("  Stage 1: FlashRank ms-marco loaded")
+            logger.info("  FlashRank reranker loaded")
         except Exception as e:
-            logger.error(f"Failed to load FlashRank (stage 1): {e}", exc_info=True)
+            logger.error(f"Failed to load FlashRank reranker: {e}", exc_info=True)
             self.flash_ranker = None
-        try:
-            self.ranker = FlagReranker(RERANKING_MODEL, use_fp16=True)
-            logger.info("  Stage 2: BGE reranker v2-m3 loaded")
-        except Exception as e:
-            logger.error(f"Failed to load BGE reranker (stage 2): {e}", exc_info=True)
-            self.ranker = None
 
         # Initialize Layer 1 (Statute-First)
         self.statute_retriever = StatuteRetriever()
@@ -586,20 +573,8 @@ class Retriever:
 
     def _cascade_rerank(self, query: str, candidates: list,
                         stage1_keep: int = 30) -> list:
-        """
-        2-stage cascade reranker.
-
-        Stage 1 — FlashRank (fast ONNX, ~0.3s):
-          Scores all `candidates` and keeps the top `stage1_keep`.
-        Stage 2 — BGE reranker v2-m3 (high quality, ~1.5s on 30 pairs):
-          Precisely scores the stage-1 survivors and returns them sorted.
-
-        Falls back gracefully: if stage 2 unavailable → stage 1 only.
-        If stage 1 also unavailable → returns candidates unsorted.
-        """
+        """Reranks candidates with FlashRank ms-marco. Falls back to original order if unavailable."""
         pool = list(candidates)
-
-        # ── Stage 1: FlashRank ────────────────────────────────────────────────
         if self.flash_ranker and pool:
             try:
                 passages = [
@@ -611,26 +586,9 @@ class Retriever:
                 for r in flash_out:
                     r["meta"]["_rerank_score"] = r["score"]
                 pool = [r["meta"] for r in flash_out]
-                pool = pool[:stage1_keep]           # keep only top-N for stage 2
-                logger.debug(f"Stage-1 FlashRank: {len(candidates)} → {len(pool)}")
+                logger.debug(f"FlashRank: {len(candidates)} → {len(pool)}")
             except Exception as e:
-                logger.warning(f"FlashRank stage-1 failed: {e}")
-
-        # ── Stage 2: BGE reranker ─────────────────────────────────────────────
-        if self.ranker and pool:
-            try:
-                texts = [(c.get("context_text") or c.get("text", ""))[:2048] for c in pool]
-                pairs = [[query, t] for t in texts]
-                scores = self.ranker.compute_score(pairs, normalize=True)
-                if not isinstance(scores, list):
-                    scores = [scores]
-                for chunk, score in zip(pool, scores):
-                    chunk["_rerank_score"] = float(score)
-                pool = sorted(pool, key=lambda x: x.get("_rerank_score", 0), reverse=True)
-                logger.debug(f"Stage-2 BGE: scored {len(pool)} survivors")
-            except Exception as e:
-                logger.warning(f"BGE stage-2 failed: {e}")
-
+                logger.warning(f"FlashRank rerank failed: {e}")
         return pool
 
     def _enforce_pool_quotas(self, pool: list, query: str, quotas: dict) -> list:

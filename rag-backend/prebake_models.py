@@ -10,14 +10,9 @@ from sentence_transformers import SentenceTransformer
 SentenceTransformer("BAAI/bge-large-en-v1.5")
 print("     Done.")
 
-print("2/3  ms-marco-MiniLM-L-12-v2 (~22 MB) — FlashRank stage-1 filter...")
+print("2/2  ms-marco-MiniLM-L-12-v2 (~22 MB) — FlashRank reranker...")
 from flashrank import Ranker
 Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="/root/.flashrank_cache")
-print("     Done.")
-
-print("3/3  BAAI/bge-reranker-v2-m3 (~570 MB) — BGE stage-2 precision reranker...")
-from FlagEmbedding import FlagReranker
-FlagReranker("BAAI/bge-reranker-v2-m3", use_fp16=True)
 print("     Done.")
 
 print("=== Model bake complete ===")
