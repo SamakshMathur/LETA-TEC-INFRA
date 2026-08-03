@@ -718,17 +718,26 @@ async def ask_question(request: Request, req: QuestionRequest):
                 from app.retrieval.query_refiner import generate_advanced_queries
                 return generate_advanced_queries(_retrieval_q)
 
-            fast_chunks, advanced_queries = await _asyncio.gather(
-                _asyncio.to_thread(_fast_retrieve),
-                _asyncio.to_thread(_expand),
-            )
+            try:
+                fast_chunks, advanced_queries = await _asyncio.gather(
+                    _asyncio.to_thread(_fast_retrieve),
+                    _asyncio.to_thread(_expand),
+                )
 
-            # Supplement the fast pool with expanded-query FAISS results,
-            # then do ONE FlashRank + LegalReranker pass on the merged pool.
-            chunks = await _asyncio.to_thread(
-                retriever.supplement_and_rerank,
-                fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
-            )
+                # Supplement the fast pool with expanded-query FAISS results,
+                # then do ONE FlashRank + LegalReranker pass on the merged pool.
+                chunks = await _asyncio.to_thread(
+                    retriever.supplement_and_rerank,
+                    fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
+                )
+            except Exception as _retrieval_exc:
+                import traceback as _tb
+                logger.error(
+                    "[CRASH] rag_pipeline_orchestrator retrieval stage failed | "
+                    f"query_id={query_id} | {_retrieval_exc!r}\n{_tb.format_exc()}"
+                )
+                yield f"__STATUS__:{json.dumps({'msg': 'Retrieval engine error. Please try again.'})}__END_STATUS__"
+                return
 
         # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
         citation_block   = build_context(chunks, is_draft=_is_draft)
@@ -760,12 +769,19 @@ async def ask_question(request: Request, req: QuestionRequest):
             question, full_rag_context, session_is_draft=_is_draft
         )
 
-        async for chunk in stream_and_save(
-            response_stream, session_id, question,
-            chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
-            query_vec=query_vec, is_draft_session=_is_draft,
-        ):
-            yield chunk
+        try:
+            async for chunk in stream_and_save(
+                response_stream, session_id, question,
+                chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
+                query_vec=query_vec, is_draft_session=_is_draft,
+            ):
+                yield chunk
+        except Exception as _synth_exc:
+            import traceback as _tb
+            logger.error(
+                "[CRASH] rag_pipeline_orchestrator synthesis stage failed | "
+                f"query_id={query_id} | {_synth_exc!r}\n{_tb.format_exc()}"
+            )
 
     from fastapi.responses import StreamingResponse
     return StreamingResponse(rag_pipeline_orchestrator(), media_type="text/event-stream")
