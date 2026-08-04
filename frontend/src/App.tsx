@@ -1,4 +1,4 @@
-﻿import React from 'react';
+﻿import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 
 import { Navbar, SystemFooter, ScrollToTop } from './components/layout';
@@ -89,18 +89,22 @@ function App() {
         <ScrollProgress />
         <ScrollToTop />
         <Layout>
-          <Routes>
-            {openRoutes.map(({ path, element }) => (
-              <Route key={path} path={path} element={element} />
-            ))}
-            {authRoutes.map(({ path, element }) => (
-              <Route key={path} path={path} element={<PublicRoute>{element}</PublicRoute>} />
-            ))}
-            {protectedRoutes.map(({ path, element }) => (
-              <Route key={path} path={path} element={<ProtectedRoute>{element}</ProtectedRoute>} />
-            ))}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          {/* Suspense catches lazy-loaded page chunks while they download.
+              Fallback is a plain dark screen — matches app background, no flash. */}
+          <Suspense fallback={<div style={{ background: '#060816', minHeight: '100vh' }} />}>
+            <Routes>
+              {openRoutes.map(({ path, element }) => (
+                <Route key={path} path={path} element={element} />
+              ))}
+              {authRoutes.map(({ path, element }) => (
+                <Route key={path} path={path} element={<PublicRoute>{element}</PublicRoute>} />
+              ))}
+              {protectedRoutes.map(({ path, element }) => (
+                <Route key={path} path={path} element={<ProtectedRoute>{element}</ProtectedRoute>} />
+              ))}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </Layout>
       </Router>
     </ErrorBoundary>
