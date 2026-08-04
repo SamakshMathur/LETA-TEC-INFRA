@@ -66,6 +66,39 @@ def get_session(session_id: str, current_user: dict = Depends(get_current_user))
 
     return session
 
+class SessionRename(BaseModel):
+    title: str
+
+@router.patch("/{session_id}/rename")
+def rename_session(session_id: str, data: SessionRename, current_user: dict = Depends(get_current_user)):
+    collection = get_session_collection()
+    if collection is None:
+        return {"session_id": session_id, "title": data.title}
+    user_id = current_user["username"]
+    result = collection.update_one(
+        {"session_id": session_id, "user_id": user_id},
+        {"$set": {"title": data.title, "updated_at": datetime.now()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": session_id, "title": data.title}
+
+@router.get("/search", response_model=List[Session])
+def search_sessions(q: str, current_user: dict = Depends(get_current_user)):
+    collection = get_session_collection()
+    if collection is None:
+        return []
+    user_id = current_user["username"]
+    regex = {"$regex": q, "$options": "i"}
+    sessions_cursor = collection.find(
+        {"user_id": user_id, "$or": [
+            {"title": regex},
+            {"messages.content": regex},
+        ]},
+        {"_id": 0, "messages": 0}
+    ).sort("updated_at", -1).limit(20)
+    return list(sessions_cursor)
+
 @router.delete("/{session_id}")
 def delete_session(session_id: str, current_user: dict = Depends(get_current_user)):
     collection = get_session_collection()

@@ -192,6 +192,26 @@ const LetaWorkspace: React.FC = () => {
   const [openDocuments, setOpenDocuments] = useState<OpenDoc[]>([]);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
 
+  // ─── Rename state ───────────────────────────────────────────────────────────
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [sidebarSearch, setSidebarSearch] = useState('');
+
+  const handleRenameStart = (session: Session) => {
+    setRenamingId(session.session_id);
+    setRenameValue(session.title);
+  };
+
+  const handleRenameCommit = async (sessionId: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) { setRenamingId(null); return; }
+    setSessions(prev => prev.map(s => s.session_id === sessionId ? { ...s, title: trimmed } : s));
+    setRenamingId(null);
+    try {
+      await axios.patch(`${BASE_URL}/api/sessions/${sessionId}/rename`, { title: trimmed }, { headers: getAuthHeaders() });
+    } catch { fetchSessions(); }
+  };
+
   // ─── Repository State ────────────────────────────────────────────────────────
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [activeRepo, setActiveRepo] = useState<RepoKey | null>(null);   // which repo section is open
@@ -462,6 +482,7 @@ const LetaWorkspace: React.FC = () => {
   };
 
   const userScrolledUpRef = useRef(false);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   // Only auto-scroll when the user is already near the bottom (ChatGPT behaviour)
   const scrollToBottom = (force = false) => {
@@ -469,6 +490,8 @@ const LetaWorkspace: React.FC = () => {
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (force || nearBottom) {
+      userScrolledUpRef.current = false;
+      setShowScrollBtn(false);
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   };
@@ -480,6 +503,7 @@ const LetaWorkspace: React.FC = () => {
     const onScroll = () => {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
       userScrolledUpRef.current = !nearBottom;
+      setShowScrollBtn(!nearBottom);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -831,6 +855,12 @@ const LetaWorkspace: React.FC = () => {
 
         setIsLoading(false);
         setIsStreaming(false);
+        setMessages(prev => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === 'assistant') next[next.length - 1] = { ...last, current_status: undefined };
+          return next;
+        });
       } else {
         // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
         // Add placeholder assistant bubble before fetch so showRetryStatus has a target during 503 retries
@@ -947,6 +977,15 @@ const LetaWorkspace: React.FC = () => {
 
         setIsLoading(false);
         setIsStreaming(false);
+        // Clear the in-progress status label so completed responses don't show "Synthesizing..."
+        setMessages(prev => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === 'assistant') {
+            next[next.length - 1] = { ...last, current_status: undefined };
+          }
+          return next;
+        });
       }
 
       setSelectedFile(null);
@@ -1229,6 +1268,16 @@ const LetaWorkspace: React.FC = () => {
                 >
                   {/* Session list */}
                   <div>
+                    {/* Search bar */}
+                    <div className="relative mb-3">
+                      <input
+                        type="text"
+                        value={sidebarSearch}
+                        onChange={e => setSidebarSearch(e.target.value)}
+                        placeholder="Search consultations..."
+                        className="w-full bg-white/[0.02] border border-white/[0.05] rounded-lg px-3 py-1.5 text-xs text-[#A1AAB8] placeholder-[#475569] focus:outline-none focus:border-[#4FB7C5]/30 transition-colors"
+                      />
+                    </div>
                     <span className="text-[10px] font-mono uppercase tracking-[0.2em] px-2 text-[#6B7280] block mb-2.5">
                       Saved Consultations
                     </span>
@@ -1238,13 +1287,16 @@ const LetaWorkspace: React.FC = () => {
                           No consultation history
                         </div>
                       ) : (
-                        sessions.map(session => {
+                        sessions
+                          .filter(s => !sidebarSearch || s.title.toLowerCase().includes(sidebarSearch.toLowerCase()))
+                          .map(session => {
                           const meta = getSessionDetails(session.title);
                           const isSelected = currentSessionId === session.session_id;
+                          const isRenaming = renamingId === session.session_id;
                           return (
                             <div
                               key={session.session_id}
-                              onClick={() => handleSelectSession(session.session_id)}
+                              onClick={() => !isRenaming && handleSelectSession(session.session_id)}
                               className={`group p-3.5 rounded-xl cursor-pointer border transition-all duration-200 relative ${
                                 isSelected
                                   ? 'bg-[#131D2B] border-[#4FB7C5]/30'
@@ -1256,17 +1308,32 @@ const LetaWorkspace: React.FC = () => {
                                   <span className="text-xs font-mono tracking-wider font-semibold" style={{ color: meta.statusColor }}>
                                     {meta.provision}
                                   </span>
-                                  <h3 className={`text-xs font-semibold truncate mt-1 ${isSelected ? 'text-white' : 'text-[#A1AAB8]'}`}>
-                                    {meta.type}
-                                  </h3>
+                                  {isRenaming ? (
+                                    <input
+                                      autoFocus
+                                      value={renameValue}
+                                      onChange={e => setRenameValue(e.target.value)}
+                                      onBlur={() => handleRenameCommit(session.session_id)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') handleRenameCommit(session.session_id);
+                                        if (e.key === 'Escape') setRenamingId(null);
+                                      }}
+                                      onClick={e => e.stopPropagation()}
+                                      className="w-full mt-1 bg-transparent border-b border-[#4FB7C5]/40 text-xs text-white focus:outline-none pb-0.5"
+                                    />
+                                  ) : (
+                                    <h3
+                                      onDoubleClick={e => { e.stopPropagation(); handleRenameStart(session); }}
+                                      className={`text-xs font-semibold truncate mt-1 ${isSelected ? 'text-white' : 'text-[#A1AAB8]'}`}
+                                      title="Double-click to rename"
+                                    >
+                                      {session.title}
+                                    </h3>
+                                  )}
                                   <div className="flex items-center gap-2 mt-2">
                                     <span className="text-[9px] font-mono text-[#52525B] flex items-center gap-1">
                                       <Calendar size={10} />
                                       {new Date(session.updated_at).toLocaleDateString()}
-                                    </span>
-                                    <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.statusColor }} />
-                                    <span className="text-[9px] font-mono uppercase tracking-wider text-[#52525B]">
-                                      {meta.status}
                                     </span>
                                   </div>
                                 </div>
@@ -1418,6 +1485,29 @@ const LetaWorkspace: React.FC = () => {
           </button>
 
           {/* CHAT MESSAGE AREA */}
+          <div className="flex-1 min-h-0 relative flex flex-col">
+            {/* Scroll-to-bottom floating button */}
+            <AnimatePresence>
+              {showScrollBtn && (
+                <motion.button
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={() => scrollToBottom(true)}
+                  className="absolute bottom-6 left-1/2 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border transition-all"
+                  style={{
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(0,0,0,0.85)',
+                    border: '1px solid rgba(79,183,197,0.3)',
+                    color: '#4FB7C5',
+                    backdropFilter: 'blur(8px)',
+                  }}
+                >
+                  ↓ scroll to bottom
+                </motion.button>
+              )}
+            </AnimatePresence>
           <div
             ref={chatScrollRef}
             data-lenis-prevent
@@ -1474,11 +1564,8 @@ const LetaWorkspace: React.FC = () => {
                         className={`w-full flex ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
                       >
                         {isUser ? (
-                          <div className="max-w-[70%] rounded-2xl p-4 bg-[#000000] border border-[#4FB7C5]/15 shadow-md">
-                            <span className="text-[9px] font-sans font-semibold text-[#4FB7C5]/80 uppercase tracking-wider block mb-1.5">
-                              ADVISORY CONSULTATION QUERY
-                            </span>
-                            <p className="whitespace-pre-wrap leading-relaxed text-xs text-[#E4E4E7]">
+                          <div className="max-w-[70%] rounded-2xl px-4 py-3 shadow-md" style={{ background: 'rgba(79,183,197,0.07)', border: '1px solid rgba(79,183,197,0.12)' }}>
+                            <p className="whitespace-pre-wrap leading-relaxed text-sm text-[#E4E4E7]">
                               {msg.content}
                             </p>
                           </div>
@@ -1611,6 +1698,7 @@ const LetaWorkspace: React.FC = () => {
               )}
             </div>
           </div>
+          </div>{/* end scroll-to-bottom wrapper */}
 
           {/* CHAT INPUT AREA */}
           <div className="p-6 md:px-10 py-6 border-t border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 relative z-20">

@@ -623,6 +623,70 @@ async def ask_question(request: Request, req: QuestionRequest):
             "issue raised","section invoked","to draft a strong reply",
         ]
 
+        # Phrases that indicate the user is referencing a previous session
+        _CROSS_SESSION_KW = [
+            "remember", "that chat", "previous session", "last time", "we discussed",
+            "earlier session", "you mentioned", "from before", "that consultation",
+            "we talked about", "as discussed", "recall when", "in our previous",
+            "that case we", "previous chat", "last session",
+        ]
+        _is_cross_session_ref = any(k in question.lower() for k in _CROSS_SESSION_KW)
+
+        def _fetch_cross_session_context():
+            """Search the user's other sessions for relevant content when they reference a past chat."""
+            if not _is_cross_session_ref:
+                return ""
+            _coll = get_session_collection()
+            if _coll is None:
+                return ""
+            # Get the user_id from the current session
+            _sess_doc = _coll.find_one({"session_id": session_id}, {"user_id": 1}) if session_id else None
+            if not _sess_doc:
+                return ""
+            _user_id = _sess_doc.get("user_id", "")
+            if not _user_id:
+                return ""
+            # Build search terms: strip cross-session keywords and use remaining words
+            _search_q = question.lower()
+            for kw in _CROSS_SESSION_KW:
+                _search_q = _search_q.replace(kw, " ")
+            _search_terms = [w for w in _search_q.split() if len(w) > 3][:6]
+            if not _search_terms:
+                return ""
+            _regex = "|".join(_search_terms)
+            try:
+                _matches = list(_coll.find(
+                    {"user_id": _user_id, "session_id": {"$ne": session_id},
+                     "messages.content": {"$regex": _regex, "$options": "i"}},
+                    {"_id": 0, "session_id": 1, "title": 1, "messages": 1, "updated_at": 1}
+                ).sort("updated_at", -1).limit(3))
+            except Exception:
+                return ""
+            if not _matches:
+                return ""
+            _ctx_parts = []
+            for _m in _matches:
+                # Find the most relevant message pair (user question + LETA answer)
+                _msgs = _m.get("messages", [])
+                _best_pair = ""
+                for _i, _msg in enumerate(_msgs):
+                    _content = _msg.get("content", "")
+                    if any(t in _content.lower() for t in _search_terms):
+                        # Include user question + LETA response pair
+                        _u_msg = _msgs[_i - 1]["content"][:300] if _i > 0 and _msgs[_i-1]["role"] == "user" else ""
+                        _a_msg = _content[:500]
+                        if _u_msg:
+                            _best_pair = f"USER: {_u_msg}\nLETA: {_a_msg}"
+                        else:
+                            _best_pair = f"LETA: {_a_msg}"
+                        break
+                if _best_pair:
+                    _title = _m.get("title", "Previous Session")
+                    _date = _m.get("updated_at", "")
+                    _date_str = _date.strftime("%b %d, %Y") if hasattr(_date, "strftime") else str(_date)[:10]
+                    _ctx_parts.append(f'[MEMORY — "{_title}" ({_date_str})]:\n{_best_pair}')
+            return "\n\n".join(_ctx_parts)
+
         def _fetch_history_sync():
             if not session_id:
                 return "", False
@@ -644,9 +708,10 @@ async def ask_question(request: Request, req: QuestionRequest):
 
         yield f"__STATUS__:{json.dumps({'msg': 'Scanning Semantic Cache...'})}__END_STATUS__"
 
-        (history_context, _session_is_draft), query_vec = await _asyncio.gather(
+        (history_context, _session_is_draft), query_vec, cross_session_context = await _asyncio.gather(
             _asyncio.to_thread(_fetch_history_sync),
             _asyncio.to_thread(embed_query, question),
+            _asyncio.to_thread(_fetch_cross_session_context),
         )
         _is_draft = _is_draft_early or _session_is_draft
 
@@ -744,7 +809,8 @@ async def ask_question(request: Request, req: QuestionRequest):
         compressed_block = compress_context(chunks, question, is_draft=_is_draft)
 
         full_rag_context = (
-            (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
+            (f"--- MEMORY FROM PREVIOUS SESSIONS ---\n{cross_session_context}\n--- END MEMORY ---\n\n" if cross_session_context else "")
+            + (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
             + citation_block
             + (f"\n\n{calc_block}" if calc_block else "")
             + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"

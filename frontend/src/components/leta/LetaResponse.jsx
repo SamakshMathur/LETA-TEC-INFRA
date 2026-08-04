@@ -208,6 +208,28 @@ function linkifyLegalRefs(markdown, sources) {
 const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
   const [hasCopied, setHasCopied] = useState(false);
   const [activeSnippet, setActiveSnippet] = useState(null);
+  const [completedSteps, setCompletedSteps] = useState([]);
+  const prevStatusRef = React.useRef(null);
+
+  // Track which status steps have been completed
+  React.useEffect(() => {
+    if (!isStreaming) return;
+    const s = data?.status;
+    if (s && s !== prevStatusRef.current) {
+      if (prevStatusRef.current) {
+        setCompletedSteps(prev => prev.includes(prevStatusRef.current) ? prev : [...prev, prevStatusRef.current]);
+      }
+      prevStatusRef.current = s;
+    }
+  }, [data?.status, isStreaming]);
+
+  // Clear steps when a new stream starts (content goes blank)
+  React.useEffect(() => {
+    if (isStreaming && !data?.answer) {
+      setCompletedSteps([]);
+      prevStatusRef.current = null;
+    }
+  }, [isStreaming, data?.answer]);
 
   const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
 
@@ -288,10 +310,12 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="p-6 md:p-8">
         {/* Thinking / sources panel (collapsible, shown during + after streaming) */}
-        {(sources.length > 0 || data.status) && (
+        {(sources.length > 0 || data.status || isStreaming) && (
           <ThinkingSources
             sources={sources}
             status={data.status}
+            isStreaming={isStreaming}
+            completedSteps={completedSteps}
             onDocumentClick={onDocumentClick}
           />
         )}
