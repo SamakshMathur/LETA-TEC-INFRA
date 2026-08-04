@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BASE_URL } from '../../config/api';
-import { ShieldCheck, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import { ShieldCheck, Copy, Check, RefreshCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import ThinkingSources from './ThinkingSources';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -207,29 +206,6 @@ function linkifyLegalRefs(markdown, sources) {
 
 const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
   const [hasCopied, setHasCopied] = useState(false);
-  const [activeSnippet, setActiveSnippet] = useState(null);
-  const [completedSteps, setCompletedSteps] = useState([]);
-  const prevStatusRef = React.useRef(null);
-
-  // Track which status steps have been completed
-  React.useEffect(() => {
-    if (!isStreaming) return;
-    const s = data?.status;
-    if (s && s !== prevStatusRef.current) {
-      if (prevStatusRef.current) {
-        setCompletedSteps(prev => prev.includes(prevStatusRef.current) ? prev : [...prev, prevStatusRef.current]);
-      }
-      prevStatusRef.current = s;
-    }
-  }, [data?.status, isStreaming]);
-
-  // Clear steps when a new stream starts (content goes blank)
-  React.useEffect(() => {
-    if (isStreaming && !data?.answer) {
-      setCompletedSteps([]);
-      prevStatusRef.current = null;
-    }
-  }, [isStreaming, data?.answer]);
 
   const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
 
@@ -253,15 +229,6 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
       // Remove naked [text] brackets left when their URL was stripped
       .replace(/\[([^\]\x00]{1,300})\](?!\()/g, '$1');
   }, [data?.answer, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /** Open a source document in the right-panel viewer. */
-  const openDoc = (src) => {
-    if (!onDocumentClick) return;
-    const cleanTitle = (src.title || 'Document').replace(/%20/g, ' ');
-    let url = src.url || '';
-    if (url.startsWith('/api/')) url = BASE_URL + url;
-    onDocumentClick({ url, page: src.page, title: cleanTitle });
-  };
 
   return (
     <motion.div
@@ -309,17 +276,6 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="p-6 md:p-8">
-        {/* Thinking / sources panel (collapsible, shown during + after streaming) */}
-        {(sources.length > 0 || data.status || isStreaming) && (
-          <ThinkingSources
-            sources={sources}
-            status={data.status}
-            isStreaming={isStreaming}
-            completedSteps={completedSteps}
-            onDocumentClick={onDocumentClick}
-          />
-        )}
-
         {/* Main answer — body: Times New Roman, headings: Bookman Old Style */}
         <div
           className="prose prose-sm md:prose-base max-w-none leading-relaxed"
@@ -403,134 +359,6 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
           )}
         </div>
 
-        {/* ── Referenced Documents + inline snippet panel ───────────────── */}
-        {sources.length > 0 && (
-          <div
-            className="mt-6 pt-4"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
-          >
-            <span
-              className="text-[9px] font-mono uppercase tracking-[0.2em] block mb-2.5"
-              style={{ color: '#475569' }}
-            >
-              Referenced Documents &nbsp;·&nbsp; {sources.length} source{sources.length !== 1 ? 's' : ''}
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {sources.map((src, i) => {
-                const label = (src.title || 'Document')
-                  .replace(/%20/g, ' ')
-                  .replace(/\.[a-z]{2,5}$/i, '');
-                const isActive = activeSnippet?.url === src.url && activeSnippet?.page === src.page;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => setActiveSnippet(isActive ? null : src)}
-                    title={src.snippet ? 'Click to preview excerpt' : `Open ${label}`}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono transition-all"
-                    style={{
-                      background: isActive ? 'rgba(103,232,249,0.14)' : 'rgba(103,232,249,0.05)',
-                      border: `1px solid ${isActive ? 'rgba(103,232,249,0.5)' : 'rgba(103,232,249,0.15)'}`,
-                      color: isActive ? '#67E8F9' : '#94A3B8',
-                    }}
-                    onMouseEnter={e => {
-                      if (!isActive) {
-                        e.currentTarget.style.borderColor = 'rgba(103,232,249,0.5)';
-                        e.currentTarget.style.background = 'rgba(103,232,249,0.12)';
-                        e.currentTarget.style.color = '#67E8F9';
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (!isActive) {
-                        e.currentTarget.style.borderColor = 'rgba(103,232,249,0.15)';
-                        e.currentTarget.style.background = 'rgba(103,232,249,0.05)';
-                        e.currentTarget.style.color = '#94A3B8';
-                      }
-                    }}
-                  >
-                    <FileText size={10} />
-                    <span className="max-w-[180px] truncate">{label}</span>
-                    {src.page && src.page > 1 && (
-                      <span style={{ color: isActive ? '#4FB7C5' : '#475569' }}>p.{src.page}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* ── Snippet panel ─────────────────────────────────────────────── */}
-            {activeSnippet && (
-              <div
-                className="mt-3 rounded-xl overflow-hidden"
-                style={{ border: '1px solid rgba(103,232,249,0.2)', background: 'rgba(10,18,32,0.85)' }}
-              >
-                {/* Panel header */}
-                <div
-                  className="flex items-center justify-between px-4 py-2.5"
-                  style={{ borderBottom: '1px solid rgba(103,232,249,0.1)', background: 'rgba(103,232,249,0.06)' }}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText size={11} style={{ color: '#4FB7C5', flexShrink: 0 }} />
-                    <span
-                      className="text-[10px] font-mono truncate"
-                      style={{ color: '#67E8F9' }}
-                    >
-                      {(activeSnippet.title || 'Document').replace(/%20/g, ' ').replace(/\.[a-z]{2,5}$/i, '')}
-                    </span>
-                    {activeSnippet.page && (
-                      <span
-                        className="text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0"
-                        style={{ background: 'rgba(103,232,249,0.12)', color: '#4FB7C5' }}
-                      >
-                        p.{activeSnippet.page}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => openDoc(activeSnippet)}
-                      className="text-[9px] font-mono px-2.5 py-1 rounded transition-all"
-                      style={{ border: '1px solid rgba(103,232,249,0.3)', color: '#4FB7C5' }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(103,232,249,0.12)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                    >
-                      Full Document →
-                    </button>
-                    <button
-                      onClick={() => setActiveSnippet(null)}
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors"
-                      style={{ color: '#475569' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#94A3B8'; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-
-                {/* Snippet text */}
-                <div className="px-5 py-4 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(103,232,249,0.2) transparent' }}>
-                  {activeSnippet.snippet ? (
-                    <p
-                      className="leading-relaxed whitespace-pre-wrap"
-                      style={{
-                        fontFamily: "'Georgia', 'Times New Roman', serif",
-                        fontSize: '13px',
-                        color: '#CBD5E1',
-                        lineHeight: '1.75',
-                      }}
-                    >
-                      {activeSnippet.snippet}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] font-mono text-center py-4" style={{ color: '#475569' }}>
-                      No excerpt available — click Full Document to open the PDF.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
