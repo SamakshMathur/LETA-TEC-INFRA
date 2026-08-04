@@ -36,7 +36,10 @@ def validate_logic_strict(advisory_content: str, rules_context: str) -> List[str
     """
     from app.config import LLM_MODEL, OPENAI_API_KEY
     import openai
-    
+
+    if not OPENAI_API_KEY:
+        return []  # provider is Anthropic — skip this OpenAI-specific validation pass
+
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
     
     system_prompt = """

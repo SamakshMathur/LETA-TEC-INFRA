@@ -9,7 +9,13 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-insecure-key-do-not-use-in-production")
+_secret = os.environ.get("SECRET_KEY")
+if not _secret:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set. "
+        'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
+    )
+SECRET_KEY: str = _secret
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
