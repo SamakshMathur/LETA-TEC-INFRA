@@ -802,6 +802,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                     f"query_id={query_id} | {_retrieval_exc!r}\n{_tb.format_exc()}"
                 )
                 yield f"__STATUS__:{json.dumps({'msg': 'Retrieval engine error. Please try again.'})}__END_STATUS__"
+                yield "\n\n⚠ **LETA encountered a retrieval error.** The statutory database search failed for this query. Please try again — if the problem persists, try rephrasing your question."
                 return
 
         # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
@@ -848,6 +849,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                 "[CRASH] rag_pipeline_orchestrator synthesis stage failed | "
                 f"query_id={query_id} | {_synth_exc!r}\n{_tb.format_exc()}"
             )
+            yield "\n\n⚠ **LETA encountered an error while generating the response.** The statutory sources were retrieved successfully but the synthesis step failed. Please try asking again — your question is valid and the answer exists in our database."
 
     from fastapi.responses import StreamingResponse
     return StreamingResponse(rag_pipeline_orchestrator(), media_type="text/event-stream")

@@ -858,7 +858,19 @@ const LetaWorkspace: React.FC = () => {
         setMessages(prev => {
           const next = [...prev];
           const last = next[next.length - 1];
-          if (last?.role === 'assistant') next[next.length - 1] = { ...last, current_status: undefined };
+          if (last?.role === 'assistant') {
+            if (!last.content.trim()) {
+              next[next.length - 1] = {
+                ...last,
+                content: last.current_status
+                  ? `⚠ **${last.current_status}**\n\nLETA was unable to generate a response. Please use the **↻** button above to retry.`
+                  : '⚠ **LETA returned an empty response.** Please use the **↻** button above to retry.',
+                current_status: undefined,
+              };
+            } else {
+              next[next.length - 1] = { ...last, current_status: undefined };
+            }
+          }
           return next;
         });
       } else {
@@ -977,12 +989,23 @@ const LetaWorkspace: React.FC = () => {
 
         setIsLoading(false);
         setIsStreaming(false);
-        // Clear the in-progress status label so completed responses don't show "Synthesizing..."
+        // Clear status label; if the response ended up empty (silent backend crash),
+        // surface a visible error so the user isn't left staring at a blank screen.
         setMessages(prev => {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last?.role === 'assistant') {
-            next[next.length - 1] = { ...last, current_status: undefined };
+            if (!last.content.trim()) {
+              next[next.length - 1] = {
+                ...last,
+                content: last.current_status
+                  ? `⚠ **${last.current_status}**\n\nLETA was unable to generate a response. Please use the **↻** button above to retry, or rephrase your question.`
+                  : '⚠ **LETA returned an empty response.** This can happen when the server is under load or the query is unusually complex. Please use the **↻** button above to retry.',
+                current_status: undefined,
+              };
+            } else {
+              next[next.length - 1] = { ...last, current_status: undefined };
+            }
           }
           return next;
         });
