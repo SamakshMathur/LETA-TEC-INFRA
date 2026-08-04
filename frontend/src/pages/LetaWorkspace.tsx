@@ -34,7 +34,7 @@ const getSessionFirstName = (): string => {
 import { LetaResponse } from '../components/leta';
 import { SimpleSearchLoader } from '../components/effects';
 import { DocumentViewer } from '../components/documents';
-import SessionClock from '../components/layout/SessionClock';
+import { SessionClock } from '../components/layout';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 

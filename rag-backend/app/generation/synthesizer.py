@@ -113,7 +113,10 @@ if LLM_PROVIDER == "anthropic":
     import anthropic as _anthropic
     if not ANTHROPIC_API_KEY:
         logger.warning("ANTHROPIC_API_KEY not found — answer generation will fail")
-    _claude_client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    _claude_client = _anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY,
+        timeout=_anthropic.Timeout(180.0, connect=10.0),
+    )
     logger.info(f"LLM Provider: Anthropic Claude ({CLAUDE_MAIN_MODEL}) with extended thinking")
 
 elif LLM_PROVIDER == "ollama":
@@ -397,6 +400,17 @@ def synthesize_answer_stream(
         r'\b(provide|give|state|share)\s+(the\s+)?(definition|meaning|explanation|rate|provision)',
         r'\b(relevant\s+circular|applicable\s+circular|circular\s+on)\b',
         r'\b(full\s+form|abbreviation)\b',
+        # Correction / continuation signals — never reroute these to advisory mode
+        r'you\s+got\s+me\s+(all\s+)?wrong',
+        r'(that\'s|that\s+is)\s+(wrong|incorrect|not\s+right|off\s+route|off\s+track)',
+        r'completely\s+(switched|diverted|changed)\s+to',
+        r'stick\s+to\s+(our|the|this)\s+conversation',
+        r'take\s+it\s+forward|taking\s+(it|this)\s+forward',
+        r'continue\s+(the|our|this)\s+(discussion|conversation|analysis|thread|topic)',
+        r'\bi\s+(already|have\s+already)\s+(said|told|replied|mentioned)',
+        r'\bi\s+replied\s+to\s+you',
+        r'as\s+(i|we)\s+(said|mentioned|discussed|told|replied)',
+        r'not\s+what\s+(i|we)\s+(asked|said|meant)',
     ]
     _is_never_draft = any(_re.search(p, question.lower()) for p in _NEVER_DRAFT_PATTERNS)
 

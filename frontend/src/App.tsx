@@ -1,13 +1,12 @@
 ﻿import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 
-import { Navbar, SystemFooter, ScrollToTop } from './components/layout';
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
-import { PublicRoute }    from './components/auth/PublicRoute';
 import { openRoutes, authRoutes, protectedRoutes } from './routes';
-import GrainOverlay from './components/effects/GrainOverlay';
-import ScrollProgress from './components/effects/ScrollProgress';
-import PageTransition from './components/effects/PageTransition';
+import {
+  Navbar, SystemFooter, ScrollToTop,
+  ProtectedRoute, PublicRoute,
+  GrainOverlay, ScrollProgress, PageTransition,
+} from './components';
 
 const NotFound: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-screen gap-6"

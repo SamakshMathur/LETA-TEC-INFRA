@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { BASE_URL } from '../config/api';
-import SelectSwitcher from '../components/ui/SelectSwitcher';
+import { SelectSwitcher } from '../components/ui';
 
 const CATEGORIES = [
   { key: 'acts',         label: 'Acts' },

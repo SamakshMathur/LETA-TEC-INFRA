@@ -106,6 +106,11 @@ class RefreshRequest(BaseModel):
 # DEV_MODE=true → return otp_preview in response and skip strict OTP check.
 # Default is false (production-safe). Set DEV_MODE=true only for local testing.
 _DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() == "true"
+if _DEV_MODE:
+    logger.critical(
+        "DEV_MODE=true — OTP verification is BYPASSED and users auto-create without registration. "
+        "This MUST NOT be active in production. Remove DEV_MODE from the environment before deploying."
+    )
 
 # Session durations per plan (seconds). Admin role is exempt — no timer.
 PLAN_DURATIONS: dict[str, int] = {

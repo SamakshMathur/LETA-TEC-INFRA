@@ -198,19 +198,7 @@ async def log_requests(request: Request, call_next):
             "client_ip": request.client.host if request.client else "unknown",
         },
     )
-    return response
-
-
-# ── Security headers middleware ───────────────────────────────────────────────
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
-    # Skip X-Frame-Options for document view so the frontend iframe can embed PDFs
-    if not request.url.path.startswith("/api/documents/view"):
-        response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Request-ID"] = query_id
     return response
 
 # Rate limiting — user-ID keyed, Redis-backed when available
@@ -588,6 +576,17 @@ async def ask_question(request: Request, req: QuestionRequest):
             r'\b(provide|give|state|share)\s+(the\s+)?(definition|meaning|explanation|rate|provision)',
             r'\b(relevant\s+circular|applicable\s+circular|circular\s+on)\b',
             r'\b(full\s+form|abbreviation|what\s+does\s+.+stand\s+for)\b',
+            # Correction / continuation signals — never reroute to advisory/drafting mode
+            r'you\s+got\s+me\s+(all\s+)?wrong',
+            r'(that\'s|that\s+is)\s+(wrong|incorrect|not\s+right|off\s+route|off\s+track)',
+            r'completely\s+(switched|diverted|changed)\s+to',
+            r'stick\s+to\s+(our|the|this)\s+conversation',
+            r'take\s+it\s+forward|taking\s+(it|this)\s+forward',
+            r'continue\s+(the|our|this)\s+(discussion|conversation|analysis|thread|topic)',
+            r'\bi\s+(already|have\s+already)\s+(said|told|replied|mentioned)',
+            r'\bi\s+replied\s+to\s+you',
+            r'as\s+(i|we)\s+(said|mentioned|discussed|told|replied)',
+            r'not\s+what\s+(i|we)\s+(asked|said|meant)',
         ]
         import re as _re
         _is_never_draft = any(_re.search(p, _q) for p in _NEVER_DRAFT_PATTERNS)
@@ -703,7 +702,13 @@ async def ask_question(request: Request, req: QuestionRequest):
             # the full sequence: LETA-questions → USER-answers → produce draft.
             _recent = _sess["messages"][-7:]
             _hist = "".join(f"{m['role'].upper()}: {m['content']}\n" for m in _recent)
-            _is_d = any(k in _hist.lower() for k in _HISTORY_DRAFT_KW)
+            # Draft detection: check only the 2 most recent messages so a single
+            # old advisory turn doesn't permanently lock the whole session into
+            # drafting mode for every follow-up question.
+            _last_2_text = " ".join(
+                m.get("content", "") for m in _sess["messages"][-2:]
+            ).lower()
+            _is_d = any(k in _last_2_text for k in _HISTORY_DRAFT_KW)
             return _hist, _is_d
 
         yield f"__STATUS__:{json.dumps({'msg': 'Scanning Semantic Cache...'})}__END_STATUS__"
@@ -809,9 +814,31 @@ async def ask_question(request: Request, req: QuestionRequest):
         citation_block   = build_context(chunks, is_draft=_is_draft)
         compressed_block = compress_context(chunks, question, is_draft=_is_draft)
 
+        # Detect if this is a follow-up / correction so the model gets a strong
+        # continuation signal and doesn't restart from first principles.
+        _FOLLOWUP_KW = [
+            "you got me wrong", "you are wrong", "that's wrong", "that is wrong",
+            "off route", "off track", "completely switched", "completely diverted",
+            "stick to our conversation", "stick to the conversation",
+            "take it forward", "taking it forward", "continue the discussion",
+            "as i said", "as i mentioned", "i already said", "i already told",
+            "i replied", "i have said", "i told you", "you mentioned",
+            "building on", "following up", "based on what you said",
+            "not what i asked", "not what i meant", "you missed",
+        ]
+        _is_followup = bool(history_context) and (
+            len(question.split()) < 25
+            or any(k in question.lower() for k in _FOLLOWUP_KW)
+        )
+        _history_label = (
+            "⚠ ACTIVE CONVERSATION — CONTINUE FROM HERE. Do NOT restart with basics already covered. "
+            "Directly continue the specific legal discussion in progress.\n"
+            if _is_followup else "CHAT HISTORY"
+        )
+
         full_rag_context = (
             (f"--- MEMORY FROM PREVIOUS SESSIONS ---\n{cross_session_context}\n--- END MEMORY ---\n\n" if cross_session_context else "")
-            + (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
+            + (f"--- {_history_label} ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
             + citation_block
             + (f"\n\n{calc_block}" if calc_block else "")
             + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
