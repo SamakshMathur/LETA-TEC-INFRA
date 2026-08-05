@@ -48,12 +48,9 @@ CHECKPOINT     = CHUNKS_FILE.parent / "enrich_checkpoint.json"
 
 _SUPPORTED_EXT = {".pdf", ".docx", ".doc", ".xlsx", ".xls"}
 
-# Files that are pure index/reference — skip ingestion
+# Competitor app outputs that contain explicitly wrong legal answers —
+# ingesting these would let LETRA cite wrong logic as a retrieval result.
 _SKIP_EXACT = {
-    "Sections List.xlsx",
-    "AAR/AAR Details.xlsx",
-    "Circulars/Circular Details.xlsx",
-    # Competitor app outputs — not GST law, would confuse the model
     "Other APP Result/CHATGPT_ITC on Bike_Wrong Answer.docx",
     "Other APP Result/GORK_ITC on Bike_Right Answer but wrong Logic.docx",
 }
