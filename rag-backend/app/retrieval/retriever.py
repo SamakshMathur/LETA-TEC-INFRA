@@ -7,7 +7,6 @@ from pathlib import Path
 import re
 
 from rank_bm25 import BM25Okapi
-from flashrank import Ranker as FlashRanker, RerankRequest
 from app.config import (
     EMBEDDING_MODEL, VECTOR_DIM,
     VECTOR_SEARCH_TOP_K, VECTOR_EXPANDED_TOP_K, BM25_TOP_K, MMR_LAMBDA,
@@ -391,6 +390,40 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
     return selected
 
 
+def _rrf_combine(faiss_chunks: list, bm25_chunks: list, k: int = 60) -> list:
+    """
+    Reciprocal Rank Fusion (Cormack et al. 2009).
+
+    Combines FAISS (dense) and BM25 (sparse) ranked lists into one ordered list.
+    Each chunk gets: score = 1/(k + rank_faiss) + 1/(k + rank_bm25)
+
+    Outperforms naive set-union because position matters — a chunk ranked #2 in
+    both FAISS and BM25 scores higher than one ranked #1 in only one system.
+    k=60 is the standard constant; lower k increases the gap between ranks.
+    """
+    scores: dict = {}
+    chunk_map: dict = {}
+
+    for rank, chunk in enumerate(faiss_chunks):
+        cid = chunk.get("chunk_id") or id(chunk)
+        scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank + 1)
+        chunk_map[cid] = chunk
+
+    for rank, chunk in enumerate(bm25_chunks):
+        cid = chunk.get("chunk_id") or id(chunk)
+        scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank + 1)
+        if cid not in chunk_map:
+            chunk_map[cid] = chunk
+
+    sorted_ids = sorted(scores, key=lambda x: -scores[x])
+    result = []
+    for cid in sorted_ids:
+        c = chunk_map[cid].copy()
+        c["_rrf_score"] = round(scores[cid], 6)
+        result.append(c)
+    return result
+
+
 class Retriever:
     def __init__(self, index_path: Path, chunks_path: Path):
         self.index_path = index_path
@@ -551,16 +584,18 @@ class Retriever:
             f"{len(self.chunks)} total chunks"
         )
 
-        logger.info("Loading FlashRank reranker (ms-marco-MiniLM-L-12-v2)...")
+        logger.info("Loading CrossEncoder reranker (BAAI/bge-reranker-v2-m3)...")
         try:
-            self.flash_ranker = FlashRanker(
-                model_name="ms-marco-MiniLM-L-12-v2",
-                cache_dir=".flashrank_cache",
+            from sentence_transformers import CrossEncoder
+            self.cross_encoder = CrossEncoder(
+                "BAAI/bge-reranker-v2-m3",
+                max_length=512,
+                device="cpu",
             )
-            logger.info("  FlashRank reranker loaded")
+            logger.info("  CrossEncoder loaded: BAAI/bge-reranker-v2-m3")
         except Exception as e:
-            logger.error(f"Failed to load FlashRank reranker: {e}", exc_info=True)
-            self.flash_ranker = None
+            logger.error(f"Failed to load CrossEncoder: {e}", exc_info=True)
+            self.cross_encoder = None
 
         # Initialize Layer 1 (Statute-First)
         self.statute_retriever = StatuteRetriever()
@@ -573,22 +608,31 @@ class Retriever:
 
     def _cascade_rerank(self, query: str, candidates: list,
                         stage1_keep: int = 30) -> list:
-        """Reranks candidates with FlashRank ms-marco. Falls back to original order if unavailable."""
+        """
+        Reranks candidates with BAAI/bge-reranker-v2-m3 CrossEncoder.
+        Falls back to RRF score order if CrossEncoder is unavailable.
+        Uses _rrf_score as a tiebreaker when cross-encoder scores are equal.
+        """
         pool = list(candidates)
-        if self.flash_ranker and pool:
+        if self.cross_encoder and pool:
             try:
-                passages = [
-                    {"id": i, "text": (c.get("context_text") or c.get("text", ""))[:2048],
-                     "meta": c}
-                    for i, c in enumerate(pool)
+                pairs = [
+                    (query, (c.get("context_text") or c.get("text", ""))[:512])
+                    for c in pool
                 ]
-                flash_out = self.flash_ranker.rerank(RerankRequest(query=query, passages=passages))
-                for r in flash_out:
-                    r["meta"]["_rerank_score"] = r["score"]
-                pool = [r["meta"] for r in flash_out]
-                logger.debug(f"FlashRank: {len(candidates)} → {len(pool)}")
+                scores = self.cross_encoder.predict(pairs, show_progress_bar=False)
+                for chunk, score in zip(pool, scores):
+                    # Add RRF score as a small tiebreaker (1% weight) so that
+                    # chunks well-ranked by both FAISS and BM25 win ties.
+                    rrf_boost = chunk.get("_rrf_score", 0.0) * 0.01
+                    chunk["_rerank_score"] = float(score) + rrf_boost
+                pool.sort(key=lambda c: c["_rerank_score"], reverse=True)
+                logger.debug(
+                    f"CrossEncoder reranked {len(pool)} chunks | "
+                    f"top={pool[0]['_rerank_score']:.3f}"
+                )
             except Exception as e:
-                logger.warning(f"FlashRank rerank failed: {e}")
+                logger.warning(f"CrossEncoder rerank failed: {e}")
         return pool
 
     def _enforce_pool_quotas(self, pool: list, query: str, quotas: dict) -> list:
@@ -758,13 +802,16 @@ class Retriever:
                     candidate_pool.append(self.chunks[idx].copy())
 
         # 1. Vector Search — primary query
+        faiss_chunks: list = []
         query_vec = embed_query(query)
         if self.index and query_vec is not None:
             D, I = self.index.search(np.array([query_vec]).astype('float32'), VECTOR_SEARCH_TOP_K)
             for idx in I[0]:
-                _add_to_pool(idx)
+                if 0 <= idx < len(self.chunks):
+                    faiss_chunks.append(self.chunks[idx])
 
-        # 1b. Vector Search — expanded queries + HyDE document
+        # 1b. Vector Search — expanded queries + HyDE document (added directly to pool,
+        #     not merged via RRF because they have no BM25 counterpart ranking)
         if advanced_queries and self.index:
             extra_queries = advanced_queries.get("queries", [])[1:]
             hyde_doc = advanced_queries.get("hyde_document", "")
@@ -780,14 +827,25 @@ class Retriever:
                     for idx in I2[0]:
                         _add_to_pool(idx)
 
-        # 2. BM25 Search — expand abbreviations before tokenizing so "ITC" matches
-        # chunks that say "Input Tax Credit", "sec 16" matches "Section 16", etc.
+        # 2. BM25 Search — expand abbreviations before tokenizing
+        bm25_chunks: list = []
         if self.bm25:
             tokenized_query = tokenize_text(_expand_for_bm25(query))
             bm25_scores = self.bm25.get_scores(tokenized_query)
             top_bm25_idxs = np.argsort(bm25_scores)[::-1][:BM25_TOP_K]
             for idx in top_bm25_idxs:
-                _add_to_pool(idx)
+                if 0 <= idx < len(self.chunks):
+                    bm25_chunks.append(self.chunks[idx])
+
+        # 2b. Reciprocal Rank Fusion — combine FAISS + BM25 rankings.
+        # A chunk ranked #3 in both systems scores higher than one ranked #1 in only one.
+        # This produces a better-ordered candidate pool before the CrossEncoder sees it.
+        rrf_results = _rrf_combine(faiss_chunks, bm25_chunks)
+        for chunk in rrf_results:
+            cid = chunk.get("chunk_id")
+            if cid and cid not in seen_chunk_ids:
+                seen_chunk_ids.add(cid)
+                candidate_pool.append(chunk)
 
         # Filter by allowed_sources (file extension)
         if allowed_sources:
