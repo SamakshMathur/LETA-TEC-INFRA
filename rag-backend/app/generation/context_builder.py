@@ -186,8 +186,10 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         if len(chunk_text) > max_chunk:
             chunk_text = chunk_text[:max_chunk] + "... [truncated]"
 
-        # Include DOCUMENT LINK in the source block so the LLM can output clickable links.
-        # The frontend renders markdown hyperlinks; the model is instructed to use this URL.
+        # NOTE: Do NOT include DOCUMENT LINK in the instruction to the LLM.
+        # The frontend linkifies all legal refs (sections, circulars, rules, etc.)
+        # automatically using consulted_sources. If the LLM embeds raw URLs, they
+        # render as broken visible text. Cite by filename / section number only.
         year_tag = ""
         doc_year = c.get("year") or c.get("metadata", {}).get("year")
         if doc_year:
@@ -196,10 +198,9 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         context_blocks.append(
             f"════════════════════════════════════════\n"
             f"SOURCE: «{filename}» | {authority_rank} | {source_type}{year_tag}\n"
-            f"DOCUMENT LINK: {link}\n"
             f"Page: {c.get('page', 'N/A')}{relevance_tag}\n"
             f"════════════════════════════════════════\n"
-            f"[QUOTABLE TEXT — cite «{filename}» verbatim and include its DOCUMENT LINK as [📄 View]({link})]\n"
+            f"[QUOTABLE TEXT — cite as «{filename}» by name; do NOT embed any URLs]\n"
             f"\"\"\"\n"
             f"{chunk_text}\n"
             f"\"\"\"\n"

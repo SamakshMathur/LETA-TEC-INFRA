@@ -56,19 +56,25 @@ function linkifyLegalRefs(markdown, sources) {
   const placeholders = [];
   const shield = m => { placeholders.push(m); return `\x00LINK${placeholders.length - 1}\x00`; };
 
-  // Preserve existing doc links so we don't double-wrap them.
-  // Strip whitespace/newlines from captured URLs — LLMs sometimes wrap long
-  // URLs across lines which embeds \n inside the URL, causing CommonMark to
-  // reject it as a link and render the raw (url) as plain text.
+  // ── PRE-CLEAN: Strip ALL LLM-generated /api/ URLs before linkification ───
+  //
+  // Root cause: the LLM embeds document URLs inline (e.g. [Section 2(47)](url))
+  // using a URL format that differs from what the frontend expects.  When these
+  // links span a newline the URL leaks as raw visible text in the rendered output.
+  //
+  // Fix: strip every /api/ URL the LLM produces here.  The linkification regexes
+  // below (Sections, Circulars, Rules…) then re-add correct links that point to
+  // the actual consulted_sources already known by the frontend.
   let safe = markdown
-    // Collapse split links: LLMs sometimes put the URL on a new line after ]
-    .replace(/\]\(\s*\n\s*(\/api\/)/g, ']($1')       // handles ](\n/api/
-    .replace(/\]\s*\n+\s*\((?=\s*\/api\/)/g, '](')   // handles ]\n(/api/
-    // Process all [text](url) patterns
+    // 1. Full [text](\n?/api/...) links — single-line or newline-split — strip to text
+    .replace(/\[([^\]]*)\]\s*\n?\s*\(\/api\/[^)]*\)/g, '$1')
+    // 2. ]\n(/api/...) split remnant — the ] already processed, orphan URL left behind
+    .replace(/\]\s*\n+\s*\(\/api\/[^)]*\)/g, ']')
+    // 3. Bare (/api/...) anywhere not preceded by ] (standalone orphan URL)
+    .replace(/(?<!\])\(\/api\/[^\s)]*\)/g, '')
+    // 4. All remaining [text](url) patterns — strip non-/api/ to plain text
     .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, url) => {
-      const cleanUrl = url.replace(/\s+/g, ''); // strip embedded whitespace/newlines
-      if (cleanUrl.includes('/api/documents/')) return shield(`[${text}](${cleanUrl})`);
-      return text;           // strip non-doc markdown links to plain text
+      return text;  // strip all LLM-inserted hyperlinks; linkification re-adds them
     });
 
   const wrap = (text, src) => (src?.url ? `[${text}](${src.url})` : text);

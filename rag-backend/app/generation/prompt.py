@@ -214,6 +214,26 @@ Examples:
   Circular No. 183/15/2022-GST dated 27.12.2022
 
 -------------------------------------------------------------------------------
+13b. NO INLINE HYPERLINKS — ABSOLUTE
+-------------------------------------------------------------------------------
+
+NEVER embed raw URLs or markdown hyperlinks in your response.
+
+Do NOT write:
+  [Section 16(2)](/api/documents/...)
+  [📄 View](https://...)
+  [Circular No. 125](...url...)
+
+CORRECT format — citation by name only:
+  Section 16(2) of the CGST Act, 2017
+  Circular No. 125/44/2019-GST dated 18.11.2019
+
+The frontend application automatically converts every section reference,
+circular number, and rule citation into a clickable hyperlink using
+the retrieved source documents. You do not need to — and must not — add URLs.
+Adding URLs causes them to render as broken raw text in the UI.
+
+-------------------------------------------------------------------------------
 14. LEGAL REASONING ORDER
 -------------------------------------------------------------------------------
 
