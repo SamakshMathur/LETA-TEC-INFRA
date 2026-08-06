@@ -211,8 +211,9 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
     # LegalReranker ranks Acts/Rules highest → without interleaving, all circular and
     # notification blocks appear at the end and get cut by the char budget.
     # Notifications are just as query-critical as circulars for rate/exemption questions.
-    # Pattern: 2 primary-law blocks (Acts/Rules/Case law), then 1 secondary block
-    #          (Circular or Notification, alternating), repeat.
+    # Pattern: 1 secondary block (Circular/Notification) FIRST, then 1 primary-law block,
+    #          alternating. Circular-first ensures the LLM sees CBIC clarifications at the
+    #          top of the context window and is forced to engage with them.
     _secondary_blocks, _primary_blocks = [], []
     for _b, _c in zip(context_blocks, chunks):
         _rpath = (
@@ -226,11 +227,12 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
     ordered_blocks = []
     _oi, _ci = 0, 0
     while _oi < len(_primary_blocks) or _ci < len(_secondary_blocks):
-        for _ in range(2):
-            if _oi < len(_primary_blocks):
-                ordered_blocks.append(_primary_blocks[_oi]); _oi += 1
+        # Circular/notification FIRST in each pair — forces LLM to encounter
+        # CBIC clarifications before statutory text, boosting citation rate.
         if _ci < len(_secondary_blocks):
             ordered_blocks.append(_secondary_blocks[_ci]); _ci += 1
+        if _oi < len(_primary_blocks):
+            ordered_blocks.append(_primary_blocks[_oi]); _oi += 1
 
     sources_section = "\n\n".join(ordered_blocks)
 
