@@ -390,30 +390,30 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
     return selected
 
 
-def _rrf_combine(faiss_chunks: list, bm25_chunks: list, k: int = 60) -> list:
+def _rrf_combine(*ranked_lists: list, k: int = 60) -> list:
     """
-    Reciprocal Rank Fusion (Cormack et al. 2009).
+    Reciprocal Rank Fusion (Cormack et al. 2009) — N-way variant.
 
-    Combines FAISS (dense) and BM25 (sparse) ranked lists into one ordered list.
-    Each chunk gets: score = 1/(k + rank_faiss) + 1/(k + rank_bm25)
+    Accepts any number of pre-ranked lists (FAISS, BM25, TF-IDF, …).
+    Each chunk gets: score = Σ  1/(k + rank_in_list_i + 1)  across all lists.
 
     Outperforms naive set-union because position matters — a chunk ranked #2 in
     both FAISS and BM25 scores higher than one ranked #1 in only one system.
-    k=60 is the standard constant; lower k increases the gap between ranks.
+    k=60 is the standard constant; lower k magnifies rank-gap differences.
+    Adding a 3rd list (TF-IDF) boosts chunks that appear in all three signals
+    (e.g. a circular chunk that is semantically close AND keyword-matches AND
+    has an exact citation token match) without penalising chunks that only show
+    up in one or two signals.
     """
     scores: dict = {}
     chunk_map: dict = {}
 
-    for rank, chunk in enumerate(faiss_chunks):
-        cid = chunk.get("chunk_id") or id(chunk)
-        scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank + 1)
-        chunk_map[cid] = chunk
-
-    for rank, chunk in enumerate(bm25_chunks):
-        cid = chunk.get("chunk_id") or id(chunk)
-        scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank + 1)
-        if cid not in chunk_map:
-            chunk_map[cid] = chunk
+    for ranked_list in ranked_lists:
+        for rank, chunk in enumerate(ranked_list):
+            cid = chunk.get("chunk_id") or id(chunk)
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank + 1)
+            if cid not in chunk_map:
+                chunk_map[cid] = chunk
 
     sorted_ids = sorted(scores, key=lambda x: -scores[x])
     result = []
@@ -559,6 +559,68 @@ class Retriever:
                 if _ci not in self._circular_index[_key]:
                     self._circular_index[_key].append(_ci)
         logger.info(f"Circular index built: {len(self._circular_index)} circular numbers indexed")
+
+        # ── TF-IDF matrix (3rd RRF signal) ────────────────────────────────────
+        # TF-IDF assigns ultra-high scores to rare legal tokens — specific circular
+        # numbers ("Circular 107"), section codes ("16(2)(c)"), and CBIC trade
+        # notice numbers appear in very few chunks, so their IDF weight is huge.
+        # When a user's query contains such a term, TF-IDF pulls the exact circular
+        # or section to the top of the candidate pool before the CrossEncoder runs.
+        # Using sublinear_tf=True prevents very long circular documents from being
+        # penalised by their raw term count (log(1+tf) instead of raw tf).
+        # ngram_range=(1,2) captures two-word legal phrases ("input credit",
+        # "reverse charge", "section 16") as single high-IDF tokens.
+        # Memory: sparse matrix ~150-250 MB for 60K chunks — acceptable for ECS.
+        logger.info("Building TF-IDF matrix for 3rd RRF signal...")
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            _corpus_texts = [c.get("text", "") for c in self.chunks]
+            self._tfidf = TfidfVectorizer(
+                max_features=60000,
+                ngram_range=(1, 2),
+                min_df=1,
+                sublinear_tf=True,
+                dtype=np.float32,   # halves memory vs float64
+            )
+            self._tfidf_matrix = self._tfidf.fit_transform(_corpus_texts)
+            logger.info(
+                f"TF-IDF matrix built: {self._tfidf_matrix.shape[0]} docs × "
+                f"{self._tfidf_matrix.shape[1]} features | "
+                f"nnz={self._tfidf_matrix.nnz:,}"
+            )
+        except Exception as _e:
+            logger.warning(f"TF-IDF build failed (non-fatal, will skip): {_e}")
+            self._tfidf = None
+            self._tfidf_matrix = None
+
+        # ── Circular-isolated BM25 index ──────────────────────────────────────
+        # The full-corpus BM25 systematically underscores circulars relative to
+        # statute chunks: statute chunks are shorter and term-dense, so every
+        # query keyword gets a higher BM25 contribution per document-length unit.
+        # A separate BM25 index over ONLY circular+notification chunks normalises
+        # length within that sub-corpus, surfaces the most keyword-relevant
+        # circulars, and injects them unconditionally into the CrossEncoder pool.
+        # This is the single most impactful fix for circular recall: it ensures
+        # the CrossEncoder SEES the right circulars instead of ranking them after
+        # the fact via Layer 5 blind injection.
+        logger.info("Building circular-isolated BM25 index...")
+        self._bm25_circ_idx_map: list = [
+            i for i, c in enumerate(self.chunks)
+            if _chunk_category(c) in ("circular", "notification")
+        ]
+        if self._bm25_circ_idx_map:
+            _circ_tok_corpus = [
+                tokenize_text(self.chunks[i].get("text", ""))
+                for i in self._bm25_circ_idx_map
+            ]
+            self._bm25_circulars = BM25Okapi(_circ_tok_corpus)
+            logger.info(
+                f"Circular BM25 built: {len(self._bm25_circ_idx_map)} "
+                f"circular/notification chunks indexed"
+            )
+        else:
+            self._bm25_circulars = None
+            logger.warning("No circular/notification chunks found — circular BM25 skipped")
 
         # Build full-corpus document map for context window expansion.
         # Maps rel_path → sorted list of (page_num, chunk_index).
@@ -829,18 +891,48 @@ class Retriever:
 
         # 2. BM25 Search — expand abbreviations before tokenizing
         bm25_chunks: list = []
+        _bm25_tokenized_query = tokenize_text(_expand_for_bm25(query))  # reused below
         if self.bm25:
-            tokenized_query = tokenize_text(_expand_for_bm25(query))
-            bm25_scores = self.bm25.get_scores(tokenized_query)
+            bm25_scores = self.bm25.get_scores(_bm25_tokenized_query)
             top_bm25_idxs = np.argsort(bm25_scores)[::-1][:BM25_TOP_K]
             for idx in top_bm25_idxs:
                 if 0 <= idx < len(self.chunks):
                     bm25_chunks.append(self.chunks[idx])
 
-        # 2b. Reciprocal Rank Fusion — combine FAISS + BM25 rankings.
-        # A chunk ranked #3 in both systems scores higher than one ranked #1 in only one.
-        # This produces a better-ordered candidate pool before the CrossEncoder sees it.
-        rrf_results = _rrf_combine(faiss_chunks, bm25_chunks)
+        # 2b. TF-IDF Search — 3rd RRF signal for exact legal citation matching.
+        # TF-IDF assigns near-1.0 cosine similarity to chunks that contain the
+        # exact rare legal terms from the query (specific circular numbers, section
+        # references like "16(2)(c)", trade notice codes).  These chunks rise in
+        # the RRF pool BEFORE the CrossEncoder, so the CrossEncoder sees the right
+        # candidates — rather than discovering them only via Layer 5 blind injection.
+        # Failure is non-fatal: if sklearn is unavailable, we fall back to 2-way RRF.
+        tfidf_chunks: list = []
+        if getattr(self, "_tfidf", None) is not None:
+            try:
+                from sklearn.metrics.pairwise import cosine_similarity as _cos_sim
+                _q_vec = self._tfidf.transform([_expand_for_bm25(query)])
+                _sims = _cos_sim(_q_vec, self._tfidf_matrix).flatten()
+                # top-50 by TF-IDF similarity; skip zero-score chunks (no shared terms)
+                _top_tfidf = np.argsort(_sims)[::-1][:50]
+                tfidf_chunks = [
+                    self.chunks[i]
+                    for i in _top_tfidf
+                    if _sims[i] > 0.0 and 0 <= i < len(self.chunks)
+                ]
+                logger.debug(
+                    f"TF-IDF search: {len(tfidf_chunks)} candidates | "
+                    f"top_sim={_sims[_top_tfidf[0]]:.4f}" if tfidf_chunks else
+                    "TF-IDF search: 0 candidates"
+                )
+            except Exception as _te:
+                logger.warning(f"TF-IDF search failed (non-fatal): {_te}")
+
+        # 2c. Reciprocal Rank Fusion — 3-way: FAISS + BM25 + TF-IDF.
+        # A chunk present in all three ranked lists (semantically close, keyword-
+        # matching, AND exact-citation-match) accumulates the highest composite RRF
+        # score and reaches the CrossEncoder with high priority.  Chunks that only
+        # appear in one list still contribute — this is additive, not eliminative.
+        rrf_results = _rrf_combine(faiss_chunks, bm25_chunks, tfidf_chunks)
         for chunk in rrf_results:
             cid = chunk.get("chunk_id")
             if cid and cid not in seen_chunk_ids:
@@ -887,6 +979,45 @@ class Retriever:
             {"statute": 6,  "case_law": 4, "circular": 4, "notification": 3}
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
+
+        # ── 2d. Circular-isolated BM25 injection (unconditional) ──────────────
+        # Phase 2A (_enforce_pool_quotas) only injects circulars when full-corpus
+        # BM25 score > 1.5 — a threshold that systematically excludes circulars
+        # whose vocabulary differs from the query (e.g. the circular uses
+        # "clarification" where the query uses "interpretation").
+        # This step runs the circular-only BM25 — where length normalisation is
+        # computed within the circular sub-corpus — and injects the top-N results
+        # unconditionally.  No BM25 floor applies: we trust the circular-BM25
+        # ranking to surface the best circular candidates for this query.
+        # The CrossEncoder then scores them alongside statute chunks on equal footing.
+        _CIRC_BM25_TOP_N = 8
+        if getattr(self, "_bm25_circulars", None) is not None:
+            try:
+                _circ_scores = self._bm25_circulars.get_scores(_bm25_tokenized_query)
+                _circ_top_local = np.argsort(_circ_scores)[::-1][:_CIRC_BM25_TOP_N]
+                _circ_injected = 0
+                for _local_idx in _circ_top_local:
+                    _score = float(_circ_scores[_local_idx])
+                    if _score <= 0.0:
+                        continue   # no keyword overlap at all — skip
+                    _global_idx = self._bm25_circ_idx_map[_local_idx]
+                    if not (0 <= _global_idx < len(self.chunks)):
+                        continue
+                    _c = self.chunks[_global_idx].copy()
+                    _cid = _c.get("chunk_id")
+                    if _cid and _cid not in seen_chunk_ids:
+                        _c["_circ_bm25_inject"] = True
+                        _c["_circ_bm25_score"] = _score
+                        candidate_pool.append(_c)
+                        seen_chunk_ids.add(_cid)
+                        _circ_injected += 1
+                if _circ_injected:
+                    logger.info(
+                        f"Circular BM25 inject: +{_circ_injected} circular/notification "
+                        f"chunks (top score={float(_circ_scores[_circ_top_local[0]]):.3f})"
+                    )
+            except Exception as _ce:
+                logger.warning(f"Circular BM25 injection failed (non-fatal): {_ce}")
 
         # Merge layers: Pinned > Statute-First > Graph > Semantic pool (including any fills).
         # Fills now compete on merit via FlashRank+LegalReranker instead of being force-promoted.
