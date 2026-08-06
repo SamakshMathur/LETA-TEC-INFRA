@@ -1055,7 +1055,7 @@ class Retriever:
         # This layer re-injects the best-scored circular/notification chunks AFTER MMR
         # so the LLM always receives CBIC clarification material to cite.
         # Draft mode is exempt — drafts cite case law more than circulars.
-        _MIN_CIRCULARS_IN_OUTPUT = 2
+        _MIN_CIRCULARS_IN_OUTPUT = 3
         if not is_draft:
             _circ_in_final = sum(
                 1 for c in reranked_results
