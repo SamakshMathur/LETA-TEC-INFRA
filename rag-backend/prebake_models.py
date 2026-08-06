@@ -10,9 +10,9 @@ from sentence_transformers import SentenceTransformer
 SentenceTransformer("BAAI/bge-large-en-v1.5")
 print("     Done.")
 
-print("2/2  ms-marco-MiniLM-L-12-v2 (~22 MB) — FlashRank reranker...")
-from flashrank import Ranker
-Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="/root/.flashrank_cache")
+print("2/2  BAAI/bge-reranker-v2-m3 (~568 MB) — CrossEncoder reranker...")
+from sentence_transformers import CrossEncoder
+CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=512)
 print("     Done.")
 
 print("=== Model bake complete ===")
