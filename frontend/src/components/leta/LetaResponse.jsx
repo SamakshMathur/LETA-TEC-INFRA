@@ -65,17 +65,18 @@ function linkifyLegalRefs(markdown, sources) {
   // Fix: strip every /api/ URL the LLM produces here.  The linkification regexes
   // below (Sections, Circulars, Rules…) then re-add correct links that point to
   // the actual consulted_sources already known by the frontend.
+  // Use [\s\S]*? (lazy dotAll) so URLs that the LLM wraps across multiple lines
+  // are still matched. The previous [^)]* stopped at newlines, letting the URL
+  // portion leak as visible plain text in the rendered output.
   let safe = markdown
-    // 1. Full [text](\n?/api/...) links — single-line or newline-split — strip to text
-    .replace(/\[([^\]]*)\]\s*\n?\s*\(\/api\/[^)]*\)/g, '$1')
-    // 2. ]\n(/api/...) split remnant — the ] already processed, orphan URL left behind
-    .replace(/\]\s*\n+\s*\(\/api\/[^)]*\)/g, ']')
-    // 3. Bare (/api/...) anywhere not preceded by ] (standalone orphan URL)
-    .replace(/(?<!\])\(\/api\/[^\s)]*\)/g, '')
-    // 4. All remaining [text](url) patterns — strip non-/api/ to plain text
-    .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, url) => {
-      return text;  // strip all LLM-inserted hyperlinks; linkification re-adds them
-    });
+    // 1. Full [text](/api/...) links — handles URLs spanning multiple lines
+    .replace(/\[([^\]]*)\]\s*\(\/api\/[\s\S]*?\)/g, '$1')
+    // 2. Orphan ]/n(/api/...) — ] already on previous line, URL on this line
+    .replace(/\]\s*\(\/api\/[\s\S]*?\)/g, ']')
+    // 3. Bare (/api/...) — standalone URL not preceded by ] (multi-line safe)
+    .replace(/(?<!\])\(\/api\/[\s\S]*?\)/g, '')
+    // 4. All remaining [text](url) — strip any other LLM-inserted hyperlinks
+    .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text) => text);
 
   const wrap = (text, src) => (src?.url ? `[${text}](${src.url})` : text);
 
@@ -307,6 +308,15 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
               th: p => <th className="px-4 py-3 text-left font-bold text-white" {...p} />,
               td: p => <td className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#CBD5E1' }} {...p} />,
               a: p => {
+                // ── Safety net layer 2 ──────────────────────────────────────────
+                // view_by_path URLs are NEVER produced by linkifyLegalRefs — they
+                // only appear when the LLM hallucinates a raw /api/ path despite the
+                // prompt rule. Render as plain text so the URL never leaks visually.
+                // The pre-render regex (layer 1) handles the same case for URLs that
+                // ReactMarkdown couldn't parse as a proper link (e.g. multiline URLs).
+                if (p.href && p.href.includes('view_by_path')) {
+                  return <>{p.children}</>;
+                }
                 const isDocLink = p.href && p.href.includes('/api/documents/');
                 const openInViewer = (href, linkText) => {
                   let baseUrl = href;
