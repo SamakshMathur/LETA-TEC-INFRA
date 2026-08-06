@@ -918,6 +918,51 @@ class Retriever:
         # --- Layer 4: MMR Deduplication ---
         reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k)
 
+        # --- Layer 5: Post-MMR Circular Floor ---
+        # Pre-rank quota fills (Phase 2A) get overridden by CrossEncoder + LegalReranker
+        # + MMR — all three can push circular chunks below the top_k cutoff.
+        # This layer re-injects the best-scored circular/notification chunks AFTER MMR
+        # so the LLM always receives CBIC clarification material to cite.
+        # Draft mode is exempt — drafts cite case law more than circulars.
+        _MIN_CIRCULARS_IN_OUTPUT = 2
+        if not is_draft:
+            _circ_in_final = sum(
+                1 for c in reranked_results
+                if _chunk_category(c) in ("circular", "notification")
+            )
+            if _circ_in_final < _MIN_CIRCULARS_IN_OUTPUT:
+                _existing_ids = {c.get("chunk_id") for c in reranked_results}
+                # Prefer circular chunks from the 80-chunk reranker pool
+                # (they already have _final_legal_score from LegalReranker Layer 3)
+                _circ_pool = [
+                    c for c in reranker_input
+                    if _chunk_category(c) in ("circular", "notification")
+                    and c.get("chunk_id") not in _existing_ids
+                ]
+                _circ_pool.sort(key=lambda x: x.get("_final_legal_score", 0), reverse=True)
+
+                # Fallback: pull from full BM25 corpus if reranker pool had no circulars
+                if not _circ_pool and self.bm25:
+                    _tokenized = tokenize_text(_expand_for_bm25(query))
+                    _bm25_scores = self.bm25.get_scores(_tokenized)
+                    _fallback = [
+                        (i, _bm25_scores[i])
+                        for i, c in enumerate(self.chunks)
+                        if _chunk_category(c) in ("circular", "notification")
+                        and _bm25_scores[i] > 0
+                        and self.chunks[i].get("chunk_id") not in _existing_ids
+                    ]
+                    _fallback.sort(key=lambda x: x[1], reverse=True)
+                    _circ_pool = [self.chunks[i].copy() for i, _ in _fallback[:6]]
+
+                _needed = _MIN_CIRCULARS_IN_OUTPUT - _circ_in_final
+                for _c in _circ_pool[:_needed]:
+                    reranked_results.append(_c)
+                    logger.info(
+                        f"Circular floor inject: «{(_c.get('rel_path') or _c.get('source',''))[-60:]}» "
+                        f"score={_c.get('_final_legal_score', 0.0):.3f}"
+                    )
+
         # --- Context Window Expansion ---
         # Enrich each selected chunk with adjacent-page neighbors from the full
         # corpus (self._doc_map covers all chunks, not just the 80-chunk pool).
