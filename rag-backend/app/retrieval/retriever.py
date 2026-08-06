@@ -560,7 +560,7 @@ class Retriever:
                     self._circular_index[_key].append(_ci)
         logger.info(f"Circular index built: {len(self._circular_index)} circular numbers indexed")
 
-        # ── TF-IDF matrix (3rd RRF signal) ────────────────────────────────────
+        # ── TF-IDF matrix (3rd RRF signal) — background build ────────────────
         # TF-IDF assigns ultra-high scores to rare legal tokens — specific circular
         # numbers ("Circular 107"), section codes ("16(2)(c)"), and CBIC trade
         # notice numbers appear in very few chunks, so their IDF weight is huge.
@@ -571,27 +571,53 @@ class Retriever:
         # ngram_range=(1,2) captures two-word legal phrases ("input credit",
         # "reverse charge", "section 16") as single high-IDF tokens.
         # Memory: sparse matrix ~150-250 MB for 60K chunks — acceptable for ECS.
-        logger.info("Building TF-IDF matrix for 3rd RRF signal...")
-        try:
-            from sklearn.feature_extraction.text import TfidfVectorizer
-            _corpus_texts = [c.get("text", "") for c in self.chunks]
-            self._tfidf = TfidfVectorizer(
-                max_features=60000,
-                ngram_range=(1, 2),
-                min_df=1,
-                sublinear_tf=True,
-                dtype=np.float32,   # halves memory vs float64
-            )
-            self._tfidf_matrix = self._tfidf.fit_transform(_corpus_texts)
-            logger.info(
-                f"TF-IDF matrix built: {self._tfidf_matrix.shape[0]} docs × "
-                f"{self._tfidf_matrix.shape[1]} features | "
-                f"nnz={self._tfidf_matrix.nnz:,}"
-            )
-        except Exception as _e:
-            logger.warning(f"TF-IDF build failed (non-fatal, will skip): {_e}")
-            self._tfidf = None
-            self._tfidf_matrix = None
+        #
+        # Built in a daemon thread so startup does NOT block FastAPI's health check.
+        # search() checks `self._tfidf is not None` before using it — queries that
+        # arrive before the build finishes fall back to 2-way RRF (FAISS + BM25)
+        # gracefully. Typically ready within 30–90 seconds of container start.
+        self._tfidf = None        # sentinel — set last in thread (acts as ready flag)
+        self._tfidf_matrix = None
+
+        def _build_tfidf_background(chunks_snapshot: list) -> None:
+            try:
+                import threading
+                logger.info(
+                    f"[TF-IDF bg] Building on thread {threading.current_thread().name} ..."
+                )
+                from sklearn.feature_extraction.text import TfidfVectorizer
+                _corpus_texts = [c.get("text", "") for c in chunks_snapshot]
+                _vec = TfidfVectorizer(
+                    max_features=60000,
+                    ngram_range=(1, 2),
+                    min_df=1,
+                    sublinear_tf=True,
+                    dtype=np.float32,
+                )
+                _mat = _vec.fit_transform(_corpus_texts)
+                # Assign matrix BEFORE vectorizer — search() uses vectorizer as
+                # the "ready" sentinel (getattr check), so the matrix must already
+                # be visible when the sentinel flips. Python GIL makes each attr
+                # assignment atomic; ordering here is intentional.
+                self._tfidf_matrix = _mat
+                self._tfidf = _vec          # ← ready flag flips here
+                logger.info(
+                    f"[TF-IDF bg] Done: {_mat.shape[0]} docs × {_mat.shape[1]} "
+                    f"features | nnz={_mat.nnz:,}"
+                )
+            except Exception as _e:
+                logger.warning(f"[TF-IDF bg] Build failed (non-fatal, will skip): {_e}")
+
+        import threading as _threading
+        _t = _threading.Thread(
+            target=_build_tfidf_background,
+            args=(list(self.chunks),),   # snapshot to avoid concurrent mutation
+            daemon=True,
+            name="tfidf-builder",
+        )
+        _t.start()
+        logger.info("[TF-IDF bg] Background build thread started — "
+                    "3rd RRF signal will be active within ~30-90 s")
 
         # ── Circular-isolated BM25 index ──────────────────────────────────────
         # The full-corpus BM25 systematically underscores circulars relative to
