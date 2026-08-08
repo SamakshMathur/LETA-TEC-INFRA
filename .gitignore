@@ -52,9 +52,13 @@ Thumbs.db
 .vite/
 .claude/
 
-# RAG Data
+# RAG Data (large binary/generated files — excluded from git)
 rag-backend/RAG_INFORMATION_DATABASE/
 rag-backend/data/
+# Exception: these specific data files ARE tracked so legal team can edit them without code
+!rag-backend/data/authority_registry.json
+!rag-backend/data/regression/
+!rag-backend/data/regression/gst_regression_suite.json
 rag-backend/vectordb/index.faiss
 rag-backend/vectordb/index.meta.json
 rag-backend/__pycache__/
