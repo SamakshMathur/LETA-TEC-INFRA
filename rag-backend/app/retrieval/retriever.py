@@ -15,6 +15,7 @@ from app.retrieval.reranker import LegalReranker
 from app.retrieval.statute_retriever import StatuteRetriever
 from app.retrieval.provision_graph import ProvisionGraphRetriever
 from app.retrieval.source_priority import source_priority
+from app.retrieval.authority_taxonomy import classify_query_authority, authority_bonus
 
 logger = logging.getLogger(__name__)
 
@@ -852,12 +853,18 @@ class Retriever:
         logger.info("Retriever initialized: 3-Layer Architecture + Provision Graph + MMR")
 
     def _cascade_rerank(self, query: str, candidates: list,
-                        stage1_keep: int = 30) -> list:
+                        stage1_keep: int = 30,
+                        taxonomy: dict | None = None) -> list:
         """
         Reranks candidates with cross-encoder/nli-deberta-v3-large CrossEncoder.
         Falls back to RRF score order if CrossEncoder is unavailable.
-        Uses _rrf_score as a tiebreaker when cross-encoder scores are equal.
+
+        taxonomy: result of classify_query_authority() — when provided, authority
+        bonuses are adjusted per query intent (e.g. notifications get a larger
+        bonus for rate queries; circulars get a larger bonus for cross-charge
+        advisory queries).
         """
+        _taxonomy = taxonomy or {}
         pool = list(candidates)
         if self.cross_encoder and pool:
             try:
@@ -869,14 +876,15 @@ class Retriever:
                 for chunk, score in zip(pool, scores):
                     # RRF tiebreaker: chunk ranked high in both FAISS and BM25
                     rrf_boost = chunk.get("_rrf_score", 0.0) * 0.01
-                    # Authority bonus: Acts(5)→+0.15, Rules/Circulars(4)→+0.12,
-                    # Notifications(3)→+0.09, ICAI(2)→+0.06, FAQ(1)→+0.03.
-                    # This ensures the CrossEncoder can't rank a FAQ above an Act
-                    # on a marginal semantic similarity difference — legal hierarchy
-                    # always wins ties, and even shapes non-tie outcomes by 0.03-0.15.
+                    # Intent-dependent authority bonus:
+                    #   base = source_priority × 0.03 (Acts=0.15, Circulars=0.12…)
+                    #   multiplied by per-category weight from authority taxonomy
+                    #   so for rate queries notifications get 1.6× and Acts 0.8×,
+                    #   for cross-charge circulars get 1.4×, etc.
                     _rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
-                    authority_bonus = source_priority(_rel) * 0.03
-                    chunk["_rerank_score"] = float(score) + rrf_boost + authority_bonus
+                    _pri = source_priority(_rel)
+                    _auth_bonus = authority_bonus(_rel, _taxonomy, _pri)
+                    chunk["_rerank_score"] = float(score) + rrf_boost + _auth_bonus
                 pool.sort(key=lambda c: c["_rerank_score"], reverse=True)
                 logger.debug(
                     f"CrossEncoder reranked {len(pool)} chunks | "
@@ -1016,13 +1024,34 @@ class Retriever:
             topic = advanced_queries.get("topic", "General")
             subtopic = advanced_queries.get("subtopic")
 
+        # --- Governing-Authority Prediction ---
+        # Classifies the query into the GST authority taxonomy and predicts WHICH
+        # specific sections, rules, and circulars govern this topic — without waiting
+        # for retrieval to find them.  This is the "practitioner knowledge graph":
+        # a cross-charge question → immediately know Section 25(4)/(5), Rule 28,
+        # Rule 39, Section 20, Circular 199 must all be in the pool.
+        _taxonomy = classify_query_authority(query)
+        if _taxonomy["confidence"] > 0:
+            logger.info(
+                f"Authority taxonomy: topics={_taxonomy['topics']} "
+                f"sections={_taxonomy['sections']} rules={_taxonomy['rules']} "
+                f"circulars={_taxonomy['circulars']} conf={_taxonomy['confidence']}"
+            )
+
         # --- Direct section/rule reference lookup (pinned, bypasses FAISS ranking) ---
-        # Extracts explicit citations from query (e.g. "Section 16 CGST") and pins
-        # matching chunks at priority 1.0 so they always reach the top of the pool.
-        _query_refs = _extract_query_refs(query)
+        # Combines: (a) explicit citations from the query text itself, and
+        #           (b) predicted governing authorities from the taxonomy.
+        # These chunks are pinned so they always reach the CrossEncoder.
+        _explicit_refs = _extract_query_refs(query)
+        _taxonomy_refs = (
+            _taxonomy["sections"] + _taxonomy["rules"] +
+            [f"CIRCULAR_{c.split('_')[-1]}" if c.startswith("CIRCULAR_") else c
+             for c in _taxonomy["circulars"]]
+        )
+        _query_refs = list(dict.fromkeys(_explicit_refs + _taxonomy_refs))  # dedup, preserve order
         _pinned = self._direct_ref_lookup(_query_refs) if _query_refs else []
         if _pinned:
-            logger.info(f"Direct ref lookup: {_query_refs} → {len(_pinned)} pinned chunks")
+            logger.info(f"Direct ref lookup (explicit+taxonomy): {_query_refs[:8]} → {len(_pinned)} pinned chunks")
 
         # --- Layer 1: Statute-First Retrieval (Deterministic) ---
         statute_results = self.statute_retriever.search_statutes(self.chunks, topic, subtopic)
@@ -1325,7 +1354,7 @@ class Retriever:
         # skip_rerank=True bypasses the cross-encoder to stay within API Gateway's 29s timeout
         reranked_results = reranker_input
         if reranker_input and not skip_rerank:
-            reranked_results = self._cascade_rerank(query, reranker_input)
+            reranked_results = self._cascade_rerank(query, reranker_input, taxonomy=_taxonomy)
             if reranked_results:
                 logger.info(
                     f"Cascade rerank: {len(reranker_input)} → {len(reranked_results)} | "
@@ -1334,6 +1363,30 @@ class Retriever:
 
         # --- Layer 3: Legal Reranking (Composite Scoring) ---
         reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic, is_draft=is_draft)
+
+        # --- Layer 3b: Document-Level Ranking ---
+        # Problem: we may retrieve chunk 7 and chunk 19 from Circular 199 while
+        # missing chunk 12 (the actual clarification paragraph).  Document-level
+        # ranking fixes this by boosting ALL chunks from a document that appears
+        # multiple times — rewarding documents that are clearly highly relevant.
+        #
+        # Algorithm: count how many chunks from each document reached this pool;
+        # give each chunk a bonus proportional to log(n_from_same_doc).
+        # Documents appearing 3+ times get a +0.03 per-chunk boost; this causes
+        # the re-sort to surface the best chunk from the highest-relevance document
+        # rather than mixing low-ranked chunks from many documents.
+        import math as _math
+        _doc_hits: dict = {}
+        for _ch in reranked_results:
+            _dr = _ch.get("rel_path") or _ch.get("metadata", {}).get("rel_path", "__?__")
+            _doc_hits[_dr] = _doc_hits.get(_dr, 0) + 1
+        for _ch in reranked_results:
+            _dr = _ch.get("rel_path") or _ch.get("metadata", {}).get("rel_path", "__?__")
+            _n  = _doc_hits.get(_dr, 1)
+            if _n > 1:
+                _ch["_final_legal_score"] = _ch.get("_final_legal_score", 0) + _math.log(_n) * 0.02
+                _ch["_doc_hit_count"] = _n
+        reranked_results.sort(key=lambda x: x.get("_final_legal_score", 0), reverse=True)
 
         # --- Layer 4: MMR Deduplication ---
         reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k)
@@ -1409,7 +1462,13 @@ class Retriever:
         # checks WHICH categories are structurally missing and fills each one
         # with the most semantically relevant chunk from the dedicated sub-index.
         if not is_draft and query_vec is not None:
-            _expected = _query_expected_coverage(query, topic)
+            # Use taxonomy-predicted expected categories when available (more precise),
+            # fall back to keyword-heuristic _query_expected_coverage otherwise.
+            _expected = (
+                _taxonomy["expected_cats"]
+                if _taxonomy.get("confidence", 0) > 0
+                else _query_expected_coverage(query, topic)
+            )
             _present  = {_chunk_category(c) for c in reranked_results}
             _missing  = _expected - _present
             if _missing:
@@ -1499,8 +1558,22 @@ class Retriever:
 
         topic = advanced_queries.get("topic", "General")
 
-        # Direct ref lookup: pin explicitly-cited sections at top of pool
-        _query_refs = _extract_query_refs(query)
+        # Authority taxonomy: predicts governing authorities from query intent
+        _sr_taxonomy = classify_query_authority(query)
+        if _sr_taxonomy["confidence"] > 0:
+            logger.info(
+                f"S&R taxonomy: topics={_sr_taxonomy['topics']} "
+                f"sections={_sr_taxonomy['sections']} circulars={_sr_taxonomy['circulars']}"
+            )
+
+        # Direct ref lookup: pin explicit citations + taxonomy-predicted authorities
+        _explicit_refs = _extract_query_refs(query)
+        _tax_refs = (
+            _sr_taxonomy["sections"] + _sr_taxonomy["rules"] +
+            [f"CIRCULAR_{c.split('_')[-1]}" if c.startswith("CIRCULAR_") else c
+             for c in _sr_taxonomy["circulars"]]
+        )
+        _query_refs = list(dict.fromkeys(_explicit_refs + _tax_refs))
         _pinned = self._direct_ref_lookup(_query_refs) if _query_refs else []
 
         existing_ids = {c.get("chunk_id") for c in base_chunks}
@@ -1539,9 +1612,22 @@ class Retriever:
         reranked = rerank_input
 
         if rerank_input:
-            reranked = self._cascade_rerank(query, rerank_input)
+            reranked = self._cascade_rerank(query, rerank_input, taxonomy=_sr_taxonomy)
 
         reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
+
+        # Document-level ranking boost (mirrors search() Layer 3b)
+        import math as _math_sr
+        _sr_doc_hits: dict = {}
+        for _ch in reranked:
+            _dr = _ch.get("rel_path") or _ch.get("metadata", {}).get("rel_path", "__?__")
+            _sr_doc_hits[_dr] = _sr_doc_hits.get(_dr, 0) + 1
+        for _ch in reranked:
+            _dr = _ch.get("rel_path") or _ch.get("metadata", {}).get("rel_path", "__?__")
+            _n  = _sr_doc_hits.get(_dr, 1)
+            if _n > 1:
+                _ch["_final_legal_score"] = _ch.get("_final_legal_score", 0) + _math_sr.log(_n) * 0.02
+        reranked.sort(key=lambda x: x.get("_final_legal_score", 0), reverse=True)
 
         mmr_results = _mmr_deduplicate(reranked, top_k=top_k)
 
@@ -1549,7 +1635,11 @@ class Retriever:
         # Ensures the fast-path also fills missing authority categories.
         _sr_query_vec = embed_query(query)
         if _sr_query_vec is not None:
-            _sr_expected = _query_expected_coverage(query, topic)
+            _sr_expected = (
+                _sr_taxonomy["expected_cats"]
+                if _sr_taxonomy.get("confidence", 0) > 0
+                else _query_expected_coverage(query, topic)
+            )
             _sr_present  = {_chunk_category(c) for c in mmr_results}
             _sr_missing  = _sr_expected - _sr_present
             if _sr_missing:
