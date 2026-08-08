@@ -10,9 +10,9 @@ from sentence_transformers import SentenceTransformer
 SentenceTransformer("BAAI/bge-large-en-v1.5")
 print("     Done.")
 
-print("2/2  BAAI/bge-reranker-v2-m3 (~568 MB) — CrossEncoder reranker...")
+print("2/2  cross-encoder/nli-deberta-v3-large (~750 MB) — CrossEncoder reranker...")
 from sentence_transformers import CrossEncoder
-CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=512)
+CrossEncoder("cross-encoder/nli-deberta-v3-large", max_length=512)
 print("     Done.")
 
 # Verify scikit-learn is installed (used for TF-IDF 3rd RRF signal).

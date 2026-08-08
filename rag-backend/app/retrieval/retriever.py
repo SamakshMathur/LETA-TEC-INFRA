@@ -672,15 +672,15 @@ class Retriever:
             f"{len(self.chunks)} total chunks"
         )
 
-        logger.info("Loading CrossEncoder reranker (BAAI/bge-reranker-v2-m3)...")
+        logger.info("Loading CrossEncoder reranker (cross-encoder/nli-deberta-v3-large)...")
         try:
             from sentence_transformers import CrossEncoder
             self.cross_encoder = CrossEncoder(
-                "BAAI/bge-reranker-v2-m3",
+                "cross-encoder/nli-deberta-v3-large",
                 max_length=512,
                 device="cpu",
             )
-            logger.info("  CrossEncoder loaded: BAAI/bge-reranker-v2-m3")
+            logger.info("  CrossEncoder loaded: cross-encoder/nli-deberta-v3-large")
         except Exception as e:
             logger.error(f"Failed to load CrossEncoder: {e}", exc_info=True)
             self.cross_encoder = None
@@ -697,7 +697,7 @@ class Retriever:
     def _cascade_rerank(self, query: str, candidates: list,
                         stage1_keep: int = 30) -> list:
         """
-        Reranks candidates with BAAI/bge-reranker-v2-m3 CrossEncoder.
+        Reranks candidates with cross-encoder/nli-deberta-v3-large CrossEncoder.
         Falls back to RRF score order if CrossEncoder is unavailable.
         Uses _rrf_score as a tiebreaker when cross-encoder scores are equal.
         """
