@@ -648,6 +648,37 @@ class Retriever:
             self._bm25_circulars = None
             logger.warning("No circular/notification chunks found — circular BM25 skipped")
 
+        # ── Circular-isolated FAISS sub-index ─────────────────────────────────
+        # BM25-only circular injection misses circulars that use different
+        # terminology from the query ("clarification" vs "interpretation", formal
+        # CBIC language vs user query language).  A semantic FAISS search within
+        # the circular sub-corpus finds the right circular even when exact keywords
+        # don't match — this is the root fix for irrelevant circular injection.
+        #
+        # Vectors are reconstructed from the main IndexFlatIP — zero re-embedding,
+        # zero model calls.  reconstruct() on IndexFlatIP is effectively a memcpy.
+        # Reuses _bm25_circ_idx_map for local-to-global index mapping.
+        logger.info("Building circular-isolated FAISS sub-index (semantic)...")
+        self._faiss_circulars = None
+        if self._bm25_circ_idx_map and self.index is not None:
+            try:
+                _dim = self.index.d
+                _n_circ = len(self._bm25_circ_idx_map)
+                _circ_vecs = np.empty((_n_circ, _dim), dtype=np.float32)
+                for _li, _gi in enumerate(self._bm25_circ_idx_map):
+                    self.index.reconstruct(_gi, _circ_vecs[_li])
+                _circ_sub = faiss.IndexFlatIP(_dim)
+                _circ_sub.add(_circ_vecs)
+                self._faiss_circulars = _circ_sub
+                logger.info(
+                    f"Circular FAISS sub-index: {_n_circ} chunks | "
+                    f"~{_n_circ * _dim * 4 // (1024 * 1024):.0f} MB"
+                )
+            except Exception as _e:
+                logger.warning(
+                    f"Circular FAISS sub-index failed (non-fatal, BM25 still covers): {_e}"
+                )
+
         # Build full-corpus document map for context window expansion.
         # Maps rel_path → sorted list of (page_num, chunk_index).
         # Built once at startup so every query can fetch neighbors from the
@@ -1045,6 +1076,40 @@ class Retriever:
             except Exception as _ce:
                 logger.warning(f"Circular BM25 injection failed (non-fatal): {_ce}")
 
+        # ── 2e. Circular FAISS injection — semantic search within circular sub-corpus ──
+        # BM25 (step 2d) finds circulars by keyword overlap; FAISS finds them by
+        # embedding similarity.  Together they cover both exact-term and paraphrase
+        # queries.  Only injects circulars that meet a minimum cosine similarity
+        # threshold so the CrossEncoder pool stays clean — no noise injection.
+        _CIRC_FAISS_TOP_N = 12
+        _CIRC_FAISS_MIN_SIM = 0.25   # cosine similarity floor — below this is noise
+        if getattr(self, "_faiss_circulars", None) is not None and query_vec is not None:
+            try:
+                _q_circ = np.array([query_vec]).astype("float32")
+                _circ_D, _circ_I = self._faiss_circulars.search(_q_circ, _CIRC_FAISS_TOP_N)
+                _circ_faiss_injected = 0
+                for _sim, _local_idx in zip(_circ_D[0], _circ_I[0]):
+                    if _local_idx < 0 or float(_sim) < _CIRC_FAISS_MIN_SIM:
+                        continue
+                    _global_idx = self._bm25_circ_idx_map[_local_idx]
+                    if not (0 <= _global_idx < len(self.chunks)):
+                        continue
+                    _c = self.chunks[_global_idx].copy()
+                    _cid = _c.get("chunk_id")
+                    if _cid and _cid not in seen_chunk_ids:
+                        _c["_circ_faiss_inject"] = True
+                        _c["_circ_faiss_score"] = round(float(_sim), 4)
+                        candidate_pool.append(_c)
+                        seen_chunk_ids.add(_cid)
+                        _circ_faiss_injected += 1
+                if _circ_faiss_injected:
+                    logger.info(
+                        f"Circular FAISS inject: +{_circ_faiss_injected} semantic "
+                        f"circular chunks | top_sim={float(_circ_D[0][0]):.4f}"
+                    )
+            except Exception as _cfe:
+                logger.warning(f"Circular FAISS injection failed (non-fatal): {_cfe}")
+
         # Merge layers: Pinned > Statute-First > Graph > Semantic pool (including any fills).
         # Fills now compete on merit via FlashRank+LegalReranker instead of being force-promoted.
         combined_results = _pinned + statute_results[:40] + graph_results[:20]
@@ -1113,11 +1178,25 @@ class Retriever:
                     _circ_pool = [self.chunks[i].copy() for i, _ in _fallback[:6]]
 
                 _needed = _MIN_CIRCULARS_IN_OUTPUT - _circ_in_final
-                for _c in _circ_pool[:_needed]:
+                _circ_floor_injected = 0
+                for _c in _circ_pool:
+                    if _circ_floor_injected >= _needed:
+                        break
+                    _score = _c.get("_final_legal_score", 0.0)
+                    if _score < 0.10:
+                        # Skip: circular scored below relevance threshold.
+                        # Injecting it would add noise the LLM correctly ignores —
+                        # better to send clean statute context than a wrong circular.
+                        logger.info(
+                            f"Circular floor SKIP (score {_score:.3f} < 0.10): "
+                            f"«{(_c.get('rel_path') or _c.get('source', ''))[-60:]}»"
+                        )
+                        continue
                     reranked_results.append(_c)
+                    _circ_floor_injected += 1
                     logger.info(
                         f"Circular floor inject: «{(_c.get('rel_path') or _c.get('source',''))[-60:]}» "
-                        f"score={_c.get('_final_legal_score', 0.0):.3f}"
+                        f"score={_score:.3f}"
                     )
 
         # --- Context Window Expansion ---
