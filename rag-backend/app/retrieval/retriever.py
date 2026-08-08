@@ -1150,7 +1150,7 @@ class Retriever:
                 extra_queries.append(hyde_doc)
 
             for eq in extra_queries:
-                if not eq or not eq.strip():
+                if not eq or not isinstance(eq, str) or not eq.strip():
                     continue
                 eq_vec = embed_query(eq)
                 if eq_vec is not None:
@@ -1814,7 +1814,7 @@ class Retriever:
         combined = _pinned + list(base_chunks)
         if self.index:
             for eq in extra_queries:
-                if not eq or not eq.strip():
+                if not eq or not isinstance(eq, str) or not eq.strip():
                     continue
                 vec = embed_query(eq)
                 if vec is not None:

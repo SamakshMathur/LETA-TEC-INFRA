@@ -216,6 +216,19 @@ Respond with ONLY the raw JSON object. No prose. No markdown fences."""
         result = json.loads(raw)
         if "queries" not in result or not isinstance(result["queries"], list):
             result["queries"] = [raw_query]
+        else:
+            # Sanitize: LLM occasionally returns list-of-dicts instead of list-of-strings
+            sanitized = []
+            for q in result["queries"]:
+                if isinstance(q, str) and q.strip():
+                    sanitized.append(q)
+                elif isinstance(q, dict):
+                    # Accept {"query": "..."} / {"text": "..."} / {"content": "..."} shapes
+                    for key in ("query", "text", "content", "value", "q"):
+                        if key in q and isinstance(q[key], str) and q[key].strip():
+                            sanitized.append(q[key])
+                            break
+            result["queries"] = sanitized if sanitized else [raw_query]
         if "hyde_document" not in result:
             result["hyde_document"] = ""
         if "topic" not in result:
