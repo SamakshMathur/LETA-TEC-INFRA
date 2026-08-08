@@ -20,6 +20,10 @@ Design principles:
 """
 from __future__ import annotations
 import math
+import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Taxonomy: topic → governing authorities
@@ -444,6 +448,114 @@ def classify_query_authority(query: str) -> dict:
         "expected_cats": exp_cats,
         "authority_adj": adj_map,
         "confidence":    top_matches[0][0] if top_matches else 0,
+    }
+
+
+# ─── Circular filename patterns (mirrors retriever._circular_index logic) ─────
+_CIR_NUM_RE = re.compile(
+    r'(?:circular[s]?[-_.\s]*(?:[a-z]*[-_.\s]*)?(?:no[-_.\s]*)?'
+    r'|cir[-_.](?:cgst[-_.])?'
+    r'|cir(?=[0-9])'
+    r'|circularno[-_.])'
+    r'(\d{2,3})',
+    re.IGNORECASE,
+)
+_CIR_LEADING_RE = re.compile(r'^(\d{2,3})[-_]\d+[-_]\d{4}', re.IGNORECASE)
+
+
+def verify_mandatory_coverage(chunks: list, taxonomy: dict) -> dict:
+    """
+    Verifies that EVERY mandatory authority predicted by the taxonomy is
+    actually present in the retrieved chunks.
+
+    This is the difference between:
+      "retrieval found relevant chunks"       (probabilistic — what we had before)
+      "retrieval verified governing authorities"  (deterministic — what we need)
+
+    For cross-charge: confirms Section 25, Section 20, Rule 28, Rule 39, and
+    Circular 199 are each individually confirmed present — not just "a circular".
+
+    Returns:
+        {
+            "coverage_pct":       int     — 0–100
+            "found":              list    — confirmed mandatory authorities
+            "missing_sections":   list    — provision keys not found in any chunk
+            "missing_rules":      list    — rule keys not found in any chunk
+            "missing_circulars":  list    — circular keys not found in any chunk
+            "missing":            list    — all missing (sections + rules + circulars)
+            "total_mandatory":    int
+        }
+    """
+    mandatory_sections  = taxonomy.get("sections",  [])
+    mandatory_rules     = taxonomy.get("rules",     [])
+    mandatory_circulars = taxonomy.get("circulars", [])
+    total_mandatory = len(mandatory_sections) + len(mandatory_rules) + len(mandatory_circulars)
+
+    if total_mandatory == 0:
+        return {
+            "coverage_pct": 100,
+            "found": [],
+            "missing_sections": [],
+            "missing_rules": [],
+            "missing_circulars": [],
+            "missing": [],
+            "total_mandatory": 0,
+        }
+
+    # ── Collect what's present in retrieved chunks ─────────────────────────
+    present_provisions: set[str] = set()
+    present_circulars:  set[str] = set()
+
+    for chunk in chunks:
+        meta = chunk.get("metadata", {})
+
+        # Provision/citation keys (e.g. CGST_SEC_25, CGST_RUL_28)
+        for p in meta.get("provisions", []) + meta.get("citations", []):
+            if p:
+                present_provisions.add(p)
+
+        # Circular number from filename
+        rel  = (chunk.get("rel_path") or meta.get("rel_path", "")).replace("\\", "/")
+        fname = rel.split("/")[-1]
+        m = _CIR_NUM_RE.search(fname) or _CIR_LEADING_RE.match(fname)
+        if m:
+            present_circulars.add(f"CIRCULAR_{m.group(1)}")
+
+    # ── Check each mandatory authority ─────────────────────────────────────
+    # For sections/rules, check the provision key AND a fallback numeric match.
+    # CGST_SEC_25 present if it's in any chunk's provisions OR if any provision
+    # key starts with "CGST_SEC_25" / "IGST_SEC_25" (sub-clause variants).
+    def _provision_present(key: str) -> bool:
+        if key in present_provisions:
+            return True
+        # Fuzzy: CGST_SEC_25 matches CGST_SEC_25_4, CGST_SEC_25_5 etc.
+        prefix = key + "_"
+        return any(p.startswith(prefix) for p in present_provisions)
+
+    missing_sections  = [s for s in mandatory_sections  if not _provision_present(s)]
+    missing_rules     = [r for r in mandatory_rules     if not _provision_present(r)]
+    missing_circulars = [c for c in mandatory_circulars if c not in present_circulars]
+
+    missing = missing_sections + missing_rules + missing_circulars
+    found   = (
+        [s for s in mandatory_sections  if _provision_present(s)] +
+        [r for r in mandatory_rules     if _provision_present(r)] +
+        [c for c in mandatory_circulars if c in present_circulars]
+    )
+    coverage_pct = round(100 * len(found) / total_mandatory) if total_mandatory else 100
+
+    logger.info(
+        f"Mandatory coverage: {coverage_pct}% | "
+        f"found={found} | missing={missing}"
+    )
+    return {
+        "coverage_pct":      coverage_pct,
+        "found":             found,
+        "missing_sections":  missing_sections,
+        "missing_rules":     missing_rules,
+        "missing_circulars": missing_circulars,
+        "missing":           missing,
+        "total_mandatory":   total_mandatory,
     }
 
 

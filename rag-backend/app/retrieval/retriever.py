@@ -15,7 +15,9 @@ from app.retrieval.reranker import LegalReranker
 from app.retrieval.statute_retriever import StatuteRetriever
 from app.retrieval.provision_graph import ProvisionGraphRetriever
 from app.retrieval.source_priority import source_priority
-from app.retrieval.authority_taxonomy import classify_query_authority, authority_bonus
+from app.retrieval.authority_taxonomy import (
+    classify_query_authority, authority_bonus, verify_mandatory_coverage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1524,6 +1526,136 @@ class Retriever:
                     except Exception as _l6e:
                         logger.warning(f"Layer 6 coverage fill ({_mcat}) failed: {_l6e}")
 
+        # --- Mandatory Authority Engine ---
+        # Priority 1+3 from the legal RAG architecture:
+        # "Retrieval is verified, not guessed."
+        #
+        # Unlike Layer 5 (circular floor) and Layer 6 (category coverage), this
+        # layer checks for SPECIFIC named authorities — not just "a circular" but
+        # "Circular 199", not just "a statute" but "Section 25(4) CGST Act".
+        #
+        # The answer literally cannot be generated until every mandatory authority
+        # is confirmed present or explicitly declared missing.
+        _coverage_result = {"coverage_pct": 100, "missing": [], "total_mandatory": 0}
+        if not is_draft and _taxonomy.get("confidence", 0) > 0:
+            _coverage_result = verify_mandatory_coverage(reranked_results, _taxonomy)
+            _missing_mandatory = _coverage_result["missing"]
+
+            if _missing_mandatory:
+                logger.warning(
+                    f"Mandatory Authority Engine: {_coverage_result['coverage_pct']}% coverage | "
+                    f"MISSING: {_missing_mandatory}"
+                )
+                _mae_existing_ids = {c.get("chunk_id") for c in reranked_results}
+                _mae_injected = 0
+
+                # Step 1: Direct provision-index lookup for missing sections/rules
+                _sec_rule_refs = (
+                    _coverage_result["missing_sections"] + _coverage_result["missing_rules"]
+                )
+                if _sec_rule_refs:
+                    _forced = self._direct_ref_lookup(_sec_rule_refs)
+                    for _fc in _forced:
+                        _fid = _fc.get("chunk_id")
+                        if _fid and _fid not in _mae_existing_ids:
+                            _fc["_mandatory_inject"] = True
+                            _fc["_mandatory_ref"] = True
+                            reranked_results.append(_fc)
+                            _mae_existing_ids.add(_fid)
+                            _mae_injected += 1
+
+                # Step 2: Circular-index lookup for missing circulars
+                for _mc in _coverage_result["missing_circulars"]:
+                    _mc_key = _mc if _mc.startswith("CIRCULAR_") else f"CIRCULAR_{_mc.split('_')[-1]}"
+                    for _ci in self._circular_index.get(_mc_key, [])[:3]:
+                        _c = self.chunks[_ci].copy()
+                        _cid = _c.get("chunk_id")
+                        if _cid and _cid not in _mae_existing_ids:
+                            _c["_mandatory_inject"] = True
+                            _c["_mandatory_circular"] = _mc_key
+                            reranked_results.append(_c)
+                            _mae_existing_ids.add(_cid)
+                            _mae_injected += 1
+
+                # Step 3: Sub-index semantic search as fallback for any still-missing
+                if _mae_injected < len(_missing_mandatory) and query_vec is not None:
+                    _still_missing_cats = {
+                        "statute"      if any(s.startswith(("CGST_SEC", "IGST_SEC")) for s in _missing_mandatory) else None,
+                        "circular"     if _coverage_result["missing_circulars"]   else None,
+                        "notification" if any(r.startswith("CGST_RUL") for r in _coverage_result["missing_rules"]) else None,
+                    } - {None}
+                    _sub_reg = {
+                        "statute":      (getattr(self, "_faiss_statutes",     None), getattr(self, "_statute_idx_map",   []), 0.15),
+                        "circular":     (getattr(self, "_faiss_circulars",    None), getattr(self, "_bm25_circ_idx_map", []), 0.15),
+                        "notification": (getattr(self, "_faiss_notifications", None), getattr(self, "_notif_idx_map",    []), 0.15),
+                    }
+                    _mae_qv = np.array([query_vec]).astype("float32")
+                    for _cat in _still_missing_cats:
+                        _sidx, _smap, _smin = _sub_reg.get(_cat, (None, [], 0.15))
+                        if _sidx is None or not _smap:
+                            continue
+                        try:
+                            _D, _I = _sidx.search(_mae_qv, 3)
+                            for _sim, _li in zip(_D[0], _I[0]):
+                                if _li < 0 or float(_sim) < _smin:
+                                    continue
+                                _c = self.chunks[_smap[_li]].copy()
+                                _cid = _c.get("chunk_id")
+                                if _cid and _cid not in _mae_existing_ids:
+                                    _c["_mandatory_inject"] = True
+                                    _c["_mandatory_cat_fill"] = _cat
+                                    reranked_results.append(_c)
+                                    _mae_existing_ids.add(_cid)
+                                    _mae_injected += 1
+                                    break
+                        except Exception:
+                            pass
+
+                if _mae_injected:
+                    logger.info(f"Mandatory Authority Engine injected {_mae_injected} chunks")
+
+            # Priority 6: Authority Completeness Score — logged for monitoring
+            logger.info(
+                f"AUTHORITY COMPLETENESS: {_coverage_result['coverage_pct']}% | "
+                f"topic={_taxonomy['topics']} | "
+                f"mandatory={_coverage_result['total_mandatory']} | "
+                f"found={len(_coverage_result.get('found', []))} | "
+                f"missing={_coverage_result['missing']}"
+            )
+
+            # Priority 7: Retrieval Self-Critique (only when coverage < 70% or unknown topic)
+            # Asks Haiku: "Have we missed any governing authority?"
+            # Conditional — not called on every query to avoid latency on known topics.
+            if _coverage_result["coverage_pct"] < 70:
+                try:
+                    from app.retrieval.query_refiner import retrieval_self_critique
+                    _src_paths = list({
+                        c.get("rel_path") or c.get("metadata", {}).get("rel_path", "")
+                        for c in reranked_results if c.get("rel_path") or c.get("metadata", {}).get("rel_path")
+                    })
+                    _critique = retrieval_self_critique(query, _src_paths, _taxonomy)
+                    if _critique.get("missing"):
+                        logger.warning(
+                            f"Self-Critique flagged missing: {_critique['missing']} "
+                            f"(conf={_critique.get('confidence')})"
+                        )
+                        # Attempt to retrieve self-critique-identified authorities
+                        for _sc_auth in _critique["missing"][:3]:
+                            # Try to extract section/rule number and look up
+                            _sc_refs = _extract_query_refs(_sc_auth)
+                            if _sc_refs:
+                                _sc_pinned = self._direct_ref_lookup(_sc_refs)
+                                _sc_existing = {c.get("chunk_id") for c in reranked_results}
+                                for _scp in _sc_pinned[:2]:
+                                    _scid = _scp.get("chunk_id")
+                                    if _scid and _scid not in _sc_existing:
+                                        _scp["_self_critique_inject"] = True
+                                        _scp["_self_critique_authority"] = _sc_auth
+                                        reranked_results.append(_scp)
+                                        _sc_existing.add(_scid)
+                except Exception as _sce:
+                    logger.warning(f"Self-critique failed (non-fatal): {_sce}")
+
         # --- Context Window Expansion ---
         # Enrich each selected chunk with adjacent-page neighbors from the full
         # corpus (self._doc_map covers all chunks, not just the 80-chunk pool).
@@ -1683,6 +1815,41 @@ class Retriever:
                     if key not in res:
                         res[key] = val
             final.append(res)
+
+        # Mandatory coverage verification for supplement_and_rerank path
+        _sr_coverage = {"coverage_pct": 100, "missing": [], "total_mandatory": 0}
+        if _sr_taxonomy.get("confidence", 0) > 0:
+            _sr_coverage = verify_mandatory_coverage(final, _sr_taxonomy)
+            if _sr_coverage["missing"]:
+                logger.warning(
+                    f"S&R mandatory coverage: {_sr_coverage['coverage_pct']}% | "
+                    f"MISSING: {_sr_coverage['missing']}"
+                )
+                # Force-inject missing mandatory authorities via direct ref lookup
+                _sr_mae_refs = _sr_coverage["missing_sections"] + _sr_coverage["missing_rules"]
+                _sr_cir_refs = [
+                    f"CIRCULAR_{c.split('_')[-1]}" for c in _sr_coverage["missing_circulars"]
+                ]
+                _sr_all_refs = _sr_mae_refs + _sr_cir_refs
+                if _sr_all_refs:
+                    _sr_forced = self._direct_ref_lookup(_sr_all_refs)
+                    _sr_existing = {c.get("chunk_id") for c in final}
+                    for _fc in _sr_forced:
+                        _fid = _fc.get("chunk_id")
+                        if _fid and _fid not in _sr_existing:
+                            _fc["_mandatory_inject"] = True
+                            final.append(_fc)
+                            _sr_existing.add(_fid)
+
+            logger.info(
+                f"S&R AUTHORITY COMPLETENESS: {_sr_coverage['coverage_pct']}% | "
+                f"mandatory={_sr_coverage['total_mandatory']} | missing={_sr_coverage['missing']}"
+            )
+
+        # Store taxonomy + coverage for answer verification (Priority 10)
+        # stream_and_save reads these via get_retriever()._last_taxonomy
+        self._last_taxonomy = _sr_taxonomy
+        self._last_coverage  = _sr_coverage
 
         logger.info(
             f"supplement_and_rerank: pinned={len(_pinned)} base={len(base_chunks)} "

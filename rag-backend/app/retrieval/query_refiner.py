@@ -228,6 +228,140 @@ Respond with ONLY the raw JSON object. No prose. No markdown fences."""
         return {"queries": [raw_query], "hyde_document": "", "topic": "General", "subtopic": None}
 
 
+def retrieval_self_critique(query: str, retrieved_sources: list, taxonomy: dict) -> dict:
+    """
+    Priority 7 — Retrieval Self-Critique.
+    Asks the utility model: 'Have we missed any governing authority?'
+
+    Called ONLY when:
+      (a) taxonomy confidence = 0 (unknown topic — taxonomy can't predict authorities), OR
+      (b) mandatory coverage < 70% (deterministic check found gaps, ask LLM for deeper look)
+
+    Returns: {"missing": [...], "confidence": "high/medium/low"}
+    Cost: one Haiku call (~100-200 tokens) — cheap relative to the main LLM call.
+    """
+    import json as _json
+
+    _source_summary = "; ".join(s.split("/")[-1] for s in retrieved_sources[:15] if s)
+    _known_mandatory = _json.dumps({
+        "sections":  taxonomy.get("sections",  []),
+        "rules":     taxonomy.get("rules",     []),
+        "circulars": taxonomy.get("circulars", []),
+    }, ensure_ascii=False)
+
+    system = """You are a Senior Partner-level Indian GST expert reviewing retrieved legal documents.
+Your task: identify any GOVERNING legal authority that is MISSING from the retrieved sources.
+
+RULES:
+1. Only report authorities that are DEFINITIVELY REQUIRED for a complete legal answer.
+2. Be specific — name the actual section number, rule number, or circular number.
+3. Do NOT hallucinate. Only mention provisions you are certain govern this issue.
+4. If nothing is missing, return an empty list.
+5. Limit to maximum 5 missing items.
+
+Respond with ONLY a valid JSON object:
+{"missing": ["Section 25(4) CGST Act", "Circular No. 199/11/2023", ...], "confidence": "high"}"""
+
+    user = (
+        f"Legal question: {query}\n\n"
+        f"Retrieved documents include: {_source_summary}\n\n"
+        f"Already identified mandatory authorities: {_known_mandatory}\n\n"
+        "What key governing authority (if any) is MISSING from the retrieved sources?"
+    )
+
+    raw = _call_llm_json(system, user, temperature=0.0)
+    if "```json" in raw:
+        raw = raw.split("```json")[1].split("```")[0].strip()
+    elif "```" in raw:
+        raw = raw.split("```")[1].split("```")[0].strip()
+
+    try:
+        result = _json.loads(raw)
+        if "missing" not in result or not isinstance(result["missing"], list):
+            result["missing"] = []
+        if "confidence" not in result:
+            result["confidence"] = "low"
+        return result
+    except Exception:
+        return {"missing": [], "confidence": "low"}
+
+
+def verify_answer_authority_coverage(
+    query: str,
+    answer: str,
+    taxonomy: dict,
+    coverage_result: dict,
+) -> dict:
+    """
+    Priority 10 — Answer Verification Agent.
+    After the LLM generates an answer, verify it actually cited the mandatory
+    governing authorities.  If not, flag the gaps so the caller can append a
+    disclaimer or trigger regeneration.
+
+    Returns:
+        {
+          "cited":   list   — mandatory authorities the answer mentions
+          "missing": list   — mandatory authorities the answer omitted
+          "verdict": "pass" | "partial" | "fail"
+          "note":    str    — human-readable gap summary (empty if pass)
+        }
+
+    Runs in ~50-100ms (string search, no LLM).  Only called when taxonomy
+    confidence > 0 so it adds zero cost on unknown topics.
+    """
+    import json as _json
+    if not answer or not taxonomy.get("sections") and not taxonomy.get("circulars"):
+        return {"cited": [], "missing": [], "verdict": "pass", "note": ""}
+
+    answer_lower = answer.lower()
+
+    # For each mandatory authority, check if the answer text mentions it
+    # Use simple keyword matching (no LLM needed — this is cheap and fast)
+    def _is_cited(authority_key: str) -> bool:
+        """Checks if the authority appears in the answer text."""
+        # CGST_SEC_25 → look for "section 25" or "sec 25" or "sec. 25"
+        # CGST_RUL_28 → look for "rule 28"
+        # CIRCULAR_199 → look for "circular 199" or "circular no. 199" or "199/11/2023"
+        ak = authority_key.lower()
+        if "_sec_" in ak:
+            num = ak.split("_sec_")[-1]
+            return (f"section {num}" in answer_lower or f"sec {num}" in answer_lower
+                    or f"sec. {num}" in answer_lower or f"sec.{num}" in answer_lower)
+        elif "_rul_" in ak:
+            num = ak.split("_rul_")[-1]
+            return f"rule {num}" in answer_lower
+        elif "circular_" in ak:
+            num = ak.split("circular_")[-1]
+            return (f"circular {num}" in answer_lower
+                    or f"circular no. {num}" in answer_lower
+                    or f"circular no {num}" in answer_lower
+                    or f"/{num}/" in answer_lower)
+        return False
+
+    all_mandatory = (
+        taxonomy.get("sections", []) +
+        taxonomy.get("rules",    []) +
+        taxonomy.get("circulars",[])
+    )
+    cited   = [a for a in all_mandatory if _is_cited(a)]
+    missing = [a for a in all_mandatory if not _is_cited(a)]
+
+    if not missing:
+        verdict = "pass"
+        note    = ""
+    elif len(missing) <= len(all_mandatory) // 2:
+        verdict = "partial"
+        note    = f"Answer may not have addressed: {', '.join(missing)}"
+    else:
+        verdict = "fail"
+        note    = f"Answer missed key authorities: {', '.join(missing)}"
+
+    logger.info(
+        f"Answer verification: verdict={verdict} cited={cited} missing={missing}"
+    )
+    return {"cited": cited, "missing": missing, "verdict": verdict, "note": note}
+
+
 def extract_query_topic(query: str) -> dict:
     """
     Classifies the query into a GST topic and subtopic.

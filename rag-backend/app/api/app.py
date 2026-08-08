@@ -445,6 +445,32 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         _logger.warning(f"Answer verifier error: {e}")
                         return None
 
+                async def run_authority_verifier():
+                    """Priority 10: Answer Verification Agent.
+                    Checks if the LLM answer cited every mandatory governing authority
+                    predicted by the authority taxonomy. Runs in ~1ms (string matching,
+                    no LLM call). Logs gaps for monitoring and future regression tracking."""
+                    try:
+                        from app.retrieval.retriever import get_retriever
+                        from app.retrieval.query_refiner import verify_answer_authority_coverage
+                        _ret = get_retriever()
+                        _tax = getattr(_ret, "_last_taxonomy", {})
+                        _cov = getattr(_ret, "_last_coverage", {})
+                        if _tax.get("confidence", 0) > 0 and (_tax.get("sections") or _tax.get("circulars")):
+                            _av = verify_answer_authority_coverage(user_query, full_answer, _tax, _cov)
+                            if _av["verdict"] != "pass":
+                                _logger.warning(
+                                    f"[AUTHORITY_VERIFY] verdict={_av['verdict']} | "
+                                    f"topics={_tax.get('topics')} | "
+                                    f"cited={_av['cited']} | "
+                                    f"missing={_av['missing']} | "
+                                    f"note={_av['note']}"
+                                )
+                        return None
+                    except Exception as e:
+                        _logger.warning(f"Authority verifier error: {e}")
+                        return None
+
                 async def run_hallucination_guard():
                     try:
                         from app.generation.hallucination_guard import check_hallucinated_numbers
@@ -467,14 +493,15 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         asyncio.gather(
                             run_citation_validator(),
                             run_hallucination_guard(),
+                            run_authority_verifier(),
                         ),
-                        timeout=3.0,
+                        timeout=4.0,
                     )
                 except asyncio.TimeoutError:
                     _logger.warning("Post-generation validators timed out — skipping")
-                    results = (full_answer, "")
+                    results = (full_answer, "", None)
 
-                _, hallu_warn = results
+                _, hallu_warn, _ = results
 
                 # Log internally — validator output is NEVER streamed to the user.
                 # Citation validator already logs its own warnings.
