@@ -451,7 +451,7 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                     predicted by the authority taxonomy. Runs in ~1ms (string matching,
                     no LLM call). Logs gaps for monitoring and future regression tracking."""
                     try:
-                        from app.retrieval.retriever import get_retriever
+                        from app.dependencies import get_retriever
                         from app.retrieval.query_refiner import verify_answer_authority_coverage
                         _ret = get_retriever()
                         _tax = getattr(_ret, "_last_taxonomy", {})
