@@ -1,0 +1,563 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "GST Legal RAG Regression Suite — starter set of 60 questions with expected governing authorities.",
+    "created": "2026-08-08",
+    "scoring": {
+      "pass":    "All required_cats present AND all required_authorities found in retrieved chunks",
+      "partial": "All required_cats present but ≥1 required_authority missing",
+      "fail":    "≥1 required_cat missing OR coverage < 50%"
+    },
+    "fields": {
+      "id":                    "Unique test identifier",
+      "query":                 "The exact query string to run through retrieval",
+      "topic":                 "Expected taxonomy topic (from GST_GOVERNING_AUTHORITIES keys)",
+      "required_cats":         "Document categories that MUST appear in top-15 results",
+      "required_authorities":  "Specific provision/circular keys that MUST appear",
+      "required_keywords":     "Strings that MUST appear in the generated answer",
+      "priority":              "high/medium/low — high = must never regress"
+    }
+  },
+
+  "tests": [
+
+    {
+      "id": "CC-001",
+      "query": "Is cross charge from head office to branch taxable under GST?",
+      "topic": "cross_charge",
+      "required_cats": ["statute", "circular"],
+      "required_authorities": ["CGST_SEC_25", "CIRCULAR_199"],
+      "required_keywords": ["distinct person", "section 25"],
+      "priority": "high"
+    },
+    {
+      "id": "CC-002",
+      "query": "What is the valuation method for cross charge between related branches under GST?",
+      "topic": "cross_charge",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_RUL_28", "CGST_SEC_15"],
+      "required_keywords": ["open market value", "rule 28"],
+      "priority": "high"
+    },
+    {
+      "id": "CC-003",
+      "query": "Can ISD be used instead of cross charge for distributing HO expenses to branches?",
+      "topic": "cross_charge",
+      "required_cats": ["statute", "circular"],
+      "required_authorities": ["CGST_SEC_20", "CGST_RUL_39", "CIRCULAR_199"],
+      "required_keywords": ["input service distributor", "section 20"],
+      "priority": "high"
+    },
+    {
+      "id": "CC-004",
+      "query": "Cross charge on employee costs — what is the GST treatment?",
+      "topic": "cross_charge",
+      "required_cats": ["statute", "circular"],
+      "required_authorities": ["CGST_SEC_25", "CIRCULAR_199"],
+      "required_keywords": ["distinct person", "circular 199"],
+      "priority": "high"
+    },
+    {
+      "id": "CC-005",
+      "query": "What is the GST implication of Schedule I Entry 2 for inter-branch supply without consideration?",
+      "topic": "cross_charge",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_7"],
+      "required_keywords": ["schedule i", "without consideration"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "ITC-001",
+      "query": "Can ITC be claimed on motor vehicles used for transportation of goods?",
+      "topic": "itc",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_17"],
+      "required_keywords": ["section 17(5)", "motor vehicle"],
+      "priority": "high"
+    },
+    {
+      "id": "ITC-002",
+      "query": "What is the time limit for claiming ITC under GST?",
+      "topic": "itc",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_16"],
+      "required_keywords": ["section 16", "due date"],
+      "priority": "high"
+    },
+    {
+      "id": "ITC-003",
+      "query": "How to apportion ITC between taxable and exempt supplies?",
+      "topic": "itc",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_RUL_42", "CGST_RUL_43"],
+      "required_keywords": ["rule 42", "exempt supply"],
+      "priority": "high"
+    },
+    {
+      "id": "ITC-004",
+      "query": "Is ITC available on works contract services used for construction of factory?",
+      "topic": "itc",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_17"],
+      "required_keywords": ["section 17(5)", "works contract", "immovable property"],
+      "priority": "high"
+    },
+    {
+      "id": "ITC-005",
+      "query": "ITC reversal on credit notes issued to buyers",
+      "topic": "itc",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_16"],
+      "required_keywords": ["reversal", "credit note"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "RCM-001",
+      "query": "Is GST payable on freight paid to goods transport agency under reverse charge?",
+      "topic": "rcm",
+      "required_cats": ["statute", "notification"],
+      "required_authorities": ["CGST_SEC_9"],
+      "required_keywords": ["reverse charge", "goods transport"],
+      "priority": "high"
+    },
+    {
+      "id": "RCM-002",
+      "query": "Is legal service provided by an advocate covered under GST reverse charge?",
+      "topic": "rcm",
+      "required_cats": ["statute", "notification"],
+      "required_authorities": ["CGST_SEC_9"],
+      "required_keywords": ["reverse charge", "advocate"],
+      "priority": "high"
+    },
+    {
+      "id": "RCM-003",
+      "query": "RCM on director remuneration — is it applicable?",
+      "topic": "rcm",
+      "required_cats": ["statute", "notification"],
+      "required_authorities": ["CGST_SEC_9"],
+      "required_keywords": ["reverse charge", "director"],
+      "priority": "high"
+    },
+    {
+      "id": "RCM-004",
+      "query": "What is the due date for paying GST under reverse charge?",
+      "topic": "rcm",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_9"],
+      "required_keywords": ["reverse charge", "payment"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "EXP-001",
+      "query": "How to claim GST refund on export of services?",
+      "topic": "export",
+      "required_cats": ["statute", "notification"],
+      "required_authorities": ["IGST_SEC_16", "CGST_SEC_54"],
+      "required_keywords": ["zero rated", "refund", "export"],
+      "priority": "high"
+    },
+    {
+      "id": "EXP-002",
+      "query": "What is LUT under GST and who needs to file it for exports?",
+      "topic": "export",
+      "required_cats": ["statute"],
+      "required_authorities": ["IGST_SEC_16"],
+      "required_keywords": ["letter of undertaking", "lut", "zero rated"],
+      "priority": "high"
+    },
+    {
+      "id": "EXP-003",
+      "query": "GST on export of software services — is it zero rated?",
+      "topic": "export",
+      "required_cats": ["statute"],
+      "required_authorities": ["IGST_SEC_16"],
+      "required_keywords": ["zero rated", "export of services", "foreign currency"],
+      "priority": "high"
+    },
+
+    {
+      "id": "RATE-001",
+      "query": "What is the GST rate on restaurant services?",
+      "topic": "gst_rate",
+      "required_cats": ["notification"],
+      "required_authorities": [],
+      "required_keywords": ["restaurant", "5%"],
+      "priority": "high"
+    },
+    {
+      "id": "RATE-002",
+      "query": "What is the GST rate applicable on construction of affordable housing?",
+      "topic": "gst_rate",
+      "required_cats": ["notification"],
+      "required_authorities": [],
+      "required_keywords": ["affordable housing", "1%"],
+      "priority": "high"
+    },
+    {
+      "id": "RATE-003",
+      "query": "HSN code and GST rate for software services",
+      "topic": "gst_rate",
+      "required_cats": ["notification"],
+      "required_authorities": [],
+      "required_keywords": ["sac", "18%"],
+      "priority": "medium"
+    },
+    {
+      "id": "RATE-004",
+      "query": "What is the GST rate on electric vehicles?",
+      "topic": "gst_rate",
+      "required_cats": ["notification"],
+      "required_authorities": [],
+      "required_keywords": ["electric vehicle", "5%"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "POS-001",
+      "query": "Place of supply for telecom services provided to roaming customers",
+      "topic": "place_of_supply",
+      "required_cats": ["statute"],
+      "required_authorities": ["IGST_SEC_12"],
+      "required_keywords": ["place of supply", "section 12"],
+      "priority": "high"
+    },
+    {
+      "id": "POS-002",
+      "query": "Is an online aggregator providing restaurant delivery services an intermediary?",
+      "topic": "place_of_supply",
+      "required_cats": ["statute"],
+      "required_authorities": ["IGST_SEC_2"],
+      "required_keywords": ["intermediary", "section 2(13)"],
+      "priority": "high"
+    },
+    {
+      "id": "POS-003",
+      "query": "Place of supply for IT services provided to an overseas client",
+      "topic": "place_of_supply",
+      "required_cats": ["statute"],
+      "required_authorities": ["IGST_SEC_13"],
+      "required_keywords": ["place of supply", "section 13"],
+      "priority": "high"
+    },
+
+    {
+      "id": "REG-001",
+      "query": "When is GST registration mandatory for service providers?",
+      "topic": "registration",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_22"],
+      "required_keywords": ["aggregate turnover", "section 22"],
+      "priority": "high"
+    },
+    {
+      "id": "REG-002",
+      "query": "Can a supplier operating across multiple states take a single GST registration?",
+      "topic": "registration",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_25"],
+      "required_keywords": ["section 25", "state"],
+      "priority": "high"
+    },
+    {
+      "id": "REG-003",
+      "query": "Cancellation of GST registration — grounds and procedure",
+      "topic": "registration",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_29"],
+      "required_keywords": ["cancellation", "section 29"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "REF-001",
+      "query": "How to claim refund of excess ITC accumulated under inverted duty structure?",
+      "topic": "refund",
+      "required_cats": ["statute", "circular"],
+      "required_authorities": ["CGST_SEC_54"],
+      "required_keywords": ["inverted duty", "section 54"],
+      "priority": "high"
+    },
+    {
+      "id": "REF-002",
+      "query": "What is the time limit for filing a GST refund application?",
+      "topic": "refund",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_54"],
+      "required_keywords": ["2 years", "section 54", "refund"],
+      "priority": "high"
+    },
+
+    {
+      "id": "VAL-001",
+      "query": "What is the GST transaction value and what inclusions are mandated by law?",
+      "topic": "valuation",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_15"],
+      "required_keywords": ["section 15", "transaction value"],
+      "priority": "high"
+    },
+    {
+      "id": "VAL-002",
+      "query": "Valuation of free samples distributed to dealers under GST",
+      "topic": "valuation",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_15"],
+      "required_keywords": ["free sample", "valuation"],
+      "priority": "medium"
+    },
+    {
+      "id": "VAL-003",
+      "query": "How is open market value determined for related party transactions under Rule 28?",
+      "topic": "valuation",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_RUL_28", "CGST_SEC_15"],
+      "required_keywords": ["rule 28", "open market value", "related party"],
+      "priority": "high"
+    },
+
+    {
+      "id": "WC-001",
+      "query": "Is GST applicable on construction of a commercial complex?",
+      "topic": "works_contract",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_17"],
+      "required_keywords": ["works contract", "construction"],
+      "priority": "high"
+    },
+    {
+      "id": "WC-002",
+      "query": "ITC eligibility on works contract services received for a factory building",
+      "topic": "works_contract",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_17"],
+      "required_keywords": ["section 17(5)", "works contract", "blocked"],
+      "priority": "high"
+    },
+
+    {
+      "id": "PEN-001",
+      "query": "What is the penalty for non-payment of GST under Section 73?",
+      "topic": "penalty_demand",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_73"],
+      "required_keywords": ["section 73", "penalty"],
+      "priority": "high"
+    },
+    {
+      "id": "PEN-002",
+      "query": "Can a show cause notice be issued beyond the statutory period?",
+      "topic": "penalty_demand",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_73", "CGST_SEC_74"],
+      "required_keywords": ["show cause notice", "limitation period"],
+      "priority": "high"
+    },
+    {
+      "id": "PEN-003",
+      "query": "What is the interest rate on delayed GST payment?",
+      "topic": "penalty_demand",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_50"],
+      "required_keywords": ["interest", "section 50", "18%"],
+      "priority": "high"
+    },
+
+    {
+      "id": "COMP-001",
+      "query": "Who can opt for GST composition scheme?",
+      "topic": "composition",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_10"],
+      "required_keywords": ["composition", "section 10"],
+      "priority": "medium"
+    },
+    {
+      "id": "COMP-002",
+      "query": "What is the turnover limit for composition scheme under GST?",
+      "topic": "composition",
+      "required_cats": ["statute", "notification"],
+      "required_authorities": ["CGST_SEC_10"],
+      "required_keywords": ["composition", "turnover", "1.5 crore"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "AR-001",
+      "query": "What is the due date for filing GSTR-9 annual return?",
+      "topic": "annual_return",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_44"],
+      "required_keywords": ["gstr-9", "annual return", "due date"],
+      "priority": "high"
+    },
+    {
+      "id": "AR-002",
+      "query": "Differences between GSTR-9 and GSTR-9C",
+      "topic": "annual_return",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_44"],
+      "required_keywords": ["gstr-9c", "reconciliation"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "SEZ-001",
+      "query": "Is supply to SEZ unit treated as inter-state or intra-state supply?",
+      "topic": "sez",
+      "required_cats": ["statute"],
+      "required_authorities": ["IGST_SEC_16"],
+      "required_keywords": ["sez", "zero rated"],
+      "priority": "high"
+    },
+
+    {
+      "id": "JW-001",
+      "query": "What is the GST treatment of goods sent for job work and not returned within one year?",
+      "topic": "job_work",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_143"],
+      "required_keywords": ["job work", "section 143", "one year"],
+      "priority": "high"
+    },
+    {
+      "id": "JW-002",
+      "query": "Can ITC be availed on inputs sent for job work?",
+      "topic": "job_work",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_19"],
+      "required_keywords": ["job work", "section 19", "input tax credit"],
+      "priority": "high"
+    },
+
+    {
+      "id": "TDS-001",
+      "query": "Which government entities must deduct TDS under GST?",
+      "topic": "tds_gst",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_51"],
+      "required_keywords": ["tds", "section 51", "government"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "EC-001",
+      "query": "Is an e-commerce operator liable to pay GST under Section 9(5)?",
+      "topic": "ecommerce",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_9"],
+      "required_keywords": ["e-commerce", "section 9(5)"],
+      "priority": "high"
+    },
+    {
+      "id": "EC-002",
+      "query": "Who is responsible for TCS collection by an e-commerce operator?",
+      "topic": "ecommerce",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_52"],
+      "required_keywords": ["tcs", "section 52", "e-commerce operator"],
+      "priority": "high"
+    },
+
+    {
+      "id": "INT-001",
+      "query": "What is an intermediary under IGST Act and how is place of supply determined?",
+      "topic": "intermediary",
+      "required_cats": ["statute"],
+      "required_authorities": ["IGST_SEC_2", "IGST_SEC_13"],
+      "required_keywords": ["intermediary", "section 2(13)", "place of supply"],
+      "priority": "high"
+    },
+
+    {
+      "id": "RE-001",
+      "query": "What is the GST rate on under-construction flats sold by a developer?",
+      "topic": "real_estate",
+      "required_cats": ["notification"],
+      "required_authorities": [],
+      "required_keywords": ["under construction", "real estate"],
+      "priority": "high"
+    },
+    {
+      "id": "RE-002",
+      "query": "ITC availability to developers on construction of residential projects",
+      "topic": "real_estate",
+      "required_cats": ["statute", "notification"],
+      "required_authorities": ["CGST_SEC_17"],
+      "required_keywords": ["developer", "itc", "construction"],
+      "priority": "high"
+    },
+
+    {
+      "id": "TC-001",
+      "query": "How to carry forward CENVAT credit to GST through TRAN-1?",
+      "topic": "transitional_credit",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_140"],
+      "required_keywords": ["tran-1", "section 140", "transitional"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "SUP-001",
+      "query": "What is the definition of supply under GST and does it include gifts?",
+      "topic": "supply",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_7"],
+      "required_keywords": ["section 7", "supply", "gift"],
+      "priority": "high"
+    },
+    {
+      "id": "SUP-002",
+      "query": "What is the distinction between composite supply and mixed supply?",
+      "topic": "supply",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_8"],
+      "required_keywords": ["composite supply", "mixed supply", "section 8"],
+      "priority": "high"
+    },
+
+    {
+      "id": "IMP-001",
+      "query": "Is GST applicable on import of services by a company from its overseas parent?",
+      "topic": "import_services",
+      "required_cats": ["statute"],
+      "required_authorities": ["IGST_SEC_5"],
+      "required_keywords": ["import of services", "reverse charge"],
+      "priority": "high"
+    },
+
+    {
+      "id": "AUD-001",
+      "query": "What is the scope of departmental audit under Section 65 of CGST Act?",
+      "topic": "gst_audit",
+      "required_cats": ["statute"],
+      "required_authorities": ["CGST_SEC_65"],
+      "required_keywords": ["section 65", "audit"],
+      "priority": "medium"
+    },
+
+    {
+      "id": "REFUND-IMP-001",
+      "query": "Can refund of IGST be claimed when export proceeds are not received within time?",
+      "topic": "refund",
+      "required_cats": ["statute", "circular"],
+      "required_authorities": ["CGST_SEC_54"],
+      "required_keywords": ["refund", "export", "foreign exchange"],
+      "priority": "high"
+    },
+
+    {
+      "id": "GENERAL-001",
+      "query": "What is the GST Council and what is its constitutional basis?",
+      "topic": null,
+      "required_cats": ["statute"],
+      "required_authorities": [],
+      "required_keywords": ["gst council", "article 279a"],
+      "priority": "low"
+    }
+
+  ]
+}

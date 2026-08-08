@@ -17,7 +17,24 @@ from app.retrieval.provision_graph import ProvisionGraphRetriever
 from app.retrieval.source_priority import source_priority
 from app.retrieval.authority_taxonomy import (
     classify_query_authority, authority_bonus, verify_mandatory_coverage,
+    GST_GOVERNING_AUTHORITIES,
 )
+from app.retrieval.citation_graph import DocumentCitationGraph
+from app.retrieval.topic_ontology import expand_query_with_ontology
+
+# ── Retrieval memory logger (lazy singleton — import deferred to avoid startup cost) ──
+_mem_logger = None
+
+def _get_mem_logger():
+    global _mem_logger
+    if _mem_logger is None:
+        try:
+            from app.retrieval.retrieval_memory import RetrievalLogger
+            _mem_logger = RetrievalLogger()
+        except Exception as _e:
+            logger.warning(f"RetrievalLogger init failed (non-fatal): {_e}")
+            _mem_logger = None
+    return _mem_logger
 
 logger = logging.getLogger(__name__)
 
@@ -852,7 +869,27 @@ class Retriever:
         graph_path = Path(chunks_path).parent.parent / "graph" / "edges.jsonl"
         self.graph_retriever = ProvisionGraphRetriever(graph_path)
 
-        logger.info("Retriever initialized: 3-Layer Architecture + Provision Graph + MMR")
+        # ── Citation Graph (Priority 2+5) ─────────────────────────────────────
+        # Two-layer graph of provision relationships.
+        # Layer 1: seeded from authority taxonomy (Circular 199 ↔ Rule 28 ↔ Section 25)
+        # Layer 2: co-citation edges mined from chunk metadata (zero re-embedding)
+        # Used at query time: when a provision is retrieved, graph neighbours are
+        # automatically fetched as additional candidates.
+        logger.info("Building citation graph (taxonomy + corpus co-citations)...")
+        try:
+            self._citation_graph = DocumentCitationGraph(GST_GOVERNING_AUTHORITIES)
+            self._citation_graph.build_from_chunks(self.chunks)
+            _cg_stats = self._citation_graph.stats()
+            logger.info(
+                f"Citation graph ready: {_cg_stats['nodes']} nodes | "
+                f"{_cg_stats['documents_indexed']} docs | "
+                f"{_cg_stats['unique_provisions_cited']} provision keys"
+            )
+        except Exception as _cge:
+            logger.warning(f"Citation graph build failed (non-fatal): {_cge}")
+            self._citation_graph = None
+
+        logger.info("Retriever initialized: 3-Layer Architecture + Provision Graph + Citation Graph + MMR")
 
     def _cascade_rerank(self, query: str, candidates: list,
                         stage1_keep: int = 30,
@@ -1026,6 +1063,18 @@ class Retriever:
             topic = advanced_queries.get("topic", "General")
             subtopic = advanced_queries.get("subtopic")
 
+        # --- Topic Ontology expansion (Priority 8) ---
+        # Adds keywords from parent/sibling ontology nodes.
+        # Example: "ISD mechanism" → also includes "cross charge", "distinct person",
+        # "input tax credit" so BM25 surfaces broader context.
+        # FAISS uses the original query (ontology expansion degrades cosine sim);
+        # BM25 uses the ontology-expanded query for wider keyword coverage.
+        _ontology_expanded_query, _ontology_added = expand_query_with_ontology(query)
+        if _ontology_added:
+            logger.info(f"Ontology expansion: +{len(_ontology_added)} terms {_ontology_added[:5]}")
+        # bm25_query is the expanded version; faiss_query stays as raw query
+        _bm25_query = _ontology_expanded_query
+
         # --- Governing-Authority Prediction ---
         # Classifies the query into the GST authority taxonomy and predicts WHICH
         # specific sections, rules, and circulars govern this topic — without waiting
@@ -1109,9 +1158,11 @@ class Retriever:
                     for idx in I2[0]:
                         _add_to_pool(idx)
 
-        # 2. BM25 Search — expand abbreviations before tokenizing
+        # 2. BM25 Search — ontology-expanded query + abbreviation expansion for wider keyword coverage.
+        # Ontology expansion adds parent/sibling concept keywords; abbrev expansion adds full forms.
+        # FAISS uses the original query (cosine sim is more precise without expansion).
         bm25_chunks: list = []
-        _bm25_tokenized_query = tokenize_text(_expand_for_bm25(query))  # reused below
+        _bm25_tokenized_query = tokenize_text(_expand_for_bm25(_bm25_query))  # ontology + abbrev expanded; reused below
         if self.bm25:
             bm25_scores = self.bm25.get_scores(_bm25_tokenized_query)
             top_bm25_idxs = np.argsort(bm25_scores)[::-1][:BM25_TOP_K]
@@ -1614,6 +1665,34 @@ class Retriever:
                 if _mae_injected:
                     logger.info(f"Mandatory Authority Engine injected {_mae_injected} chunks")
 
+            # Citation Graph Expansion (Priority 2+5) — graph traversal from confirmed authorities.
+            # When the engine confirms Circular 199 is present, the graph knows its neighbours:
+            # Rule 28, Section 25 — fetch those too so the LLM has the full citation chain.
+            if getattr(self, "_citation_graph", None) is not None and _coverage_result.get("found"):
+                try:
+                    _confirmed_keys = set(_coverage_result["found"])
+                    _graph_extras   = self._citation_graph.expand_provision_keys(
+                        _confirmed_keys, depth=1, max_additions=8
+                    )
+                    if _graph_extras:
+                        _graph_pinned   = self._direct_ref_lookup(_graph_extras)
+                        _graph_existing = {c.get("chunk_id") for c in reranked_results}
+                        _graph_added    = 0
+                        for _gc in _graph_pinned[:5]:
+                            _gid = _gc.get("chunk_id")
+                            if _gid and _gid not in _graph_existing:
+                                _gc["_citation_graph_expand"] = True
+                                reranked_results.append(_gc)
+                                _graph_existing.add(_gid)
+                                _graph_added += 1
+                        if _graph_added:
+                            logger.info(
+                                f"Citation graph expansion: +{_graph_added} related-provision chunks "
+                                f"from {list(_confirmed_keys)[:4]}"
+                            )
+                except Exception as _cge:
+                    logger.debug(f"Citation graph expansion failed (non-fatal): {_cge}")
+
             # Priority 6: Authority Completeness Score — logged for monitoring
             logger.info(
                 f"AUTHORITY COMPLETENESS: {_coverage_result['coverage_pct']}% | "
@@ -1676,6 +1755,21 @@ class Retriever:
             f"statute={len(statute_results)} graph={len(graph_results)} "
             f"semantic={len(candidate_pool)} final={len(final_results)}"
         )
+
+        # Retrieval Memory logging (Priority 9) — fire-and-forget via background thread
+        try:
+            _ml = _get_mem_logger()
+            if _ml:
+                _ml.log(
+                    query        = query,
+                    topics       = _taxonomy.get("topics", []),
+                    retrieved    = [c.get("rel_path", "") for c in final_results[:15]],
+                    coverage_pct = _coverage_result.get("coverage_pct", 100),
+                    missing      = _coverage_result.get("missing", []),
+                )
+        except Exception:
+            pass   # logging failures must never affect retrieval
+
         return final_results[:top_k]
 
     def supplement_and_rerank(self, base_chunks: list, advanced_queries: dict, query: str, top_k: int) -> list:
@@ -1856,4 +1950,19 @@ class Retriever:
             f"expanded={len(combined)-len(base_chunks)-len(_pinned)} "
             f"reranked={len(reranked)} final={len(final)}"
         )
+
+        # Retrieval Memory logging (Priority 9)
+        try:
+            _ml = _get_mem_logger()
+            if _ml:
+                _ml.log(
+                    query        = query,
+                    topics       = _sr_taxonomy.get("topics", []),
+                    retrieved    = [c.get("rel_path", "") for c in final[:15]],
+                    coverage_pct = _sr_coverage.get("coverage_pct", 100),
+                    missing      = _sr_coverage.get("missing", []),
+                )
+        except Exception:
+            pass
+
         return final

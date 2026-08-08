@@ -17,9 +17,22 @@ Design principles:
   - The taxonomy is additive: more keyword hits = higher confidence
   - authority_bonus_multiplier: per-topic authority type weight adjustments
     so that for rate queries notifications outrank acts, not the other way around
+
+JSON Registry Layer (Priority 12 — Continuous Authority Learning):
+  At startup, this module checks for data/authority_registry.json.
+  If found, JSON entries are MERGED over the Python base registry so that the
+  legal team can update, add, or override authority mappings without code changes.
+
+  How to add a new circular from CBIC:
+    1. Open  RAG/rag-backend/data/authority_registry.json
+    2. Find the relevant topic (or add a new topic key)
+    3. Add "CIRCULAR_<number>" to the "circulars" array
+    4. Commit — takes effect on next server restart.  No Python change needed.
 """
 from __future__ import annotations
+import json
 import math
+import os
 import re
 import logging
 
@@ -382,6 +395,90 @@ GST_GOVERNING_AUTHORITIES: dict[str, dict] = {
         "authority_adj": {"circular": 1.2},
     },
 }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Priority 12 — JSON Registry Merge (Continuous Authority Learning)
+# ─────────────────────────────────────────────────────────────────────────────
+# Looks for data/authority_registry.json relative to this module's package root.
+# If found, its entries are merged INTO GST_GOVERNING_AUTHORITIES so that the
+# legal team's edits take effect without code changes.
+#
+# Merge semantics:
+#   • JSON topic key exists in Python dict → JSON values WIN (overrides Python)
+#   • JSON topic key is NEW → added to the taxonomy
+#   • Within a topic: each list field (sections/rules/circulars/keywords) is
+#     merged (union) with the Python base so edits are additive by default.
+#   • expected_cats and authority_adj are fully replaced by the JSON version
+#     when present.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_registry_json() -> dict:
+    """
+    Resolves the path to data/authority_registry.json relative to the
+    project root (two levels above this file's package: app/retrieval/...).
+    Returns the parsed JSON or {} on any error.
+    """
+    try:
+        # rag-backend/app/retrieval/authority_taxonomy.py  →  rag-backend/
+        _this_dir   = os.path.dirname(os.path.abspath(__file__))
+        _pkg_root   = os.path.dirname(os.path.dirname(_this_dir))   # rag-backend/
+        _reg_path   = os.path.join(_pkg_root, "data", "authority_registry.json")
+        if not os.path.isfile(_reg_path):
+            return {}
+        with open(_reg_path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+        # Strip meta key before returning
+        raw.pop("_meta", None)
+        logger.info(f"Loaded authority_registry.json with {len(raw)} topic entries")
+        return raw
+    except Exception as exc:
+        logger.warning(f"Could not load authority_registry.json: {exc}")
+        return {}
+
+
+def _merge_registry(base: dict, overrides: dict) -> None:
+    """
+    Merges `overrides` (JSON registry) into `base` (Python taxonomy) in-place.
+    List fields are unioned; expected_cats and authority_adj are replaced.
+    """
+    for topic, jcfg in overrides.items():
+        if topic not in base:
+            # Brand-new topic — convert expected_cats list → set
+            base[topic] = {
+                "keywords":      jcfg.get("keywords",      []),
+                "sections":      jcfg.get("sections",      []),
+                "rules":         jcfg.get("rules",         []),
+                "circulars":     jcfg.get("circulars",     []),
+                "expected_cats": set(jcfg.get("expected_cats", ["statute"])),
+                "authority_adj": jcfg.get("authority_adj", {}),
+            }
+            logger.debug(f"Registry: added new topic '{topic}'")
+        else:
+            pcfg = base[topic]
+            # Union list fields (preserve ordering, deduplicate)
+            for field in ("keywords", "sections", "rules", "circulars"):
+                existing = pcfg.get(field, [])
+                for item in jcfg.get(field, []):
+                    if item not in existing:
+                        existing.append(item)
+                pcfg[field] = existing
+            # Replace set/dict fields when JSON provides them
+            if "expected_cats" in jcfg:
+                pcfg["expected_cats"] = set(jcfg["expected_cats"])
+            if "authority_adj" in jcfg:
+                pcfg["authority_adj"] = {
+                    cat: max(pcfg.get("authority_adj", {}).get(cat, 1.0), w)
+                    for cat, w in jcfg["authority_adj"].items()
+                }
+            logger.debug(f"Registry: updated topic '{topic}' from JSON")
+
+
+# Apply overrides at module load — zero runtime cost after this
+_registry_overrides = _load_registry_json()
+if _registry_overrides:
+    _merge_registry(GST_GOVERNING_AUTHORITIES, _registry_overrides)
+    logger.info(f"Authority taxonomy now has {len(GST_GOVERNING_AUTHORITIES)} topics after JSON merge")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
