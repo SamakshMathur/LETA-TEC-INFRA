@@ -14,6 +14,7 @@ from app.config import (
 from app.retrieval.reranker import LegalReranker
 from app.retrieval.statute_retriever import StatuteRetriever
 from app.retrieval.provision_graph import ProvisionGraphRetriever
+from app.retrieval.source_priority import source_priority
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,46 @@ def _chunk_category(chunk: dict) -> str:
         if f"/{folder}/" in path or path.startswith(folder + "/"):
             return "statute"
     return "other"
+
+
+# ─── Coverage validation: per-query expected authority categories ──────────
+# Returns which document categories must appear in the final output.
+# Advisory / interpretive queries need statute + circular at minimum.
+# Rate / classification queries additionally need notifications.
+# Narrow definitional queries (define "supply") need statute only.
+_ADVISORY_WORDS = frozenset([
+    "what", "whether", "how", "explain", "clarif", "position", "treatment",
+    "applicab", "eligible", "liable", "charge", "implication", "cross",
+    "isd", "reverse", "works", "import", "export", "exempt", "place",
+    "valuat", "time", "registr", "refund", "distinct", "common", "shared",
+    "branch", "headquarter", "head office", "proviso",
+])
+_RATE_WORDS = frozenset([
+    "rate", "nil", "hsn", "sac", "12%", "18%", "28%", "5%", "classif",
+    "exemption", "exempt supply",
+])
+
+
+def _query_expected_coverage(query: str, topic: str) -> set:
+    """
+    Returns the set of document categories that MUST appear in the final
+    output for a given query.  Drives Layer 6 coverage-fill injection.
+
+    Conservative by design — only injects when a category is truly needed
+    AND semantically confirmed by the sub-index search.
+    """
+    q = query.lower()
+    cats = {"statute"}   # statutory foundation is always required
+
+    # Advisory / interpretive / advisory queries need circular clarification
+    if any(w in q for w in _ADVISORY_WORDS):
+        cats.add("circular")
+
+    # Rate / classification / exemption queries need notifications
+    if any(w in q for w in _RATE_WORDS):
+        cats.add("notification")
+
+    return cats
 
 # ─── Thread-safe embedding model singleton ─────────────────────────────────
 _model = None
@@ -679,6 +720,91 @@ class Retriever:
                     f"Circular FAISS sub-index failed (non-fatal, BM25 still covers): {_e}"
                 )
 
+        # ── Statute-isolated FAISS sub-index ──────────────────────────────────
+        # Guarantees statute chunks (Acts, Rules) always reach the CrossEncoder
+        # pool even when the main FAISS search is dominated by circular language
+        # (e.g. a query about "cross charge" pulls towards Circular 199 language
+        # while Section 25(4)/(5) CGST Act chunks rank lower semantically).
+        # Zero re-embedding — reconstruct() on IndexFlatIP is a memcpy.
+        logger.info("Building statute-isolated FAISS sub-index...")
+        self._faiss_statutes = None
+        self._statute_idx_map: list = [
+            i for i, c in enumerate(self.chunks)
+            if _chunk_category(c) == "statute"
+        ]
+        if self._statute_idx_map and self.index is not None:
+            try:
+                _dim = self.index.d
+                _n_stat = len(self._statute_idx_map)
+                _stat_vecs = np.empty((_n_stat, _dim), dtype=np.float32)
+                for _li, _gi in enumerate(self._statute_idx_map):
+                    self.index.reconstruct(_gi, _stat_vecs[_li])
+                _stat_sub = faiss.IndexFlatIP(_dim)
+                _stat_sub.add(_stat_vecs)
+                self._faiss_statutes = _stat_sub
+                logger.info(
+                    f"Statute FAISS sub-index: {_n_stat} chunks | "
+                    f"~{_n_stat * _dim * 4 // (1024 * 1024):.0f} MB"
+                )
+            except Exception as _e:
+                logger.warning(f"Statute FAISS sub-index failed (non-fatal): {_e}")
+
+        # ── Notification-isolated FAISS sub-index ─────────────────────────────
+        # Rate notifications use very different language from circulars and Acts
+        # (HS codes, rate schedules, entry numbers) — a shared FAISS pool
+        # underserves rate/exemption queries.  Isolated search ensures the most
+        # relevant notification chunk always competes in the CrossEncoder pool.
+        logger.info("Building notification-isolated FAISS sub-index...")
+        self._faiss_notifications = None
+        self._notif_idx_map: list = [
+            i for i, c in enumerate(self.chunks)
+            if _chunk_category(c) == "notification"
+        ]
+        if self._notif_idx_map and self.index is not None:
+            try:
+                _dim = self.index.d
+                _n_notif = len(self._notif_idx_map)
+                _notif_vecs = np.empty((_n_notif, _dim), dtype=np.float32)
+                for _li, _gi in enumerate(self._notif_idx_map):
+                    self.index.reconstruct(_gi, _notif_vecs[_li])
+                _notif_sub = faiss.IndexFlatIP(_dim)
+                _notif_sub.add(_notif_vecs)
+                self._faiss_notifications = _notif_sub
+                logger.info(
+                    f"Notification FAISS sub-index: {_n_notif} chunks | "
+                    f"~{_n_notif * _dim * 4 // (1024 * 1024):.0f} MB"
+                )
+            except Exception as _e:
+                logger.warning(f"Notification FAISS sub-index failed (non-fatal): {_e}")
+
+        # ── Case-law FAISS sub-index ───────────────────────────────────────────
+        # Judgments use very different language (finding facts, ratio decidendi,
+        # distinguished / followed) vs statutes and circulars.  Isolated search
+        # finds the most semantically relevant HC/SC judgment for litigation and
+        # draft-mode queries without competing against statute language.
+        logger.info("Building case-law FAISS sub-index...")
+        self._faiss_case_laws = None
+        self._case_law_idx_map: list = [
+            i for i, c in enumerate(self.chunks)
+            if _chunk_category(c) == "case_law"
+        ]
+        if self._case_law_idx_map and self.index is not None:
+            try:
+                _dim = self.index.d
+                _n_cl = len(self._case_law_idx_map)
+                _cl_vecs = np.empty((_n_cl, _dim), dtype=np.float32)
+                for _li, _gi in enumerate(self._case_law_idx_map):
+                    self.index.reconstruct(_gi, _cl_vecs[_li])
+                _cl_sub = faiss.IndexFlatIP(_dim)
+                _cl_sub.add(_cl_vecs)
+                self._faiss_case_laws = _cl_sub
+                logger.info(
+                    f"Case-law FAISS sub-index: {_n_cl} chunks | "
+                    f"~{_n_cl * _dim * 4 // (1024 * 1024):.0f} MB"
+                )
+            except Exception as _e:
+                logger.warning(f"Case-law FAISS sub-index failed (non-fatal): {_e}")
+
         # Build full-corpus document map for context window expansion.
         # Maps rel_path → sorted list of (page_num, chunk_index).
         # Built once at startup so every query can fetch neighbors from the
@@ -741,10 +867,16 @@ class Retriever:
                 ]
                 scores = self.cross_encoder.predict(pairs, show_progress_bar=False)
                 for chunk, score in zip(pool, scores):
-                    # Add RRF score as a small tiebreaker (1% weight) so that
-                    # chunks well-ranked by both FAISS and BM25 win ties.
+                    # RRF tiebreaker: chunk ranked high in both FAISS and BM25
                     rrf_boost = chunk.get("_rrf_score", 0.0) * 0.01
-                    chunk["_rerank_score"] = float(score) + rrf_boost
+                    # Authority bonus: Acts(5)→+0.15, Rules/Circulars(4)→+0.12,
+                    # Notifications(3)→+0.09, ICAI(2)→+0.06, FAQ(1)→+0.03.
+                    # This ensures the CrossEncoder can't rank a FAQ above an Act
+                    # on a marginal semantic similarity difference — legal hierarchy
+                    # always wins ties, and even shapes non-tie outcomes by 0.03-0.15.
+                    _rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
+                    authority_bonus = source_priority(_rel) * 0.03
+                    chunk["_rerank_score"] = float(score) + rrf_boost + authority_bonus
                 pool.sort(key=lambda c: c["_rerank_score"], reverse=True)
                 logger.debug(
                     f"CrossEncoder reranked {len(pool)} chunks | "
@@ -1110,6 +1242,72 @@ class Retriever:
             except Exception as _cfe:
                 logger.warning(f"Circular FAISS injection failed (non-fatal): {_cfe}")
 
+        # ── Step 2f: Statute-targeted FAISS injection ─────────────────────────
+        # The main FAISS search can miss key statutory provisions when the query
+        # language is closer to circular/notification language than Act language.
+        # Example: "cross charge between distinct persons" → main FAISS retrieves
+        # circular-style chunks; Section 25(4)/(5) CGST Act (formal statute prose)
+        # ranks lower semantically despite being the governing provision.
+        # Isolated statute FAISS ensures Acts/Rules always compete in the pool.
+        _STAT_FAISS_TOP_N = 15
+        _STAT_FAISS_MIN_SIM = 0.20
+        _stat_faiss_injected = 0
+        if getattr(self, "_faiss_statutes", None) is not None and query_vec is not None:
+            try:
+                _q_stat = np.array([query_vec]).astype("float32")
+                _stat_D, _stat_I = self._faiss_statutes.search(_q_stat, _STAT_FAISS_TOP_N)
+                for _sim, _local_idx in zip(_stat_D[0], _stat_I[0]):
+                    if _local_idx < 0 or float(_sim) < _STAT_FAISS_MIN_SIM:
+                        continue
+                    _global_idx = self._statute_idx_map[_local_idx]
+                    _c = self.chunks[_global_idx].copy()
+                    _cid = _c.get("chunk_id")
+                    if _cid and _cid not in seen_chunk_ids:
+                        _c["_stat_faiss_inject"] = True
+                        _c["_stat_faiss_score"] = round(float(_sim), 4)
+                        candidate_pool.append(_c)
+                        seen_chunk_ids.add(_cid)
+                        _stat_faiss_injected += 1
+                if _stat_faiss_injected:
+                    logger.info(
+                        f"Statute FAISS inject: +{_stat_faiss_injected} statute chunks "
+                        f"| top_sim={float(_stat_D[0][0]):.4f}"
+                    )
+            except Exception as _sfe:
+                logger.warning(f"Statute FAISS injection failed (non-fatal): {_sfe}")
+
+        # ── Step 2g: Notification-targeted FAISS injection ────────────────────
+        # Rate notifications use HS code / rate-schedule language that clusters
+        # away from main FAISS results for advisory queries.  Top notification
+        # chunks are injected so the CrossEncoder can confirm/reject relevance
+        # rather than never seeing them.
+        _NOTIF_FAISS_TOP_N = 8
+        _NOTIF_FAISS_MIN_SIM = 0.22
+        _notif_faiss_injected = 0
+        if getattr(self, "_faiss_notifications", None) is not None and query_vec is not None:
+            try:
+                _q_notif = np.array([query_vec]).astype("float32")
+                _notif_D, _notif_I = self._faiss_notifications.search(_q_notif, _NOTIF_FAISS_TOP_N)
+                for _sim, _local_idx in zip(_notif_D[0], _notif_I[0]):
+                    if _local_idx < 0 or float(_sim) < _NOTIF_FAISS_MIN_SIM:
+                        continue
+                    _global_idx = self._notif_idx_map[_local_idx]
+                    _c = self.chunks[_global_idx].copy()
+                    _cid = _c.get("chunk_id")
+                    if _cid and _cid not in seen_chunk_ids:
+                        _c["_notif_faiss_inject"] = True
+                        _c["_notif_faiss_score"] = round(float(_sim), 4)
+                        candidate_pool.append(_c)
+                        seen_chunk_ids.add(_cid)
+                        _notif_faiss_injected += 1
+                if _notif_faiss_injected:
+                    logger.info(
+                        f"Notification FAISS inject: +{_notif_faiss_injected} notification chunks "
+                        f"| top_sim={float(_notif_D[0][0]):.4f}"
+                    )
+            except Exception as _nfe:
+                logger.warning(f"Notification FAISS injection failed (non-fatal): {_nfe}")
+
         # Merge layers: Pinned > Statute-First > Graph > Semantic pool (including any fills).
         # Fills now compete on merit via FlashRank+LegalReranker instead of being force-promoted.
         combined_results = _pinned + statute_results[:40] + graph_results[:20]
@@ -1199,6 +1397,74 @@ class Retriever:
                         f"score={_score:.3f}"
                     )
 
+        # --- Layer 6: Authority Coverage Validation ---
+        # Check that every category required by this query type is present in the
+        # final output.  If a category is missing (e.g. circular not found after
+        # all earlier layers), fire a targeted sub-index search and inject the best
+        # semantically-confirmed chunk of that type.
+        #
+        # This is the "coverage validation" stage from the professional legal research
+        # architecture: "Have we retrieved Act? Rules? Circular? Notification?"
+        # Unlike Layer 5 (which injects any circular above a score floor), Layer 6
+        # checks WHICH categories are structurally missing and fills each one
+        # with the most semantically relevant chunk from the dedicated sub-index.
+        if not is_draft and query_vec is not None:
+            _expected = _query_expected_coverage(query, topic)
+            _present  = {_chunk_category(c) for c in reranked_results}
+            _missing  = _expected - _present
+            if _missing:
+                _l6_existing_ids = {c.get("chunk_id") for c in reranked_results}
+                # Sub-index registry: category → (faiss_sub_index, idx_map, min_sim)
+                _sub_registry = {
+                    "statute": (
+                        getattr(self, "_faiss_statutes", None),
+                        getattr(self, "_statute_idx_map", []),
+                        0.18,
+                    ),
+                    "circular": (
+                        getattr(self, "_faiss_circulars", None),
+                        getattr(self, "_bm25_circ_idx_map", []),
+                        0.20,
+                    ),
+                    "notification": (
+                        getattr(self, "_faiss_notifications", None),
+                        getattr(self, "_notif_idx_map", []),
+                        0.18,
+                    ),
+                    "case_law": (
+                        getattr(self, "_faiss_case_laws", None),
+                        getattr(self, "_case_law_idx_map", []),
+                        0.20,
+                    ),
+                }
+                _qv = np.array([query_vec]).astype("float32")
+                for _mcat in sorted(_missing):   # deterministic order
+                    _sub_idx, _sub_map, _min_sim = _sub_registry.get(_mcat, (None, [], 0.20))
+                    if _sub_idx is None or not _sub_map:
+                        continue
+                    try:
+                        _cv_D, _cv_I = _sub_idx.search(_qv, 5)
+                        for _sim, _li in zip(_cv_D[0], _cv_I[0]):
+                            if _li < 0 or float(_sim) < _min_sim:
+                                continue
+                            _gi = _sub_map[_li]
+                            _c  = self.chunks[_gi].copy()
+                            _cid = _c.get("chunk_id")
+                            if _cid and _cid not in _l6_existing_ids:
+                                _c["_coverage_fill"] = True
+                                _c["_coverage_cat"]  = _mcat
+                                _c["_coverage_sim"]  = round(float(_sim), 4)
+                                reranked_results.append(_c)
+                                _l6_existing_ids.add(_cid)
+                                logger.info(
+                                    f"Layer 6 coverage fill: +1 {_mcat} chunk "
+                                    f"(sim={float(_sim):.3f}) — "
+                                    f"«{_c.get('rel_path','')[-60:]}»"
+                                )
+                                break   # one coverage-fill chunk per missing category
+                    except Exception as _l6e:
+                        logger.warning(f"Layer 6 coverage fill ({_mcat}) failed: {_l6e}")
+
         # --- Context Window Expansion ---
         # Enrich each selected chunk with adjacent-page neighbors from the full
         # corpus (self._doc_map covers all chunks, not just the 80-chunk pool).
@@ -1278,6 +1544,43 @@ class Retriever:
         reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
 
         mmr_results = _mmr_deduplicate(reranked, top_k=top_k)
+
+        # Coverage validation — same as Layer 6 in search()
+        # Ensures the fast-path also fills missing authority categories.
+        _sr_query_vec = embed_query(query)
+        if _sr_query_vec is not None:
+            _sr_expected = _query_expected_coverage(query, topic)
+            _sr_present  = {_chunk_category(c) for c in mmr_results}
+            _sr_missing  = _sr_expected - _sr_present
+            if _sr_missing:
+                _sr_existing = {c.get("chunk_id") for c in mmr_results}
+                _sr_sub = {
+                    "statute":      (getattr(self, "_faiss_statutes",     None), getattr(self, "_statute_idx_map",    []), 0.18),
+                    "circular":     (getattr(self, "_faiss_circulars",    None), getattr(self, "_bm25_circ_idx_map",  []), 0.20),
+                    "notification": (getattr(self, "_faiss_notifications", None), getattr(self, "_notif_idx_map",     []), 0.18),
+                    "case_law":     (getattr(self, "_faiss_case_laws",    None), getattr(self, "_case_law_idx_map",   []), 0.20),
+                }
+                _sr_qv = np.array([_sr_query_vec]).astype("float32")
+                for _mcat in sorted(_sr_missing):
+                    _idx, _map, _msim = _sr_sub.get(_mcat, (None, [], 0.20))
+                    if _idx is None or not _map:
+                        continue
+                    try:
+                        _D, _I = _idx.search(_sr_qv, 5)
+                        for _sim, _li in zip(_D[0], _I[0]):
+                            if _li < 0 or float(_sim) < _msim:
+                                continue
+                            _c = self.chunks[_map[_li]].copy()
+                            _cid = _c.get("chunk_id")
+                            if _cid and _cid not in _sr_existing:
+                                _c["_coverage_fill"] = True
+                                _c["_coverage_cat"]  = _mcat
+                                mmr_results.append(_c)
+                                _sr_existing.add(_cid)
+                                logger.info(f"S&R coverage fill: +1 {_mcat} (sim={float(_sim):.3f})")
+                                break
+                    except Exception:
+                        pass
 
         # Context window expansion using the full-corpus doc map
         mmr_results = _expand_context_window(mmr_results, self._doc_map, self.chunks)
