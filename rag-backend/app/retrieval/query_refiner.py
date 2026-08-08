@@ -116,51 +116,93 @@ RULES:
 def generate_advanced_queries(raw_query: str) -> dict:
     """
     Single LLM call that produces:
-      - 4 diverse search queries (Multi-Query Expansion — statutory, circular, notification, factual)
+      - 6 concept-targeted search queries (Multi-Query Expansion)
       - 1 HyDE document written in corpus-authentic legal language
       - topic + subtopic classification
 
     Returns: {"queries": [...], "hyde_document": "...", "topic": "...", "subtopic": "..."}
     """
-    system = """You are an advanced expert in Indian GST Law with deep knowledge of the CBIC
-document corpus (2017–2025): CGST/IGST Acts, Rules, CBIC Circulars, GST Rate Notifications,
-Trade Notices, AAR rulings, and High Court judgments.
+    system = """You are a Senior Partner-level Indian GST expert and retrieval engineer.
+You have encyclopaedic knowledge of the CBIC corpus (2017–2025): CGST/IGST Acts and Rules,
+CBIC Circulars, GST Rate Notifications, Trade Notices, AAR rulings, and Court judgments.
 
-Your task: optimise a user query for retrieval from a vector database that contains all
-the above documents indexed as text chunks.
+Your task: decompose a user query into 6 laser-focused sub-queries that will collectively
+surface EVERY legal provision, circular, rule, and valuation concept relevant to the question.
+
+── CRITICAL LEGAL MAPPING ────────────────────────────────────────────────────────────────────
+Apply these mandatory expansions when the topic is present in the query:
+
+cross charge / distinct person / inter-branch →
+  MUST generate sub-queries for: Section 25(4) Section 25(5) CGST Act distinct person,
+  ISD Input Service Distributor Section 20 CGST Act Rule 39, Circular 199/11/2023-GST
+  cross charge ISD common expenses branches head office, Rule 28 valuation distinct person
+  open market value second proviso, Schedule I supply without consideration distinct person.
+
+ITC / input tax credit →
+  MUST cover: Section 16, Section 17(5) blocked credit, Rule 42/43 apportionment,
+  CBIC Circular clarification.
+
+reverse charge / RCM →
+  MUST cover: Section 9(3) Section 9(4), Notification 13/2017-CT(Rate), Rule 85/86.
+
+export / zero-rated →
+  MUST cover: Section 16 IGST Act, Rule 96, LUT, refund Section 54.
+
+place of supply →
+  MUST cover: Section 12/13 IGST Act, intermediary, OIDAR.
+
+works contract →
+  MUST cover: Section 17(5)(c)(d), Schedule II entry 6.
+
+────────────────────────────────────────────────────────────────────────────────────────────
 
 Output a valid JSON object with EXACTLY four keys:
 
-1. "queries": A list of exactly 4 distinct search queries, each targeting a different slice
-   of the corpus. MANDATORY structure — one query per angle:
-   (a) STATUTORY angle — cite the relevant CGST/IGST Act section number or CGST Rule number.
-       Use formal statutory language: "Section 16(2)(b) CGST Act input tax credit conditions"
-   (b) CBIC CIRCULAR angle — explicitly target CBIC Circulars and Instructions.
-       Always include keywords: "CBIC Circular clarification" or "Instruction No."
-       Example: "CBIC Circular clarification input tax credit motor vehicle section 17(5)"
-   (c) NOTIFICATION angle — explicitly target GST rate and exemption notifications.
-       Always include: "GST Notification" or "Central Tax Rate notification" or "IGST exemption"
-       Example: "Notification No. Central Tax Rate GST exemption software services 2017 2018 2023"
-   (d) SCENARIO/FACT angle — use the technical terminology of the specific facts given.
-       Include any amounts, business type, transaction structure, or year mentioned.
+1. "queries": A list of exactly 6 distinct search queries. Each query must target a DIFFERENT
+   specific legal concept. MANDATORY structure:
 
-2. "hyde_document": A 4–5 sentence hypothetical document written to EXACTLY MATCH the style
-   of official CBIC Circulars and GST Notifications. Use their exact vocabulary:
-   - Start with: "It is hereby clarified that..." or "As per Circular No. [X]/[Y]/[YEAR]-GST dated..."
-   - Include section numbers, rule numbers, sub-clauses
-   - Mention the relevant year range (2017–2025)
-   - Use passive-voice bureaucratic register: "the registered person shall be eligible...",
-     "as per the provisions of Section X of the CGST Act 2017..."
-   This document is used for vector similarity search, so it must read like the actual
-   documents in the corpus — not a summary, but an authentic-sounding extract.
+   (a) PRIMARY STATUTORY — the single most important Act section + sub-section.
+       Format: "Section X(Y)(Z) CGST Act 2017 [specific legal concept]"
 
-3. "topic": Classify into exactly ONE topic from: [ITC, RCM, Export, Refund, Registration,
+   (b) SECONDARY STATUTORY — a DIFFERENT section/rule (NOT the same as (a)).
+       For cross-charge: this MUST be "Section 20 CGST Act ISD Input Service Distributor Rule 39 distribution common input services"
+       For ITC: this MUST be "Section 17(5) CGST Act blocked input tax credit [specific item]"
+
+   (c) CBIC CIRCULAR — explicitly name Circular numbers when known.
+       For cross-charge: MUST include "Circular 199/11/2023-GST cross charge ISD head office branches"
+       Always start with: "CBIC Circular No." or "Circular clarification"
+
+   (d) NOTIFICATION / RULE — target specific Rule numbers and Notifications.
+       For cross-charge: MUST include "Rule 28 CGST Rules 2017 valuation related party distinct person open market value"
+       Always include: "Rule" or "Notification" keyword.
+
+   (e) DEFINITIONAL / DEEMING — target the definitional provision or Schedule entry.
+       For cross-charge: MUST include "Schedule I Entry 2 supply without consideration distinct person CGST"
+       For ITC: target Section 2(59) input service or Section 2(62) input tax.
+
+   (f) SCENARIO / PRACTICAL — use ALL technical terms from the question including any
+       amounts, business types, transaction structures. Include the most important keywords
+       from angles (a)–(e) combined for maximum recall:
+       "cross charge ISD Input Service Distributor distinct person Section 25(4) Circular 199
+       Rule 28 valuation head office branch internally generated third party common expenses"
+
+2. "hyde_document": A 5–6 sentence hypothetical document written to EXACTLY MATCH the style
+   of official CBIC Circulars. Use their exact vocabulary:
+   - Start: "It is hereby clarified that..." or "As per Circular No. 199/11/2023-GST dated..."
+   - Include section numbers, rule numbers, sub-clauses, proviso references
+   - Mention relevant year (2017–2025)
+   - Use bureaucratic passive voice: "the registered person shall...", "as per the provisions of..."
+   - Cover ALL key concepts from the query (statutory base + circular clarification + valuation rule)
+   This is used for vector similarity — write it to semantically match the actual corpus documents.
+
+3. "topic": Classify into exactly ONE from: [ITC, RCM, Export, Refund, Registration,
    Place_of_Supply, Time_of_Supply, Valuation, Exemption, Returns, Penalty, Audit,
    Classification, Supply, Payment, Appeals, Intermediary, Cross_Border_Services, General]
 
-4. "subtopic": A specific subtopic string or null if none applies.
+4. "subtopic": A specific subtopic string (e.g. "Cross Charge ISD", "Blocked Credit Section 17(5)",
+   "Zero Rated Export LUT") or null if none.
 
-Respond with ONLY the raw JSON object. No prose. No markdown."""
+Respond with ONLY the raw JSON object. No prose. No markdown fences."""
 
     raw = _call_llm_json(system, raw_query, temperature=0.15)
 
