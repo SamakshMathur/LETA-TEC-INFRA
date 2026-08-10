@@ -1047,7 +1047,9 @@ class Retriever:
                         return pinned
         return pinned
 
-    def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False, skip_rerank: bool = False):
+    def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False, skip_rerank: bool = False, trace=None):
+        # trace: Optional[RetrievalTrace] — full pipeline provenance recorder.
+        # Passing None (default) disables all recording; zero retrieval-behavior change.
         if not query or not query.strip():
             logger.warning("search() called with empty query")
             return []
@@ -1140,6 +1142,13 @@ class Retriever:
             for idx in I[0]:
                 if 0 <= idx < len(self.chunks):
                     faiss_chunks.append(self.chunks[idx])
+        # ── TRACE: FAISS results ────────────────────────────────────────────────
+        if trace is not None and faiss_chunks and query_vec is not None:
+            try:
+                _faiss_sims = [float(D[0][i]) for i in range(len(faiss_chunks))]
+                trace.record_faiss(faiss_chunks, _faiss_sims)
+            except Exception:
+                pass
 
         # 1b. Vector Search — expanded queries + HyDE document (added directly to pool,
         #     not merged via RRF because they have no BM25 counterpart ranking)
@@ -1169,6 +1178,13 @@ class Retriever:
             for idx in top_bm25_idxs:
                 if 0 <= idx < len(self.chunks):
                     bm25_chunks.append(self.chunks[idx])
+        # ── TRACE: BM25 results ────────────────────────────────────────────────
+        if trace is not None and bm25_chunks:
+            try:
+                _bm25_sims = [float(bm25_scores[top_bm25_idxs[i]]) for i in range(len(bm25_chunks))]
+                trace.record_bm25(bm25_chunks, _bm25_sims)
+            except Exception:
+                pass
 
         # 2b. TF-IDF Search — 3rd RRF signal for exact legal citation matching.
         # TF-IDF assigns near-1.0 cosine similarity to chunks that contain the
@@ -1195,6 +1211,13 @@ class Retriever:
                     f"top_sim={_sims[_top_tfidf[0]]:.4f}" if tfidf_chunks else
                     "TF-IDF search: 0 candidates"
                 )
+                # ── TRACE: TF-IDF results ──────────────────────────────────────
+                if trace is not None and tfidf_chunks:
+                    try:
+                        _tfidf_sc = [float(_sims[i]) for i in _top_tfidf if _sims[i] > 0.0 and 0 <= i < len(self.chunks)]
+                        trace.record_tfidf(tfidf_chunks, _tfidf_sc)
+                    except Exception:
+                        pass
             except Exception as _te:
                 logger.warning(f"TF-IDF search failed (non-fatal): {_te}")
 
@@ -1209,6 +1232,12 @@ class Retriever:
             if cid and cid not in seen_chunk_ids:
                 seen_chunk_ids.add(cid)
                 candidate_pool.append(chunk)
+        # ── TRACE: RRF-merged pool ─────────────────────────────────────────────
+        if trace is not None:
+            try:
+                trace.record_rrf(rrf_results)
+            except Exception:
+                pass
 
         # Filter by allowed_sources (file extension)
         if allowed_sources:
@@ -1282,6 +1311,12 @@ class Retriever:
                         candidate_pool.append(_c)
                         seen_chunk_ids.add(_cid)
                         _circ_injected += 1
+                        # ── TRACE ────────────────────────────────────────────
+                        if trace is not None:
+                            try:
+                                trace.record_injected(_c, "circular_bm25", score=_score)
+                            except Exception:
+                                pass
                 if _circ_injected:
                     logger.info(
                         f"Circular BM25 inject: +{_circ_injected} circular/notification "
@@ -1316,6 +1351,12 @@ class Retriever:
                         candidate_pool.append(_c)
                         seen_chunk_ids.add(_cid)
                         _circ_faiss_injected += 1
+                        # ── TRACE ────────────────────────────────────────────
+                        if trace is not None:
+                            try:
+                                trace.record_injected(_c, "circular_faiss", score=float(_sim))
+                            except Exception:
+                                pass
                 if _circ_faiss_injected:
                     logger.info(
                         f"Circular FAISS inject: +{_circ_faiss_injected} semantic "
@@ -1413,9 +1454,21 @@ class Retriever:
                     f"Cascade rerank: {len(reranker_input)} → {len(reranked_results)} | "
                     f"top_score={reranked_results[0].get('_rerank_score', 0):.3f}"
                 )
+        # ── TRACE: CrossEncoder scores ────────────────────────────────────────
+        if trace is not None and not skip_rerank:
+            try:
+                trace.record_crossencoder_scores(reranked_results)
+            except Exception:
+                pass
 
         # --- Layer 3: Legal Reranking (Composite Scoring) ---
         reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic, is_draft=is_draft)
+        # ── TRACE: LegalReranker scores ───────────────────────────────────────
+        if trace is not None:
+            try:
+                trace.record_legalreranker_scores(reranked_results)
+            except Exception:
+                pass
 
         # --- Layer 3b: Document-Level Ranking ---
         # Problem: we may retrieve chunk 7 and chunk 19 from Circular 199 while
@@ -1442,7 +1495,14 @@ class Retriever:
         reranked_results.sort(key=lambda x: x.get("_final_legal_score", 0), reverse=True)
 
         # --- Layer 4: MMR Deduplication ---
+        _pre_mmr = list(reranked_results)   # snapshot before MMR for trace
         reranked_results = _mmr_deduplicate(reranked_results, top_k=top_k)
+        # ── TRACE: MMR ────────────────────────────────────────────────────────
+        if trace is not None:
+            try:
+                trace.record_mmr(_pre_mmr, reranked_results)
+            except Exception:
+                pass
 
         # --- Layer 5: Post-MMR Circular Floor ---
         # Pre-rank quota fills (Phase 2A) get overridden by CrossEncoder + LegalReranker
@@ -1502,6 +1562,12 @@ class Retriever:
                         f"Circular floor inject: «{(_c.get('rel_path') or _c.get('source',''))[-60:]}» "
                         f"score={_score:.3f}"
                     )
+                    # ── TRACE ────────────────────────────────────────────────
+                    if trace is not None:
+                        try:
+                            trace.record_injected(_c, "circular_floor", score=_score)
+                        except Exception:
+                            pass
 
         # --- Layer 6: Authority Coverage Validation ---
         # Check that every category required by this query type is present in the
@@ -1573,6 +1639,12 @@ class Retriever:
                                     f"(sim={float(_sim):.3f}) — "
                                     f"«{_c.get('rel_path','')[-60:]}»"
                                 )
+                                # ── TRACE ────────────────────────────────────
+                                if trace is not None:
+                                    try:
+                                        trace.record_injected(_c, f"layer6_{_mcat}", score=float(_sim))
+                                    except Exception:
+                                        pass
                                 break   # one coverage-fill chunk per missing category
                     except Exception as _l6e:
                         logger.warning(f"Layer 6 coverage fill ({_mcat}) failed: {_l6e}")
@@ -1701,6 +1773,20 @@ class Retriever:
                 f"found={len(_coverage_result.get('found', []))} | "
                 f"missing={_coverage_result['missing']}"
             )
+            # ── TRACE: validation coverage ───────────────────────────────────
+            if trace is not None:
+                try:
+                    _present_cats = {_chunk_category(c) for c in reranked_results}
+                    _expected_cats = _taxonomy.get("expected_cats", set()) or set()
+                    trace.record_validation(
+                        expected_cats=_expected_cats,
+                        present_cats=_present_cats,
+                        missing_cats=_expected_cats - _present_cats,
+                        mandatory_coverage_pct=float(_coverage_result.get("coverage_pct", 100)),
+                        mandatory_missing=_coverage_result.get("missing", []),
+                    )
+                except Exception:
+                    pass
 
             # Priority 7: Retrieval Self-Critique (only when coverage < 70% or unknown topic)
             # Asks Haiku: "Have we missed any governing authority?"
@@ -1770,9 +1856,16 @@ class Retriever:
         except Exception:
             pass   # logging failures must never affect retrieval
 
+        # ── TRACE: finalize ───────────────────────────────────────────────────
+        if trace is not None:
+            try:
+                trace.finalize(final_results[:top_k])
+            except Exception:
+                pass
+
         return final_results[:top_k]
 
-    def supplement_and_rerank(self, base_chunks: list, advanced_queries: dict, query: str, top_k: int) -> list:
+    def supplement_and_rerank(self, base_chunks: list, advanced_queries: dict, query: str, top_k: int, trace=None) -> list:
         """
         Called after fast retrieval (skip_rerank=True) + query expansion finish in parallel.
         Supplements the fast pool with FAISS results from expanded queries, then runs ONE
@@ -1839,8 +1932,20 @@ class Retriever:
 
         if rerank_input:
             reranked = self._cascade_rerank(query, rerank_input, taxonomy=_sr_taxonomy)
+        # ── TRACE: CrossEncoder (supplement_and_rerank path) ──────────────────
+        if trace is not None:
+            try:
+                trace.record_crossencoder_scores(reranked)
+            except Exception:
+                pass
 
         reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
+        # ── TRACE: LegalReranker (supplement_and_rerank path) ─────────────────
+        if trace is not None:
+            try:
+                trace.record_legalreranker_scores(reranked)
+            except Exception:
+                pass
 
         # Document-level ranking boost (mirrors search() Layer 3b)
         import math as _math_sr
@@ -1855,7 +1960,14 @@ class Retriever:
                 _ch["_final_legal_score"] = _ch.get("_final_legal_score", 0) + _math_sr.log(_n) * 0.02
         reranked.sort(key=lambda x: x.get("_final_legal_score", 0), reverse=True)
 
+        _pre_mmr_sr = list(reranked)   # snapshot for trace
         mmr_results = _mmr_deduplicate(reranked, top_k=top_k)
+        # ── TRACE: MMR (supplement_and_rerank path) ───────────────────────────
+        if trace is not None:
+            try:
+                trace.record_mmr(_pre_mmr_sr, mmr_results)
+            except Exception:
+                pass
 
         # Coverage validation — same as Layer 6 in search()
         # Ensures the fast-path also fills missing authority categories.
@@ -1964,5 +2076,12 @@ class Retriever:
                 )
         except Exception:
             pass
+
+        # ── TRACE: finalize (supplement_and_rerank path) ──────────────────────
+        if trace is not None:
+            try:
+                trace.finalize(final)
+            except Exception:
+                pass
 
         return final

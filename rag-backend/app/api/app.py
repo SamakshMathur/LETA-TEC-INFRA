@@ -180,7 +180,11 @@ _request_logger = logging.getLogger("leta.request")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    query_id = str(uuid.uuid4())[:8]
+    # Full query_id: LETA-YYYYMMDD-HHMMSS-XXXXXXXX (CloudWatch-searchable prefix)
+    import datetime as _dt_mw
+    _ts = _dt_mw.datetime.now().strftime("%Y%m%d-%H%M%S")
+    _rand = str(uuid.uuid4()).replace("-", "")[:6].upper()
+    query_id = f"LETA-{_ts}-{_rand}"
     request.state.query_id = query_id
     t0 = time.monotonic()
 
@@ -271,6 +275,9 @@ app.include_router(transcribe.router, prefix="/api", tags=["Transcribe"])
 
 from app.api import payments
 app.include_router(payments.router, tags=["Payments"])
+
+from app.api import debug as _debug_api
+app.include_router(_debug_api.router, tags=["Debug"])
 
 # ---------- Request / Response ----------
 class QuestionRequest(BaseModel):
@@ -578,6 +585,10 @@ async def ask_question(request: Request, req: QuestionRequest):
         from app.generation.context_compressor import compress_context
         from app.cache import cache_lookup
         from app.retrieval.retriever import embed_query
+        from app.retrieval.retrieval_trace import RetrievalTrace, store_trace
+
+        # ── RetrievalTrace — created once per query, threaded through entire pipeline ──
+        _trace = RetrievalTrace(query_id=query_id, query=question)
 
         # ── Stage 1: Instant intent classification (pure keyword, ~1ms) ──────────
         route = route_query(question)
@@ -752,6 +763,17 @@ async def ask_question(request: Request, req: QuestionRequest):
         if cached_answer:
             cached_text, cached_sources = cached_answer
             _ask_logger.info("Cache HIT", extra={"query_id": query_id, "cache_hit": True})
+            # Log minimal trace for cache hits so query_id is still searchable
+            try:
+                _trace.record_preprocessing(
+                    original_query=question, refined_query=question,
+                    domain_route=domain_paths, complexity_score=_complexity,
+                    response_mode="cache_hit",
+                )
+                _trace.answer = {"cache_hit": True, "query_id": query_id}
+                store_trace(_trace)
+            except Exception:
+                pass
             yield f"__STATUS__:{json.dumps({'msg': 'Cache Hit — Instant Retrieval Complete.'})}__END_STATUS__"
             if cached_sources:
                 yield f"__METADATA__:{json.dumps({'type': 'metadata', 'sources': cached_sources})}__END_METADATA__"
@@ -793,9 +815,17 @@ async def ask_question(request: Request, req: QuestionRequest):
                 "queries": [_retrieval_q, _statute_q, _caselaw_q, _circular_q],
                 "hyde_document": "", "topic": "General", "subtopic": None,
             }
+            # Record preprocessing before handing off to retriever
+            _trace.record_preprocessing(
+                original_query=question, refined_query=_retrieval_q,
+                sub_queries=[_statute_q, _caselaw_q, _circular_q],
+                topic="General", domain_route=domain_paths,
+                complexity_score=_complexity, response_mode="draft",
+            )
             chunks = await _asyncio.to_thread(
                 retriever.search, _retrieval_q, _retrieval_top_k,
                 route["use_sources"], _adv, domain_paths, True,
+                False, _trace,   # skip_rerank=False, trace=_trace
             )
 
         else:
@@ -806,6 +836,8 @@ async def ask_question(request: Request, req: QuestionRequest):
             yield f"__STATUS__:{json.dumps({'msg': 'Expanding Query for Precision Retrieval...'})}__END_STATUS__"
 
             def _fast_retrieve():
+                # Trace is NOT passed here — fast retrieve is skip_rerank=True
+                # and supplement_and_rerank runs the full reranking pass with trace.
                 return retriever.search(
                     _retrieval_q, _retrieval_top_k, route["use_sources"],
                     None, domain_paths, False, skip_rerank=True,
@@ -821,11 +853,30 @@ async def ask_question(request: Request, req: QuestionRequest):
                     _asyncio.to_thread(_expand),
                 )
 
+                # Record preprocessing now that we have expanded queries
+                _adv_qs = advanced_queries or {}
+                _trace.record_preprocessing(
+                    original_query=question,
+                    refined_query=_retrieval_q,
+                    sub_queries=_adv_qs.get("queries", []),
+                    hyde_doc=_adv_qs.get("hyde_document", ""),
+                    topic=_adv_qs.get("topic", "General"),
+                    subtopic=_adv_qs.get("subtopic"),
+                    domain_route=domain_paths,
+                    complexity_score=_complexity,
+                    response_mode=(
+                        "detailed" if _complexity >= 0.60
+                        else "standard" if _complexity >= 0.25
+                        else "brief"
+                    ),
+                )
+
                 # Supplement the fast pool with expanded-query FAISS results,
                 # then do ONE FlashRank + LegalReranker pass on the merged pool.
                 chunks = await _asyncio.to_thread(
                     retriever.supplement_and_rerank,
                     fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
+                    _trace,   # trace
                 )
             except Exception as _retrieval_exc:
                 import traceback as _tb
@@ -889,6 +940,31 @@ async def ask_question(request: Request, req: QuestionRequest):
         response_stream = synthesize_answer_stream(
             question, full_rag_context, session_is_draft=_is_draft
         )
+
+        # ── Log and store the retrieval trace ────────────────────────────────
+        # This fires before streaming starts — captures everything up to synthesis.
+        # Answer metadata (latency, model) is captured later in stream_and_save.
+        try:
+            _trace.answer = {
+                "query_id":   query_id,
+                "cache_hit":  False,
+                "complexity": round(_complexity, 3),
+                "mode":       ("draft" if _is_draft else
+                               "detailed" if _complexity >= 0.60 else
+                               "standard" if _complexity >= 0.25 else "brief"),
+            }
+            store_trace(_trace)
+            # Single structured JSON log line — filterable in CloudWatch Logs Insights:
+            #   filter trace_type = "retrieval_trace"
+            #   filter query_id = "LETA-20260810-..."
+            import logging as _log_mod
+            _tlog = _log_mod.getLogger("leta.trace")
+            _tlog.info(
+                "retrieval_trace",
+                extra=_trace.to_log_dict(),
+            )
+        except Exception as _te:
+            logger.debug(f"Trace logging failed (non-fatal): {_te}")
 
         try:
             async for chunk in stream_and_save(

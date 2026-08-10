@@ -314,8 +314,10 @@ _BOLD_CITATION_RULE = """
 ### FORMATTING
 - Bold only statutory references: Section/Rule numbers, Notification/Circular numbers,
   form codes (DRC-01, RFD-01, GSTR-3B), and key legal acronyms (ITC, RCM, LUT, SCN).
-- Use ONLY URLs from the RETRIEVED SOURCE DOCUMENTS for hyperlinks. Never fabricate URLs.
-- If no URL exists for a reference, plain text only — no bold link.
+- DO NOT include any URLs, markdown hyperlinks, or clickable links of any kind.
+  The frontend converts every bold citation into a hyperlink automatically.
+  Writing [text](url) or any /api/... URL causes broken visible text in the UI.
+- Plain text citations only: "Section 16(2) of the CGST Act" not "[Section 16(2)](url)"
 """
 
 _NAME_DROP_RULE = """
