@@ -7,66 +7,57 @@ Runs all test cases in data/regression/gst_regression_suite.json against the
 live retrieval system and reports authority coverage per question.
 
 Usage:
-    # From the rag-backend/ directory — baseline run, no Claude API calls
+    # From the rag-backend/ directory -- no Claude API calls, cost = $0
     python scripts/run_regression.py
 
-    # Full pipeline with trace capture — still $0, no Claude calls
+    # Full pipeline with trace capture + diagnostic report
     python scripts/run_regression.py --save-traces
 
-    # Fast retrieval only (skip CrossEncoder/LegalReranker/MMR) — partial traces
+    # Fast retrieval only (skip CrossEncoder/LegalReranker/MMR)
     python scripts/run_regression.py --save-traces --retrieval-only
 
-    # Run only high-priority tests
+    # High-priority tests only
     python scripts/run_regression.py --priority high
 
-    # Run a single test by ID
+    # Single test
     python scripts/run_regression.py --id CC-001
 
-    # Output results as JSON
+    # JSON output
     python scripts/run_regression.py --json > results.json
 
-    # Set a minimum coverage threshold (default 70) to fail the run
+    # Custom coverage threshold
     python scripts/run_regression.py --min-coverage 80
 
 Cost note:
-    This script calls retriever.search() / supplement_and_rerank() directly,
-    NOT the /ask HTTP endpoint. Claude (Haiku/Sonnet) is never invoked.
+    This script calls retriever.search() / supplement_and_rerank() DIRECTLY,
+    not the /ask HTTP endpoint. Claude (Haiku/Sonnet) is never invoked.
     Running all 60 queries costs $0.00 in API tokens.
 
-    To collect full end-to-end traces (including LLM answer quality), hit the
-    live /ask endpoint instead — that costs ~$0.35/query with Sonnet.
+Output with --save-traces:
+    data/regression/traces/run_YYYYMMDD_HHMMSS.jsonl
+    LETA RETRIEVAL DIAGNOSTIC REPORT (printed to stdout)
 
-What it checks per test case:
-    1. required_cats        — are all required document categories present in top-15?
-    2. required_authorities — are the specific provision/circular keys present?
-    3. required_keywords    — do the retrieved chunks' text contain these terms?
-
-Output:
-    Pass / Partial / Fail per test, with aggregate stats at the end.
-    Exit code 0 if pass rate ≥ min-coverage threshold, else 1.
-    Traces (if --save-traces) → data/regression/traces/run_YYYYMMDD_HHMMSS.jsonl
-
-Run this before every production deployment:
+Pre-deployment check:
     python scripts/run_regression.py --priority high --min-coverage 80
-    # If exit code = 1, investigate before deploying.
+    # exit 1 = investigate before deploying
 """
 import argparse
 import json
 import os
+import re
 import sys
 import time
-import re
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-# ── Bootstrap: add rag-backend to sys.path ───────────────────────────────────
+# ── Bootstrap ─────────────────────────────────────────────────────────────────
 _script_dir  = Path(__file__).resolve().parent
 _backend_dir = _script_dir.parent
 sys.path.insert(0, str(_backend_dir))
 
 
 def _bootstrap_env():
-    """Load environment variables from .env if present (dev only)."""
     env_file = _backend_dir / ".env"
     if env_file.exists():
         with open(env_file) as f:
@@ -82,15 +73,15 @@ _bootstrap_env()
 
 # ── Load test suite ───────────────────────────────────────────────────────────
 
-def load_test_suite(suite_path: Path) -> list[dict]:
+def load_test_suite(suite_path: Path) -> list:
     with open(suite_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data.get("tests", [])
 
 
-# ── Result evaluation ─────────────────────────────────────────────────────────
+# ── Evaluation ────────────────────────────────────────────────────────────────
 
-_CIR_NUM_RE = re.compile(
+_CIR_NUM_RE     = re.compile(
     r'(?:circular[s]?[-_.\s]*(?:[a-z]*[-_.\s]*)?(?:no[-_.\s]*)?'
     r'|cir[-_.](?:cgst[-_.])?'
     r'|cir(?=[0-9])'
@@ -102,7 +93,6 @@ _CIR_LEADING_RE = re.compile(r'^(\d{2,3})[-_]\d+[-_]\d{4}', re.IGNORECASE)
 
 
 def _chunk_category(chunk: dict) -> str:
-    """Infer document category from rel_path."""
     meta = chunk.get("metadata", {})
     rel  = (chunk.get("rel_path") or meta.get("rel_path", "")).replace("\\", "/").lower()
     if any(f in rel for f in ("/notification", "/notifications")):
@@ -116,36 +106,20 @@ def _chunk_category(chunk: dict) -> str:
     return "other"
 
 
-def _circular_key(rel_path: str) -> str | None:
+def _circular_key(rel_path: str):
     fname = rel_path.replace("\\", "/").split("/")[-1]
     m = _CIR_NUM_RE.search(fname) or _CIR_LEADING_RE.match(fname)
     return f"CIRCULAR_{m.group(1)}" if m else None
 
 
-def evaluate_result(test: dict, chunks: list[dict]) -> dict:
-    """
-    Evaluates a list of retrieved chunks against the test case's expectations.
-
-    Returns:
-        {
-            "verdict":      "pass" | "partial" | "fail"
-            "cats_found":   list[str]
-            "cats_missing": list[str]
-            "auths_found":  list[str]
-            "auths_missing":list[str]
-            "kw_found":     list[str]
-            "kw_missing":   list[str]
-            "coverage_pct": int
-        }
-    """
+def evaluate_result(test: dict, chunks: list) -> dict:
     req_cats   = set(test.get("required_cats",        []))
     req_auths  = list(test.get("required_authorities", []))
     req_kws    = list(test.get("required_keywords",    []))
 
-    # Collect what's in the retrieved pool
-    present_cats:   set[str] = set()
-    present_provs:  set[str] = set()
-    present_circs:  set[str] = set()
+    present_cats:  set = set()
+    present_provs: set = set()
+    present_circs: set = set()
     all_text = ""
 
     for chunk in chunks:
@@ -160,13 +134,11 @@ def evaluate_result(test: dict, chunks: list[dict]) -> dict:
             present_circs.add(ck)
         all_text += " " + (chunk.get("content") or chunk.get("text") or "").lower()
 
-    # Category check
     cats_missing = sorted(req_cats - present_cats)
     cats_found   = sorted(req_cats & present_cats)
 
-    # Authority check
-    auths_found:   list[str] = []
-    auths_missing: list[str] = []
+    auths_found: list = []
+    auths_missing: list = []
     for auth in req_auths:
         if auth in present_circs:
             auths_found.append(auth)
@@ -175,16 +147,13 @@ def evaluate_result(test: dict, chunks: list[dict]) -> dict:
         else:
             auths_missing.append(auth)
 
-    # Keyword check (in chunk text)
-    kw_found:   list[str] = [kw for kw in req_kws if kw.lower() in all_text]
-    kw_missing: list[str] = [kw for kw in req_kws if kw.lower() not in all_text]
+    kw_found   = [kw for kw in req_kws if kw.lower() in all_text]
+    kw_missing = [kw for kw in req_kws if kw.lower() not in all_text]
 
-    # Coverage calculation
     total = len(req_cats) + len(req_auths) + len(req_kws)
     found = len(cats_found) + len(auths_found) + len(kw_found)
     coverage_pct = round(100 * found / total) if total else 100
 
-    # Verdict
     if cats_missing:
         verdict = "fail"
     elif auths_missing:
@@ -206,7 +175,7 @@ def evaluate_result(test: dict, chunks: list[dict]) -> dict:
     }
 
 
-# ── Terminal colours ──────────────────────────────────────────────────────────
+# ── Colours ───────────────────────────────────────────────────────────────────
 
 _GREEN  = "\033[92m"
 _YELLOW = "\033[93m"
@@ -214,43 +183,386 @@ _RED    = "\033[91m"
 _BOLD   = "\033[1m"
 _RESET  = "\033[0m"
 
-def _colour(text: str, code: str) -> str:
+
+def _col(text: str, code: str) -> str:
     return f"{code}{text}{_RESET}" if sys.stdout.isatty() else text
 
 
-# ── Trace helpers ─────────────────────────────────────────────────────────────
+# ── Query-ID generation ───────────────────────────────────────────────────────
 
 def _make_query_id() -> str:
-    """Generate a LETA-style query_id for the regression run."""
     import uuid
     ts   = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     rand = uuid.uuid4().hex[:6].upper()
     return f"LETA-{ts}-{rand}-REG"
 
 
+# ── Gold-document matching ────────────────────────────────────────────────────
+
+def _auth_matches_chunk(auth: str, rel_path: str, text_preview: str) -> bool:
+    """
+    Approximate match: does this chunk likely contain the given authority?
+
+    Authority key formats:
+      CIRCULAR_X        -- Circular No. X
+      CGST_SEC_X        -- CGST Act Section X
+      CGST_RUL_X        -- CGST Rules Rule X
+      IGST_SEC_X        -- IGST Act Section X
+      NOTIFICATION_X    -- Notification No. X
+      CGST_SCHEDULE_X   -- Schedule X of CGST Act
+    """
+    rel  = rel_path.replace("\\", "/").lower()
+    text = (text_preview or "").lower()
+    pts  = auth.upper().split("_")
+    if not pts:
+        return False
+    prefix = pts[0]
+
+    # CIRCULAR_199
+    if prefix == "CIRCULAR" and len(pts) >= 2:
+        num = pts[1]
+        return "circular" in rel and num in rel
+
+    # NOTIFICATION_X
+    if prefix == "NOTIFICATION" and len(pts) >= 2:
+        num = pts[1]
+        return "notification" in rel and num in rel
+
+    # CGST / IGST / UTGST / CESS
+    if prefix in ("CGST", "IGST", "UTGST", "CESS") and len(pts) >= 3:
+        act_key = prefix.lower()
+        subtype = pts[1]
+
+        if subtype == "SEC":
+            sec = pts[2]
+            right_doc = (act_key in rel) and ("act" in rel or "cgst" in rel or "igst" in rel)
+            mentions   = (
+                f"section {sec}" in text
+                or f"section{sec}" in text
+                or f"s. {sec}" in text
+                or f"s.{sec}" in text
+            )
+            return right_doc and mentions
+
+        if subtype == "RUL":
+            rule = pts[2]
+            return "rule" in rel and (
+                rule in rel
+                or f"rule {rule}" in text
+            )
+
+        if subtype == "SCHEDULE":
+            return "schedule" in rel and act_key in rel
+
+    return False
+
+
+def _gold_chunk_ids(required_authorities: list, all_chunks: list) -> set:
+    """Return chunk_ids whose rel_path/text_preview match any gold authority."""
+    gold = set()
+    for auth in required_authorities:
+        for chunk in all_chunks:
+            if _auth_matches_chunk(auth,
+                                   chunk.get("rel_path", ""),
+                                   chunk.get("text_preview", "")):
+                gold.add(chunk["chunk_id"])
+    return gold
+
+
+# ── Stage survival / first-failure analysis ───────────────────────────────────
+
+_STAGE_ORDER = [
+    "faiss",
+    "bm25",
+    "tfidf",
+    "rrf",
+    "after_crossencoder",
+    "after_legalreranker",
+    "post_mmr",
+    "final",
+]
+
+_STAGE_LABEL = {
+    "faiss":              "FAISS",
+    "bm25":               "BM25",
+    "tfidf":              "TF-IDF",
+    "rrf":                "RRF",
+    "after_crossencoder": "CrossEncoder",
+    "after_legalreranker":"LegalReranker",
+    "post_mmr":           "MMR",
+    "final":              "Authority Fill",
+}
+
+
+def _survival_map(trace_stages: dict, gold_ids: set) -> dict:
+    """For each stage, did any gold chunk survive?"""
+    out = {}
+    for stage in _STAGE_ORDER:
+        if stage not in trace_stages:
+            continue
+        ids_at_stage = {e["chunk_id"] for e in trace_stages[stage]}
+        out[stage] = bool(ids_at_stage & gold_ids)
+    return out
+
+
+def _first_failure(survival: dict) -> str:
+    for stage in _STAGE_ORDER:
+        if stage in survival and not survival[stage]:
+            return stage
+    return "generation"   # gold reached final -> problem is in synthesis
+
+
+def _best_rank_at(trace_stages: dict, stage: str, gold_ids: set):
+    """Best rank of any gold chunk at the given stage. None if not present."""
+    snap = trace_stages.get(stage, [])
+    ranks = [e["rank"] for e in snap if e["chunk_id"] in gold_ids]
+    return min(ranks) if ranks else None
+
+
+# ── Diagnostic report ─────────────────────────────────────────────────────────
+
+def generate_diagnostic_report(
+    results: list,
+    all_traces: list,
+    tests: list,
+) -> str:
+    """
+    Post-run analysis across all 60 traces.
+
+    Produces a LETA RETRIEVAL DIAGNOSTIC REPORT covering:
+      - Document recall (Recall@1/5/10, MRR) at FAISS stage
+      - First failure stage distribution
+      - Gold survival counts at each stage
+      - Failure rate by query topic
+      - Top hard negatives (wrong docs that beat gold)
+    """
+    # Build lookup maps
+    tests_by_id    = {t["id"]: t for t in tests}
+    traces_by_qid  = {t.get("query_id", ""): t for t in all_traces}
+
+    total = len(results)
+    if total == 0:
+        return "\n  [diagnostic] No results to analyze.\n"
+
+    # Per-stage counters
+    first_fail_counts: dict = defaultdict(int)
+    survival_counts:   dict = defaultdict(int)  # stage -> queries where gold survived
+
+    # Recall @ K (measured at FAISS stage)
+    recall_at = {1: 0, 5: 0, 10: 0}
+    mrr_total  = 0.0
+    mrr_n      = 0
+
+    # Hard negatives: document_id -> count it appeared in final when gold was missing
+    hard_neg: dict = defaultdict(int)
+
+    # Topic failure tracking
+    topic_total: dict = defaultdict(int)
+    topic_fail:  dict = defaultdict(int)
+
+    # Per-result breakdown (for detailed stage ranking displacement)
+    stage_rank_sums:  dict = defaultdict(float)
+    stage_rank_count: dict = defaultdict(int)
+
+    matched_traces = 0
+
+    for result in results:
+        test_id  = result.get("id", "")
+        query_id = result.get("query_id", "")
+        test     = tests_by_id.get(test_id, {})
+        trace    = traces_by_qid.get(query_id)
+
+        topic = test.get("topic", "unknown")
+        topic_total[topic] += 1
+        if result.get("verdict") in ("fail", "partial", "error"):
+            topic_fail[topic] += 1
+
+        req_auths = test.get("required_authorities", [])
+        if not trace or not req_auths:
+            first_fail_counts["no_trace"] += 1
+            continue
+
+        all_chunks  = trace.get("all_chunks", [])
+        gold_ids    = _gold_chunk_ids(req_auths, all_chunks)
+        trace_stages = trace.get("stages", {})
+
+        if not gold_ids:
+            # Gold authorities matched no chunks in the pool -> FAISS miss
+            first_fail_counts["faiss"] += 1
+            matched_traces += 1
+            continue
+
+        matched_traces += 1
+
+        # Survival map
+        survival = _survival_map(trace_stages, gold_ids)
+
+        # First failure stage
+        ff = _first_failure(survival)
+        first_fail_counts[ff] += 1
+
+        # Survival counts per stage
+        for stage, survived in survival.items():
+            if survived:
+                survival_counts[stage] += 1
+
+        # Recall @ K and MRR (at FAISS stage)
+        faiss_rank = _best_rank_at(trace_stages, "faiss", gold_ids)
+        if faiss_rank is not None:
+            faiss_rank_1indexed = faiss_rank + 1   # trace ranks are 0-indexed
+            mrr_total += 1.0 / faiss_rank_1indexed
+            mrr_n      += 1
+            for k in [1, 5, 10]:
+                if faiss_rank_1indexed <= k:
+                    recall_at[k] += 1
+
+        # Rank displacement at every stage
+        for stage in _STAGE_ORDER:
+            r = _best_rank_at(trace_stages, stage, gold_ids)
+            if r is not None:
+                stage_rank_sums[stage]  += r + 1
+                stage_rank_count[stage] += 1
+
+        # Hard negatives: docs in final context when gold is absent from final
+        if not survival.get("final", True):
+            doc_map = {c["chunk_id"]: c.get("document_id", "")
+                       for c in all_chunks}
+            for entry in trace_stages.get("final", []):
+                doc_id = doc_map.get(entry["chunk_id"], "")
+                if doc_id:
+                    hard_neg[doc_id] += 1
+
+    # ── Build report string ────────────────────────────────────────────────────
+    W = 62
+    hr = "=" * W
+    lr = "-" * W
+
+    def _bar(n: int, max_n: int = 10, ch: str = "#") -> str:
+        if max_n == 0:
+            return ""
+        return ch * min(n, max_n)
+
+    def _pct(n: int, d: int) -> str:
+        return f"{round(100*n/d):3d}%" if d else "  -"
+
+    lines = [
+        "",
+        hr,
+        "  LETA RETRIEVAL DIAGNOSTIC REPORT",
+        lr,
+        f"  Queries evaluated : {total}",
+        f"  Traces matched    : {matched_traces}  "
+        f"({round(100*matched_traces/total)}% gold-matched)" if total else "",
+        "",
+        "  DOCUMENT RECALL  (FAISS stage)",
+        "  " + lr,
+    ]
+    for k in [1, 5, 10]:
+        lines.append(f"  Recall@{k:<4}  {_pct(recall_at[k], total)}  ({recall_at[k]}/{total})")
+    mrr = round(mrr_total / mrr_n, 3) if mrr_n else 0.0
+    lines.append(f"  MRR         {mrr:.3f}  (over {mrr_n} gold-matched queries)")
+
+    lines += [
+        "",
+        "  FIRST FAILURE STAGE",
+        "  " + lr,
+    ]
+    max_ff = max(first_fail_counts.values(), default=1)
+    ff_order = _STAGE_ORDER + ["generation", "no_trace"]
+    for stage in ff_order:
+        n = first_fail_counts.get(stage, 0)
+        if n == 0:
+            continue
+        label = _STAGE_LABEL.get(stage, stage.replace("_", " ").title())
+        bar   = _bar(n, max_ff)
+        lines.append(f"  {label:<20}  {n:3d}  {bar}")
+
+    lines += [
+        "",
+        "  GOLD SURVIVAL TO EACH STAGE",
+        "  " + lr,
+    ]
+    stage_n = len(all_traces) if all_traces else total
+    for stage in _STAGE_ORDER:
+        n     = survival_counts.get(stage, 0)
+        pct   = round(100 * n / stage_n) if stage_n else 0
+        label = _STAGE_LABEL.get(stage, stage)
+        avg_r = (
+            round(stage_rank_sums[stage] / stage_rank_count[stage], 1)
+            if stage_rank_count.get(stage)
+            else "-"
+        )
+        lines.append(
+            f"  {label:<20}  {n:3d}/{stage_n}  ({pct:3d}%)  avg-rank={avg_r}"
+        )
+
+    lines += [
+        "",
+        "  FAILURE RATE BY QUERY TOPIC",
+        "  " + lr,
+    ]
+    for topic in sorted(topic_total.keys()):
+        tot  = topic_total[topic]
+        fail = topic_fail.get(topic, 0)
+        bar  = _bar(fail, tot)
+        pct  = _pct(fail, tot)
+        lines.append(f"  {topic:<24}  {pct} fail  ({fail}/{tot})  {bar}")
+
+    lines += [
+        "",
+        "  TOP HARD NEGATIVES (wrong docs in final when gold is missing)",
+        "  " + lr,
+    ]
+    if hard_neg:
+        top = sorted(hard_neg.items(), key=lambda x: -x[1])[:10]
+        for i, (doc_id, cnt) in enumerate(top, 1):
+            lines.append(f"  {i:2d}. {doc_id[:50]:<52} x{cnt}")
+    else:
+        lines.append("  (none -- gold reached final context in all matched queries)")
+
+    lines.append("")
+    lines.append(hr)
+    lines.append("")
+    lines.append("  DECISION GUIDE")
+    lines.append("  " + lr)
+    lines.append("  If gold missing at FAISS    -> fix embedding / document discovery")
+    lines.append("  If dropped at CrossEncoder  -> fix reranking model")
+    lines.append("  If dropped at MMR           -> tune MMR diversity threshold")
+    lines.append("  If gold in final but wrong answer -> investigate prompt/generation")
+    lines.append("  If gold in final but wrong citation -> fix citation validation")
+    lines.append(hr)
+    lines.append("")
+
+    return "\n".join(lines)
+
+
 # ── Main runner ───────────────────────────────────────────────────────────────
 
 def run_tests(
-    tests: list[dict],
+    tests: list,
     retriever,
-    priority_filter: str | None,
-    id_filter: str | None,
+    priority_filter,
+    id_filter,
     top_k: int = 15,
     save_traces: bool = False,
     retrieval_only: bool = False,
-    trace_dir: Path | None = None,
-) -> list[dict]:
+    trace_dir: Path = None,
+) -> tuple:
+    """
+    Returns (results, all_traces).
+    all_traces is a list of to_debug_dict() dicts if save_traces=True, else [].
+    """
     results    = []
     all_traces = []
 
-    # Import trace machinery (optional — if not available, silently skip)
+    # Import trace machinery
     RetrievalTrace = None
     if save_traces:
         try:
             from app.retrieval.retrieval_trace import RetrievalTrace as _RT
             RetrievalTrace = _RT
         except ImportError:
-            print(_colour("  ⚠ retrieval_trace not importable — traces will be skipped", _YELLOW))
+            print(_col("  Warning: retrieval_trace not importable -- traces skipped", _YELLOW))
             save_traces = False
 
     filtered = [
@@ -259,26 +571,26 @@ def run_tests(
         and (id_filter is None or t.get("id") == id_filter)
     ]
 
-    mode_label = "retrieval-only" if retrieval_only else "full-pipeline"
-    trace_note = " + trace capture" if save_traces else ""
-    print(f"\n{_colour('GST RAG Regression Suite', _BOLD)}")
-    print(f"Running {len(filtered)} tests  [top_k={top_k}] [{mode_label}{trace_note}]  [cost: $0.00]")
-    print("─" * 70)
+    mode_note  = "retrieval-only" if retrieval_only else "full-pipeline"
+    trace_note = " + trace" if save_traces else ""
+    print(f"\n{_col('GST RAG Regression Suite', _BOLD)}")
+    print(f"Running {len(filtered)} tests  [top_k={top_k}] [{mode_note}{trace_note}]  [cost: $0.00]")
+    print("-" * 70)
 
     for i, test in enumerate(filtered, 1):
         tid   = test["id"]
         query = test["query"]
         prio  = test.get("priority", "medium")
 
-        # Create a fresh trace for this query
-        trace = None
+        # Create trace
+        trace    = None
         query_id = _make_query_id()
         if save_traces and RetrievalTrace is not None:
             try:
                 trace = RetrievalTrace(query_id=query_id, query=query)
                 trace.record_preprocessing(
                     original_query=query,
-                    refined_query=query,       # regression runner doesn't refine
+                    refined_query=query,
                     sub_queries=[],
                     hyde_doc="",
                     topic=test.get("topic", "General"),
@@ -296,46 +608,39 @@ def run_tests(
         t0 = time.perf_counter()
         try:
             if retrieval_only:
-                # Fast path: FAISS + BM25 + TF-IDF + RRF only
                 chunks = retriever.search(query, top_k=top_k, trace=trace)
             else:
-                # Full pipeline: search → supplement_and_rerank (CrossEnc + MMR + injection)
-                fast_chunks = retriever.search(query, top_k=top_k * 2, trace=trace)
+                # Full pipeline: retrieve then supplement + rerank
+                fast = retriever.search(query, top_k=top_k * 2, trace=trace)
                 try:
                     chunks = retriever.supplement_and_rerank(
-                        fast_chunks,
-                        [],          # no advanced_queries in regression mode
-                        query,
-                        top_k,
-                        trace,
+                        fast, [], query, top_k, trace
                     )
                 except TypeError:
-                    # supplement_and_rerank signature may not accept trace yet
-                    chunks = retriever.supplement_and_rerank(fast_chunks, [], query, top_k)
-
+                    # Old signature without trace
+                    chunks = retriever.supplement_and_rerank(fast, [], query, top_k)
         except Exception as exc:
             print(f"  [{i:3d}/{len(filtered)}] {tid:14s}  ERROR: {exc}")
             results.append({
                 "id": tid, "query": query, "priority": prio,
                 "verdict": "error", "error": str(exc),
-                "duration_ms": 0,
-                "query_id": query_id,
+                "duration_ms": 0, "query_id": query_id,
             })
             continue
 
-        dur_ms  = round((time.perf_counter() - t0) * 1000)
-        eval_r  = evaluate_result(test, chunks)
+        dur_ms = round((time.perf_counter() - t0) * 1000)
+        eval_r = evaluate_result(test, chunks)
         verdict = eval_r["verdict"]
 
-        # Finalize trace
+        # Finalize and save trace
         if trace is not None:
             try:
                 trace.finalize(chunks, answer_meta={
-                    "query_id":    query_id,
-                    "mode":        "regression",
+                    "query_id":       query_id,
+                    "mode":           "regression",
                     "retrieval_only": retrieval_only,
-                    "verdict":     verdict,
-                    "coverage_pct": eval_r["coverage_pct"],
+                    "verdict":        verdict,
+                    "coverage_pct":   eval_r["coverage_pct"],
                 })
                 all_traces.append(trace.to_debug_dict())
             except Exception:
@@ -345,17 +650,17 @@ def run_tests(
         label  = verdict.upper().ljust(7)
         print(
             f"  [{i:3d}/{len(filtered)}] {tid:14s}  "
-            f"{_colour(label, colour)}  "
+            f"{_col(label, colour)}  "
             f"cov={eval_r['coverage_pct']:3d}%  {dur_ms:5d}ms  "
-            f"{query[:55]}"
+            f"{query[:50]}"
         )
         if verdict != "pass":
             if eval_r["cats_missing"]:
-                print(f"              ⚠ cats missing:  {eval_r['cats_missing']}")
+                print(f"              cats missing:  {eval_r['cats_missing']}")
             if eval_r["auths_missing"]:
-                print(f"              ⚠ auths missing: {eval_r['auths_missing']}")
+                print(f"              auths missing: {eval_r['auths_missing']}")
             if eval_r["kw_missing"]:
-                print(f"              ⚠ kw missing:    {eval_r['kw_missing']}")
+                print(f"              kw missing:    {eval_r['kw_missing']}")
 
         results.append({
             "id":           tid,
@@ -370,48 +675,48 @@ def run_tests(
             "query_id":     query_id,
         })
 
-    # Save traces to JSONL
+    # Persist traces to JSONL
     if save_traces and all_traces and trace_dir is not None:
         trace_dir.mkdir(parents=True, exist_ok=True)
-        run_ts    = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        out_path  = trace_dir / f"run_{run_ts}.jsonl"
+        run_ts   = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        out_path = trace_dir / f"run_{run_ts}.jsonl"
         with open(out_path, "w", encoding="utf-8") as f:
-            for t in all_traces:
-                f.write(json.dumps(t, ensure_ascii=False) + "\n")
+            for td in all_traces:
+                f.write(json.dumps(td, ensure_ascii=False) + "\n")
         print(f"\n  [traces] Saved {len(all_traces)} traces -> {out_path}")
 
-    return results
+    return results, all_traces
 
 
-def print_summary(results: list[dict], min_coverage: int) -> bool:
-    """Prints aggregate stats. Returns True if pass rate meets min_coverage."""
-    total   = len(results)
-    passes  = sum(1 for r in results if r["verdict"] == "pass")
-    partials= sum(1 for r in results if r["verdict"] == "partial")
-    fails   = sum(1 for r in results if r["verdict"] in ("fail", "error"))
-    pass_pct= round(100 * passes / total) if total else 0
-    avg_cov = round(sum(r.get("coverage_pct", 0) for r in results) / total) if total else 0
-    avg_ms  = round(sum(r.get("duration_ms", 0) for r in results) / total) if total else 0
+def print_summary(results: list, min_coverage: int) -> bool:
+    total    = len(results)
+    passes   = sum(1 for r in results if r["verdict"] == "pass")
+    partials = sum(1 for r in results if r["verdict"] == "partial")
+    fails    = sum(1 for r in results if r["verdict"] in ("fail", "error"))
+    pass_pct = round(100 * passes / total) if total else 0
+    avg_cov  = round(sum(r.get("coverage_pct", 0) for r in results) / total) if total else 0
+    avg_ms   = round(sum(r.get("duration_ms", 0) for r in results) / total) if total else 0
 
-    print("\n" + "═" * 70)
-    print(f"  {_colour('RESULTS', _BOLD)}")
+    print("\n" + "=" * 70)
+    print(f"  {_col('RESULTS', _BOLD)}")
     print(f"  Total    : {total}")
-    print(f"  Pass     : {_colour(str(passes), _GREEN)}")
-    print(f"  Partial  : {_colour(str(partials), _YELLOW)}")
-    print(f"  Fail     : {_colour(str(fails), _RED)}")
+    print(f"  Pass     : {_col(str(passes), _GREEN)}")
+    print(f"  Partial  : {_col(str(partials), _YELLOW)}")
+    print(f"  Fail     : {_col(str(fails), _RED)}")
     print(f"  Pass rate: {pass_pct}%  (threshold: {min_coverage}%)")
     print(f"  Avg cov  : {avg_cov}%")
     print(f"  Avg ms   : {avg_ms}ms / query")
-    print("═" * 70)
+    print("=" * 70)
 
     ok = pass_pct >= min_coverage
     if ok:
-        print(_colour(f"  ✓ REGRESSION SUITE PASSED (pass rate {pass_pct}% ≥ {min_coverage}%)", _GREEN))
+        print(_col(f"  REGRESSION SUITE PASSED ({pass_pct}% >= {min_coverage}%)", _GREEN))
     else:
-        print(_colour(f"  ✗ REGRESSION SUITE FAILED (pass rate {pass_pct}% < {min_coverage}%)", _RED))
-        high_fails = [r for r in results if r.get("priority") == "high" and r["verdict"] in ("fail", "error")]
+        print(_col(f"  REGRESSION SUITE FAILED ({pass_pct}% < {min_coverage}%)", _RED))
+        high_fails = [r for r in results
+                      if r.get("priority") == "high" and r["verdict"] in ("fail", "error")]
         if high_fails:
-            print(f"\n  {_colour('High-priority failures:', _RED)}")
+            print(f"\n  {_col('High-priority failures:', _RED)}")
             for r in high_fails:
                 print(f"    {r['id']:14s}  {r['query'][:60]}")
     print()
@@ -420,65 +725,49 @@ def print_summary(results: list[dict], min_coverage: int) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run the GST RAG regression suite against the live retriever. "
-                    "No Claude API calls — cost is always $0.00."
+        description="Run the GST RAG regression suite. Cost: $0 (no Claude API calls)."
     )
     parser.add_argument("--priority",     choices=["high", "medium", "low"],
-                        help="Filter tests by priority (default: all)")
-    parser.add_argument("--id",           type=str,  help="Run a single test by ID")
+                        help="Filter by priority (default: all)")
+    parser.add_argument("--id",           type=str,  help="Run single test by ID")
     parser.add_argument("--min-coverage", type=int,  default=70,
-                        help="Minimum pass-rate %% to exit 0 (default: 70)")
+                        help="Min pass-rate %% to exit 0 (default 70)")
     parser.add_argument("--top-k",        type=int,  default=15,
-                        help="Chunks to retrieve per query (default: 15)")
+                        help="Chunks to retrieve per query (default 15)")
     parser.add_argument("--json",         action="store_true",
-                        help="Output raw JSON results to stdout (instead of coloured table)")
+                        help="Output raw JSON to stdout")
     parser.add_argument("--suite",        type=str,
-                        default=str(_backend_dir / "data" / "regression" / "gst_regression_suite.json"),
-                        help="Path to test suite JSON file")
+                        default=str(_backend_dir / "data" / "regression" / "gst_regression_suite.json"))
 
-    # Trace collection flags
     parser.add_argument(
-        "--save-traces",
-        action="store_true",
-        help=(
-            "Record a RetrievalTrace per query and save to "
-            "data/regression/traces/run_YYYYMMDD_HHMMSS.jsonl. "
-            "Still costs $0 — no LLM calls."
-        ),
+        "--save-traces", action="store_true",
+        help="Record RetrievalTrace per query; save JSONL + print diagnostic report."
     )
     parser.add_argument(
-        "--retrieval-only",
-        action="store_true",
-        help=(
-            "Skip supplement_and_rerank() (no CrossEncoder / LegalReranker / MMR). "
-            "Faster and lower memory. Produces partial traces (FAISS/BM25/TF-IDF/RRF only). "
-            "Use when you only want to check raw retrieval, not full reranking."
-        ),
+        "--retrieval-only", action="store_true",
+        help="Skip supplement_and_rerank() (faster, partial traces)."
     )
 
     args = parser.parse_args()
 
-    # Load test suite
     suite_path = Path(args.suite)
     if not suite_path.exists():
-        print(f"ERROR: test suite not found at {suite_path}", file=sys.stderr)
+        print(f"ERROR: suite not found: {suite_path}", file=sys.stderr)
         sys.exit(2)
     tests = load_test_suite(suite_path)
     print(f"Loaded {len(tests)} tests from {suite_path.name}")
 
-    # Initialise retriever
-    print("Initialising retriever (may take 30–90s for sub-index builds)…")
+    print("Initialising retriever (30-90s for sub-index builds)...")
     try:
         from app.retrieval.retriever import Retriever
         retriever = Retriever()
     except Exception as exc:
-        print(f"ERROR: Could not initialise Retriever: {exc}", file=sys.stderr)
+        print(f"ERROR: Cannot initialise Retriever: {exc}", file=sys.stderr)
         raise
 
     trace_dir = _backend_dir / "data" / "regression" / "traces"
 
-    # Run
-    results = run_tests(
+    results, all_traces = run_tests(
         tests,
         retriever,
         priority_filter=args.priority,
@@ -489,19 +778,21 @@ def main():
         trace_dir=trace_dir,
     )
 
-    # Output
     if args.json:
         output = {
-            "run_at":           datetime.now(timezone.utc).isoformat(),
-            "suite":            str(suite_path),
-            "save_traces":      args.save_traces,
-            "retrieval_only":   args.retrieval_only,
-            "api_cost_usd":     0.00,
-            "results":          results,
+            "run_at":         datetime.now(timezone.utc).isoformat(),
+            "suite":          str(suite_path),
+            "save_traces":    args.save_traces,
+            "retrieval_only": args.retrieval_only,
+            "api_cost_usd":   0.00,
+            "results":        results,
         }
         print(json.dumps(output, indent=2, ensure_ascii=False))
     else:
         ok = print_summary(results, args.min_coverage)
+        if args.save_traces and all_traces:
+            report = generate_diagnostic_report(results, all_traces, tests)
+            print(report)
         sys.exit(0 if ok else 1)
 
 
