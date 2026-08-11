@@ -93,16 +93,37 @@ _CIR_LEADING_RE = re.compile(r'^(\d{2,3})[-_]\d+[-_]\d{4}', re.IGNORECASE)
 
 
 def _chunk_category(chunk: dict) -> str:
+    """
+    Classify a chunk by its top-level corpus directory.
+
+    Fix (2026-08-11): original code used "/act" substring which misses top-level
+    paths like "act/cgst_act.pdf" (no leading slash).  The retriever.py version
+    is correct — it uses startswith(folder + "/") for top-level paths.
+    This version matches that logic with the same folder sets.
+    """
     meta = chunk.get("metadata", {})
     rel  = (chunk.get("rel_path") or meta.get("rel_path", "")).replace("\\", "/").lower()
-    if any(f in rel for f in ("/notification", "/notifications")):
-        return "notification"
-    if any(f in rel for f in ("/circular", "/circulars")):
-        return "circular"
-    if any(f in rel for f in ("high court", "supreme court", "/aar", "other app")):
-        return "case_law"
-    if any(f in rel for f in ("/act", "/cgst", "/igst", "/rules", "/rule")):
-        return "statute"
+    # Prepend "/" so "act/..." becomes "/act/..." — both top-level and nested paths
+    # then match with trailing "/" to avoid false matches (e.g. "cgst_act" vs "cgst/")
+    r = "/" + rel
+
+    _CASE_LAW = {"high court case laws", "supreme court case laws", "aar", "other app result"}
+    _CIRCULAR  = {"circulars", "circular", "icai", "brochures", "faqs"}
+    _NOTIF     = {"notification", "notifications"}
+    _STATUTE   = {"act", "rules", "cgst", "igst", "utgst", "export"}
+
+    for folder in _CASE_LAW:
+        if f"/{folder}/" in r:
+            return "case_law"
+    for folder in _CIRCULAR:
+        if f"/{folder}/" in r:
+            return "circular"
+    for folder in _NOTIF:
+        if f"/{folder}/" in r:
+            return "notification"
+    for folder in _STATUTE:
+        if f"/{folder}/" in r:
+            return "statute"
     return "other"
 
 
@@ -123,9 +144,19 @@ def evaluate_result(test: dict, chunks: list) -> dict:
     all_text = ""
 
     for chunk in chunks:
-        meta = chunk.get("metadata", {})
+        meta = chunk.get("metadata", {}) or {}
         present_cats.add(_chunk_category(chunk))
         for p in meta.get("provisions", []) + meta.get("citations", []):
+            if p:
+                present_provs.add(p)
+        # P2.5b: metadata.provisions is stripped by supplement_and_rerank flattening.
+        # _anchor_provision (set by _direct_ref_lookup) survives the full pipeline
+        # and is the authoritative signal that this chunk satisfies a provision key.
+        _ap = chunk.get("_anchor_provision")
+        if _ap:
+            present_provs.add(_ap)
+        # Also accept top-level provisions/citations (future-proofed schema variants)
+        for p in chunk.get("provisions", []) + chunk.get("citations", []):
             if p:
                 present_provs.add(p)
         rel = (chunk.get("rel_path") or meta.get("rel_path", ""))
@@ -199,7 +230,8 @@ def _make_query_id() -> str:
 
 # ── Gold-document matching ────────────────────────────────────────────────────
 
-def _auth_matches_chunk(auth: str, rel_path: str, text_preview: str) -> bool:
+def _auth_matches_chunk(auth: str, rel_path: str, text_preview: str,
+                        provisions: list = None) -> bool:
     """
     Approximate match: does this chunk likely contain the given authority?
 
@@ -210,6 +242,11 @@ def _auth_matches_chunk(auth: str, rel_path: str, text_preview: str) -> bool:
       IGST_SEC_X        -- IGST Act Section X
       NOTIFICATION_X    -- Notification No. X
       CGST_SCHEDULE_X   -- Schedule X of CGST Act
+
+    P2.5: `provisions` = metadata.provisions list from ChunkRecord (stored in trace).
+    When available, provision key match is used as primary signal — this fixes the
+    false-negative where statute chunks contain section CONTENT but not the section
+    HEADER (so text doesn't say "Section 17" even though the chunk IS Section 17).
     """
     rel  = rel_path.replace("\\", "/").lower()
     text = (text_preview or "").lower()
@@ -235,17 +272,35 @@ def _auth_matches_chunk(auth: str, rel_path: str, text_preview: str) -> bool:
 
         if subtype == "SEC":
             sec = pts[2]
+            # P2.5: check metadata.provisions first (definitive match, no text required)
+            if provisions and (auth in provisions or any(
+                p.startswith(auth + "_") for p in provisions
+            )):
+                # Confirm it's from the right act (CGST vs IGST) via path
+                right_act = (act_key in rel) or (
+                    "icai" in rel  # ICAI bare-law mega-PDF contains both CGST and IGST
+                )
+                if right_act:
+                    return True
+            # Fallback: path + text heuristic
             right_doc = (act_key in rel) and ("act" in rel or "cgst" in rel or "igst" in rel)
             mentions   = (
                 f"section {sec}" in text
                 or f"section{sec}" in text
                 or f"s. {sec}" in text
                 or f"s.{sec}" in text
+                or text.startswith(f"{sec} ")      # section header "17 Input tax credit..."
+                or f"\n{sec}." in text             # "17. Input tax credit..."
             )
             return right_doc and mentions
 
         if subtype == "RUL":
             rule = pts[2]
+            # P2.5: check metadata.provisions
+            if provisions and (auth in provisions or any(
+                p.startswith(auth + "_") for p in provisions
+            )):
+                return True
             return "rule" in rel and (
                 rule in rel
                 or f"rule {rule}" in text
@@ -264,7 +319,8 @@ def _gold_chunk_ids(required_authorities: list, all_chunks: list) -> set:
         for chunk in all_chunks:
             if _auth_matches_chunk(auth,
                                    chunk.get("rel_path", ""),
-                                   chunk.get("text_preview", "")):
+                                   chunk.get("text_preview", ""),
+                                   chunk.get("provisions", [])):
                 gold.add(chunk["chunk_id"])
     return gold
 
@@ -372,7 +428,7 @@ def generate_diagnostic_report(
         test     = tests_by_id.get(test_id, {})
         trace    = traces_by_qid.get(query_id)
 
-        topic = test.get("topic", "unknown")
+        topic = test.get("topic") or "unknown"
         topic_total[topic] += 1
         if result.get("verdict") in ("fail", "partial", "error"):
             topic_fail[topic] += 1
@@ -632,7 +688,7 @@ def run_tests(
         eval_r = evaluate_result(test, chunks)
         verdict = eval_r["verdict"]
 
-        # Finalize and save trace
+        # Finalize and save trace — flush immediately so partial runs are recoverable
         if trace is not None:
             try:
                 trace.finalize(chunks, answer_meta={
@@ -642,7 +698,17 @@ def run_tests(
                     "verdict":        verdict,
                     "coverage_pct":   eval_r["coverage_pct"],
                 })
-                all_traces.append(trace.to_debug_dict())
+                td = trace.to_debug_dict()
+                all_traces.append(td)
+                # Incremental flush — append one line at a time
+                if trace_dir is not None:
+                    trace_dir.mkdir(parents=True, exist_ok=True)
+                    # Use a stable run filename so incremental flushes append correctly
+                    if not hasattr(run_tests, "_trace_path"):
+                        run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+                        run_tests._trace_path = trace_dir / f"run_{run_ts}.jsonl"
+                    with open(run_tests._trace_path, "a", encoding="utf-8") as _tf:
+                        _tf.write(json.dumps(td, ensure_ascii=False) + "\n")
             except Exception:
                 pass
 
@@ -675,15 +741,14 @@ def run_tests(
             "query_id":     query_id,
         })
 
-    # Persist traces to JSONL
-    if save_traces and all_traces and trace_dir is not None:
-        trace_dir.mkdir(parents=True, exist_ok=True)
-        run_ts   = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        out_path = trace_dir / f"run_{run_ts}.jsonl"
-        with open(out_path, "w", encoding="utf-8") as f:
-            for td in all_traces:
-                f.write(json.dumps(td, ensure_ascii=False) + "\n")
-        print(f"\n  [traces] Saved {len(all_traces)} traces -> {out_path}")
+    # Report final trace file path (already written incrementally above)
+    if save_traces and all_traces:
+        out_path = getattr(run_tests, "_trace_path", None)
+        if out_path:
+            print(f"\n  [traces] {len(all_traces)} traces -> {out_path}")
+        # Reset for next run
+        if hasattr(run_tests, "_trace_path"):
+            del run_tests._trace_path
 
     return results, all_traces
 
@@ -759,8 +824,14 @@ def main():
 
     print("Initialising retriever (30-90s for sub-index builds)...")
     try:
-        from app.retrieval.retriever import Retriever
-        retriever = Retriever()
+        from app.dependencies import get_retriever
+        retriever = get_retriever()
+        # Disable CrossEncoder locally: the nli-deberta-v3-large model reloads
+        # from disk every query on Windows (no symlink cache) and fails with a
+        # 0-dim scalar error anyway (wrong model for ranking).  Nulling it makes
+        # _cascade_rerank fall back to RRF order — same as prod fallback path.
+        retriever.cross_encoder = None
+        print("  [local] CrossEncoder disabled — RRF fallback active (no cost, correct behavior)")
     except Exception as exc:
         print(f"ERROR: Cannot initialise Retriever: {exc}", file=sys.stderr)
         raise

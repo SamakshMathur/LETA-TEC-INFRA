@@ -81,7 +81,9 @@ def latest_trace_file() -> Path:
 
 # ── Gold matching (mirrors run_regression.py) ─────────────────────────────────
 
-def _auth_matches_chunk(auth: str, rel_path: str, text_preview: str) -> bool:
+def _auth_matches_chunk(auth: str, rel_path: str, text_preview: str,
+                        provisions: list = None) -> bool:
+    """Mirrors run_regression.py._auth_matches_chunk — keep in sync."""
     rel  = rel_path.replace("\\", "/").lower()
     text = (text_preview or "").lower()
     pts  = auth.upper().split("_")
@@ -103,17 +105,30 @@ def _auth_matches_chunk(auth: str, rel_path: str, text_preview: str) -> bool:
 
         if subtype == "SEC":
             sec = pts[2]
+            # P2.5: metadata provision key match (definitive)
+            if provisions and (auth in provisions or any(
+                p.startswith(auth + "_") for p in provisions
+            )):
+                right_act = (act_key in rel) or ("icai" in rel)
+                if right_act:
+                    return True
             right_doc = (act_key in rel) and ("act" in rel or "cgst" in rel or "igst" in rel)
             mentions   = (
                 f"section {sec}" in text
                 or f"section{sec}" in text
                 or f"s. {sec}" in text
                 or f"s.{sec}" in text
+                or text.startswith(f"{sec} ")
+                or f"\n{sec}." in text
             )
             return right_doc and mentions
 
         if subtype == "RUL":
             rule = pts[2]
+            if provisions and (auth in provisions or any(
+                p.startswith(auth + "_") for p in provisions
+            )):
+                return True
             return "rule" in rel and (rule in rel or f"rule {rule}" in text)
 
         if subtype == "SCHEDULE":
@@ -128,7 +143,8 @@ def _gold_chunk_ids(required_authorities: list, all_chunks: list) -> set:
         for chunk in all_chunks:
             if _auth_matches_chunk(auth,
                                    chunk.get("rel_path", ""),
-                                   chunk.get("text_preview", "")):
+                                   chunk.get("text_preview", ""),
+                                   chunk.get("provisions", [])):
                 gold.add(chunk["chunk_id"])
     return gold
 
@@ -206,7 +222,7 @@ def analyze_query(trace: dict, test: dict) -> dict:
         "test_id":      test["id"],
         "query_id":     trace.get("query_id", ""),
         "query":        trace.get("query", "")[:80],
-        "topic":        test.get("topic", "unknown"),
+        "topic":        test.get("topic") or "unknown",
         "req_auths":    req_auths,
         "gold_matched": len(gold_ids),
         "first_failure":ff,

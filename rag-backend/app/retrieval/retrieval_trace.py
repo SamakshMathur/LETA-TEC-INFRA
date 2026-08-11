@@ -105,6 +105,12 @@ class ChunkRecord:
     mmr_kept: Optional[bool]  = None
     mmr_similarity: Optional[float] = None  # max Jaccard to already-selected chunks
 
+    # Provision keys from metadata (P2.5 — used by gold matcher)
+    provisions: list = field(default_factory=list)
+
+    # Provision Anchoring metadata (P2.5)
+    anchor_provision: Optional[str] = None    # which taxonomy provision key pinned this
+
     # Final outcome
     selected: bool = False
     selection_reasons: list = field(default_factory=list)
@@ -134,6 +140,8 @@ class ChunkRecord:
             "injection_score":     self.injection_score,
             "mmr_kept":            self.mmr_kept,
             "mmr_similarity":      self.mmr_similarity,
+            "provisions":          self.provisions,
+            "anchor_provision":    self.anchor_provision,
             "selected":            self.selected,
             "selection_reasons":   self.selection_reasons,
             "elimination_reason":  self.elimination_reason,
@@ -193,13 +201,26 @@ class RetrievalTrace:
             rel = (chunk.get("rel_path") or
                    chunk.get("metadata", {}).get("rel_path", "") or
                    chunk.get("source", ""))
+            _meta = chunk.get("metadata", {})
+            # P2.5: capture provision keys so gold matcher can identify statute chunks
+            # even when the text_preview doesn't explicitly say "Section N"
+            _provs = list(set(
+                _meta.get("provisions", []) + _meta.get("citations", [])
+            ))
             self._chunks[cid] = ChunkRecord(
                 chunk_id     = cid,
                 document_id  = _doc_id(rel),
                 document_type= _doc_type(rel),
                 rel_path     = rel,
                 text_preview = (chunk.get("text") or "")[:180],
+                provisions   = _provs,
+                anchor_provision = chunk.get("_anchor_provision"),
             )
+        else:
+            # Update anchor_provision if newly set (e.g. chunk re-encountered as pinned)
+            _rec = self._chunks[cid]
+            if not _rec.anchor_provision and chunk.get("_anchor_provision"):
+                _rec.anchor_provision = chunk["_anchor_provision"]
         return self._chunks[cid]
 
     # ── Preprocessing ──────────────────────────────────────────────────────────

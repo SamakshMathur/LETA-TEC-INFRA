@@ -537,14 +537,28 @@ def classify_query_authority(query: str) -> dict:
             # Merge: take the max multiplier when two topics disagree
             adj_map[cat] = max(adj_map.get(cat, 1.0), mult)
 
+    # P2.5 — implied_provisions: structured list for Provision Anchoring Layer.
+    # Each entry carries the authority, provision key, and normalized confidence [0-1].
+    # Confidence = keyword hit count / 5 (capped at 1.0) — a rough but useful signal.
+    _conf_float = min(1.0, top_matches[0][0] / 5.0) if top_matches else 0.0
+    _implied = []
+    for _sec in sections:
+        _act = "IGST_ACT" if _sec.startswith("IGST_") else "CGST_ACT"
+        _implied.append({"authority": _act, "provision": _sec, "confidence": _conf_float})
+    for _rul in rules:
+        _implied.append({"authority": "CGST_RULES", "provision": _rul, "confidence": _conf_float})
+    for _cir in circulars:
+        _implied.append({"authority": "CBIC_CIRCULAR", "provision": _cir, "confidence": _conf_float})
+
     return {
-        "topics":        [t for _, t, _ in top_matches],
-        "sections":      sections,
-        "rules":         rules,
-        "circulars":     circulars,
-        "expected_cats": exp_cats,
-        "authority_adj": adj_map,
-        "confidence":    top_matches[0][0] if top_matches else 0,
+        "topics":             [t for _, t, _ in top_matches],
+        "sections":           sections,
+        "rules":              rules,
+        "circulars":          circulars,
+        "expected_cats":      exp_cats,
+        "authority_adj":      adj_map,
+        "confidence":         top_matches[0][0] if top_matches else 0,
+        "implied_provisions": _implied,
     }
 
 

@@ -1005,45 +1005,135 @@ class Retriever:
 
         return result
 
-    def _direct_ref_lookup(self, refs: list) -> list:
+    def _direct_ref_lookup(self, refs: list, anchor_score: float = 0.05) -> list:
         """
         Returns chunks that explicitly cite any of the given provision keys,
         using the pre-built provision index for O(1) lookup per key.
         CIRCULAR_N keys are resolved via _circular_index (filename-based).
-        These chunks are pinned at the top of combined_results with
-        _statute_priority=1.0 so they survive FlashRank and LegalReranker.
-        Capped at 20 to avoid flooding the reranker with pinned chunks.
+        These chunks are pinned at the top of combined_results.
+
+        P2.5 (Provision Anchoring 2026-08-11):
+          anchor_score: every pinned chunk receives this as _debug_score so that
+          after source-type weighting (statute × 1.5) it beats typical AAR/ICAI
+          chunks (RRF ~0.04 × 0.75 = 0.030) in the _final_legal_score sort.
+          Without this, pinned chunks have _base=0 and are cut by MMR.
+
+          IGST alias: IGST chunks were ingested with CGST_SEC_* provision keys
+          (ingestion bug).  When IGST_SEC_X is not found in _provision_index,
+          we also try CGST_SEC_X but only return chunks from paths containing
+          'igst' so CGST Act sections are not confused with IGST ones.
+
+          P2.5b (Provision Index Priority 2026-08-11):
+          Each provision key may have hundreds of entries (CGST_SEC_9 has 709).
+          Without sorting, the first 30 pinned chunks are dominated by case_law
+          and ICAI commentary that merely cite the section. We need the actual
+          statute text chunks first. Priority order:
+            0 = statute path (Act/, igst/, cgst/, rules/, etc.)
+            1 = ICAI bare-law mega-PDF (actual statute/rule text despite icai/ path)
+            2 = circulars / notifications (official but secondary)
+            3 = AAR / HC / SC / other commentary (should not be primary statute anchor)
+
+        Capped at 30 to allow full provision coverage across 5-6 taxonomy refs.
         """
+        # IGST Act chunks were ingested with CGST_SEC_* keys (ingestion bug).
+        # Map IGST_SEC_X → also search CGST_SEC_X limited to igst/ path chunks.
+        _IGST_ALIAS = {
+            f"IGST_SEC_{n}": f"CGST_SEC_{n}"
+            for n in range(1, 30)
+        }
+
         if not refs or not hasattr(self, "_provision_index"):
             return []
         seen_ids: set = set()
         pinned = []
 
-        def _pin(idx: int) -> bool:
+        # P2.5b: Priority-sort indices so statute text chunks are pinned first.
+        _STATUTE_PATH_PREFIXES = ("act/", "igst/", "cgst/", "rules/", "utgst/", "export/")
+        _OFFICIAL_PATH_PREFIXES = ("circular", "notification")
+
+        def _idx_priority(idx: int) -> int:
+            """Lower = pinned first. Sorts statute text chunks before commentary."""
+            if idx >= len(self.chunks):
+                return 9
+            _rp = (self.chunks[idx].get("rel_path") or
+                   self.chunks[idx].get("metadata", {}).get("rel_path", "")).replace("\\", "/").lower()
+            if any(_rp.startswith(p) for p in _STATUTE_PATH_PREFIXES):
+                return 0   # actual statute text
+            if "icai" in _rp and "bare law" in _rp:
+                return 1   # ICAI bare-law mega-PDF — contains actual rules text
+            first = _rp.split("/")[0] if "/" in _rp else _rp[:20]
+            if any(first.startswith(p) for p in _OFFICIAL_PATH_PREFIXES):
+                return 2   # official circular / notification
+            return 3       # AAR, HC, SC, ICAI commentary — low priority for statute pin
+
+        def _pin(idx: int, provision_key: str, is_alias: bool = False) -> bool:
             if idx >= len(self.chunks):
                 return False
             chunk = self.chunks[idx]
+            # If this is an IGST alias lookup, only accept chunks from igst/ path
+            if is_alias:
+                _rp = (chunk.get("rel_path") or
+                       chunk.get("metadata", {}).get("rel_path", "")).replace("\\", "/").lower()
+                if not _rp.startswith("igst/"):
+                    return False
             cid = chunk.get("chunk_id")
             if cid and cid not in seen_ids:
                 c = chunk.copy()
-                c["_pinned_by_ref"] = True
+                c["_pinned_by_ref"]    = True
                 c["_statute_priority"] = 1.0
+                c["_anchor_provision"] = provision_key   # which provision key found this
+                c["_debug_score"]      = anchor_score    # P2.5: ensures survival past MMR
                 pinned.append(c)
                 seen_ids.add(cid)
                 return True
             return False
 
+        # P2.5b: per-key cap limits how many chunks a single provision key can pin.
+        # Without this, CGST_SEC_9 (709 entries, 104 statute) fills all 30 slots
+        # with Section 9 statute chunks (text="section 9 9"), crowding out FAISS
+        # results that supply notifications, keywords, and sub-section content.
+        # A per-key cap of 3 leaves semantic search results room in the final context.
+        _PER_KEY_CAP   = 3    # max chunks pinned per provision key
+        _GLOBAL_CAP    = 20   # max total pinned chunks across all keys
+
         for ref in refs:
-            # Statutory provisions (CGST_SEC_16, CGST_RUL_89, etc.)
-            for idx in self._provision_index.get(ref, []):
-                _pin(idx)
-                if len(pinned) >= 20:
+            _ref_count = 0  # track per-key count
+
+            # Primary lookup: metadata provision keys (CGST_SEC_16, CGST_RUL_89, etc.)
+            # P2.5b: sort by statute-path priority so Act/ chunks are pinned before AAR/ICAI
+            _raw_indices = self._provision_index.get(ref, [])
+            _sorted_indices = sorted(_raw_indices, key=_idx_priority)
+            for idx in _sorted_indices:
+                if _ref_count >= _PER_KEY_CAP:
+                    break
+                if _pin(idx, ref):
+                    _ref_count += 1
+                if len(pinned) >= _GLOBAL_CAP:
                     return pinned
+
+            # IGST alias: when IGST_SEC_X is absent (ingestion labelled it CGST_SEC_X),
+            # find the CGST-keyed entry but filter to igst/ path only.
+            if ref in _IGST_ALIAS and not self._provision_index.get(ref):
+                alias_key = _IGST_ALIAS[ref]
+                _alias_indices = sorted(
+                    self._provision_index.get(alias_key, []), key=_idx_priority
+                )
+                for idx in _alias_indices:
+                    if _ref_count >= _PER_KEY_CAP:
+                        break
+                    if _pin(idx, ref, is_alias=True):
+                        _ref_count += 1
+                    if len(pinned) >= _GLOBAL_CAP:
+                        return pinned
+
             # Circular number keys (CIRCULAR_183) — resolved from filename-based index
             if ref.startswith("CIRCULAR_") and hasattr(self, "_circular_index"):
                 for idx in self._circular_index.get(ref, []):
-                    _pin(idx)
-                    if len(pinned) >= 20:
+                    if _ref_count >= _PER_KEY_CAP:
+                        break
+                    if _pin(idx, ref):
+                        _ref_count += 1
+                    if len(pinned) >= _GLOBAL_CAP:
                         return pinned
         return pinned
 
@@ -1440,6 +1530,17 @@ class Retriever:
                 combined_results.append(r)
                 existing_ids.add(r.get("chunk_id"))
 
+        # --- P2.2: Exclude generated_reports from retrieval corpus ---
+        # These 206 LETA-generated Advisory PDFs create a feedback loop: the model can
+        # retrieve its own prior outputs as if they were authoritative legal sources.
+        # Authoritative corpus must not contain generated material.
+        # Evidence: regression run 2026-08-11 confirmed these contaminate final context.
+        combined_results = [
+            r for r in combined_results
+            if not (r.get("rel_path") or r.get("metadata", {}).get("rel_path", ""))
+               .lower().replace("\\", "/").startswith("generated_reports")
+        ]
+
         # Cap total candidates for reranker (FlashRank OOM above ~300)
         RERANK_MAX = 80
         reranker_input = combined_results[:RERANK_MAX]
@@ -1462,7 +1563,46 @@ class Retriever:
                 pass
 
         # --- Layer 3: Legal Reranking (Composite Scoring) ---
-        reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic, is_draft=is_draft)
+        # P2.1 EXPERIMENT — LegalReranker disabled (2026-08-11)
+        # Evidence from 57-query regression: gold avg rank 7.5 after CrossEncoder → 45.4
+        # after LegalReranker.  EXP-001: rank 1 → 49, REF-001: rank 1 → 50.
+        # The composite scorer is learning the wrong relevance function: it boosts AAR /
+        # ICAI / Q&A chunks that share vocabulary with the query over the actual statutes.
+        # Disabled until source-authority weighting is added to the scoring model.
+        # To re-enable: uncomment the line below and delete the score-propagation loop.
+        #
+        # reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic, is_draft=is_draft)
+        #
+        # Propagate CrossEncoder / RRF score as _final_legal_score so all downstream
+        # stages (doc-hit boost, MMR, circular floor, circular pool sort) still have
+        # meaningful per-chunk scores.
+        #
+        # P2.2 — Source-type authority weighting (2026-08-11)
+        # Problem: vocabulary similarity alone lets company-specific AAR documents
+        # (Thyssenkrupp ×390, Hindustan Pencils ×95) dominate over the CGST Act.
+        # Fix: apply a static authority multiplier calibrated by source directory.
+        #
+        # STATIC weights (Phase 1) — query-independent.
+        # Next step (Phase 2): route multiplier by query intent (statutory vs. case-specific).
+        #   Statutory queries   → statute ×2.0, circular ×1.3, AAR ×0.5
+        #   Case-specific queries → AAR ×1.5, statute ×1.0, circular ×1.0
+        # These static weights are a conservative first step in that direction.
+        _SRC_WEIGHTS = {
+            # Primary legislation — always prefer
+            "statute":       1.50,
+            # Authoritative CBIC interpretations
+            "notification":  1.20,
+            "circular":      1.10,
+            # Case law — relevant but case-specific; not controlling for statutory queries
+            "case_law":      0.75,
+            # Secondary explanatory material
+            "other":         0.80,
+        }
+        for _ch in reranked_results:
+            _base = float(_ch.get("_rerank_score", _ch.get("_debug_score", 0.0)))
+            _cat  = _chunk_category(_ch)
+            _ch["_source_type"]      = _cat
+            _ch["_final_legal_score"] = _base * _SRC_WEIGHTS.get(_cat, 1.0)
         # ── TRACE: LegalReranker scores ───────────────────────────────────────
         if trace is not None:
             try:
@@ -1629,9 +1769,14 @@ class Retriever:
                             _c  = self.chunks[_gi].copy()
                             _cid = _c.get("chunk_id")
                             if _cid and _cid not in _l6_existing_ids:
-                                _c["_coverage_fill"] = True
-                                _c["_coverage_cat"]  = _mcat
-                                _c["_coverage_sim"]  = round(float(_sim), 4)
+                                _c["_coverage_fill"]        = True
+                                _c["_coverage_cat"]         = _mcat
+                                _c["_coverage_sim"]         = round(float(_sim), 4)
+                                # P2.5: anchor score — injected after MMR so Layer 3 already ran;
+                                # set _final_legal_score directly so this chunk survives top_k cut.
+                                _SRC_W_L6 = {"statute": 1.50, "notification": 1.20,
+                                             "circular": 1.10, "case_law": 0.75, "other": 0.80}
+                                _c["_final_legal_score"] = 0.05 * _SRC_W_L6.get(_mcat, 1.0)
                                 reranked_results.append(_c)
                                 _l6_existing_ids.add(_cid)
                                 logger.info(
@@ -1672,6 +1817,12 @@ class Retriever:
                 _mae_existing_ids = {c.get("chunk_id") for c in reranked_results}
                 _mae_injected = 0
 
+                # P2.5 anchor score for MAE-injected chunks (injected after MMR so
+                # Layer 3 already ran; set _final_legal_score directly).
+                _MAE_STATUTE_SCORE  = 0.05 * 1.50   # = 0.075  (statute × 1.5)
+                _MAE_CIRCULAR_SCORE = 0.05 * 1.10   # = 0.055  (circular × 1.1)
+                _MAE_NOTIF_SCORE    = 0.05 * 1.20   # = 0.060  (notification × 1.2)
+
                 # Step 1: Direct provision-index lookup for missing sections/rules
                 _sec_rule_refs = (
                     _coverage_result["missing_sections"] + _coverage_result["missing_rules"]
@@ -1681,8 +1832,9 @@ class Retriever:
                     for _fc in _forced:
                         _fid = _fc.get("chunk_id")
                         if _fid and _fid not in _mae_existing_ids:
-                            _fc["_mandatory_inject"] = True
-                            _fc["_mandatory_ref"] = True
+                            _fc["_mandatory_inject"]    = True
+                            _fc["_mandatory_ref"]       = True
+                            _fc["_final_legal_score"]   = _MAE_STATUTE_SCORE
                             reranked_results.append(_fc)
                             _mae_existing_ids.add(_fid)
                             _mae_injected += 1
@@ -1694,8 +1846,9 @@ class Retriever:
                         _c = self.chunks[_ci].copy()
                         _cid = _c.get("chunk_id")
                         if _cid and _cid not in _mae_existing_ids:
-                            _c["_mandatory_inject"] = True
+                            _c["_mandatory_inject"]  = True
                             _c["_mandatory_circular"] = _mc_key
+                            _c["_final_legal_score"] = _MAE_CIRCULAR_SCORE
                             reranked_results.append(_c)
                             _mae_existing_ids.add(_cid)
                             _mae_injected += 1
@@ -1939,7 +2092,18 @@ class Retriever:
             except Exception:
                 pass
 
-        reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
+        # P2.1 EXPERIMENT: LegalReranker disabled — same reason as search() above.
+        # reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
+        # P2.2 source-type weighting (mirrors search() block — same multipliers).
+        _SRC_WEIGHTS_SR = {
+            "statute": 1.50, "notification": 1.20, "circular": 1.10,
+            "case_law": 0.75, "other": 0.80,
+        }
+        for _ch in reranked:
+            _base = float(_ch.get("_rerank_score", _ch.get("_debug_score", 0.0)))
+            _cat  = _chunk_category(_ch)
+            _ch["_source_type"]       = _cat
+            _ch["_final_legal_score"] = _base * _SRC_WEIGHTS_SR.get(_cat, 1.0)
         # ── TRACE: LegalReranker (supplement_and_rerank path) ─────────────────
         if trace is not None:
             try:
