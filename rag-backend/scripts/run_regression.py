@@ -178,8 +178,51 @@ def evaluate_result(test: dict, chunks: list) -> dict:
         else:
             auths_missing.append(auth)
 
-    kw_found   = [kw for kw in req_kws if kw.lower() in all_text]
-    kw_missing = [kw for kw in req_kws if kw.lower() not in all_text]
+    def _kw_present(kw: str, text: str) -> bool:
+        """Check keyword with format-normalisation for Indian legal documents.
+
+        GST rate notifications use "X per cent" (e.g. "2.5 per cent" for CGST
+        component of a 5% combined rate), while gold keywords may say "5%".
+        Also normalise sub-section references: "section 17(5)" ↔ "sub-section (5)
+        of section 17" ↔ "17(5)".
+        """
+        kl = kw.lower()
+        if kl in text:
+            return True
+        # Percentage ↔ "per cent" / "per cent." variants
+        import re as _re
+        m = _re.match(r'^(\d+(?:\.\d+)?)%$', kl)
+        if m:
+            n = float(m.group(1))
+            # Exact "X per cent" form
+            if f"{int(n) if n == int(n) else n} per cent" in text:
+                return True
+            # CGST component = half the combined rate (e.g. 5% → 2.5 per cent)
+            half = n / 2
+            half_s = str(int(half)) if half == int(half) else str(half)
+            if f"{half_s} per cent" in text:
+                return True
+            # Also check plain "X" (for tables where % is implicit)
+            num_s = str(int(n)) if n == int(n) else str(n)
+            if f"({num_s})" in text or f"@{num_s}" in text:
+                return True
+        # "section X(Y)" ↔ "sub-section (Y) of section X" ↔ bare "X(Y)"
+        m2 = _re.match(r'^section\s+(\d+)\((\w+)\)$', kl)
+        if m2:
+            sec, sub = m2.group(1), m2.group(2)
+            for variant in [
+                f"section {sec}({sub})",
+                f"sub-section ({sub}) of section {sec}",
+                f"section {sec} ({sub})",
+                f"{sec}({sub})",
+                f"s. {sec}({sub})",
+            ]:
+                if variant in text:
+                    return True
+        return False
+
+    kw_found   = [kw for kw in req_kws if _kw_present(kw, all_text)]
+    kw_missing = [kw for kw in req_kws if not _kw_present(kw, all_text)]
 
     total = len(req_cats) + len(req_auths) + len(req_kws)
     found = len(cats_found) + len(auths_found) + len(kw_found)
@@ -666,15 +709,12 @@ def run_tests(
             if retrieval_only:
                 chunks = retriever.search(query, top_k=top_k, trace=trace)
             else:
-                # Full pipeline: retrieve then supplement + rerank
-                fast = retriever.search(query, top_k=top_k * 2, trace=trace)
-                try:
-                    chunks = retriever.supplement_and_rerank(
-                        fast, [], query, top_k, trace
-                    )
-                except TypeError:
-                    # Old signature without trace
-                    chunks = retriever.supplement_and_rerank(fast, [], query, top_k)
+                # Full pipeline via search() — includes Layer 5/6/7 (MAE, coverage fill,
+                # circular floor).  supplement_and_rerank() with empty advanced_queries
+                # early-returns base_chunks[:top_k] and skips all injection layers,
+                # so calling it here would silently cut Layer 6/7 injections that
+                # appear at positions top_k..top_k*2 in the fast list.
+                chunks = retriever.search(query, top_k=top_k, trace=trace)
         except Exception as exc:
             print(f"  [{i:3d}/{len(filtered)}] {tid:14s}  ERROR: {exc}")
             results.append({

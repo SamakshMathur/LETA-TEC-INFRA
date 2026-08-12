@@ -1696,6 +1696,7 @@ class Retriever:
                             f"«{(_c.get('rel_path') or _c.get('source', ''))[-60:]}»"
                         )
                         continue
+                    _c["_circ_floor_inject"] = True   # needed by injection-aware top_k cutoff
                     reranked_results.append(_c)
                     _circ_floor_injected += 1
                     logger.info(
@@ -1756,17 +1757,34 @@ class Retriever:
                     ),
                 }
                 _qv = np.array([query_vec]).astype("float32")
+                # How many chunks to inject per missing category.
+                # Notifications need up to 3 because top FAISS hits may already be
+                # in the MMR results (injected earlier by notation sub-search), so
+                # we look deeper to find a genuinely new, correctly-categorised chunk.
+                _L6_CAP = {"notification": 3, "circular": 2, "statute": 1, "case_law": 1}
                 for _mcat in sorted(_missing):   # deterministic order
                     _sub_idx, _sub_map, _min_sim = _sub_registry.get(_mcat, (None, [], 0.20))
                     if _sub_idx is None or not _sub_map:
                         continue
+                    _SRC_W_L6 = {"statute": 1.50, "notification": 1.20,
+                                 "circular": 1.10, "case_law": 0.75, "other": 0.80}
+                    _l6_added = 0
+                    _l6_cap   = _L6_CAP.get(_mcat, 1)
                     try:
-                        _cv_D, _cv_I = _sub_idx.search(_qv, 5)
+                        _cv_D, _cv_I = _sub_idx.search(_qv, 15)   # search wider pool
                         for _sim, _li in zip(_cv_D[0], _cv_I[0]):
+                            if _l6_added >= _l6_cap:
+                                break
                             if _li < 0 or float(_sim) < _min_sim:
                                 continue
                             _gi = _sub_map[_li]
                             _c  = self.chunks[_gi].copy()
+                            # Guard: chunk must actually be the expected category.
+                            # _sub_map is built at init from _chunk_category; verify
+                            # after copy in case metadata was mutated.
+                            _actual_cat = _chunk_category(_c)
+                            if _actual_cat != _mcat:
+                                continue   # skip mis-classified chunks in sub-index
                             _cid = _c.get("chunk_id")
                             if _cid and _cid not in _l6_existing_ids:
                                 _c["_coverage_fill"]        = True
@@ -1774,11 +1792,10 @@ class Retriever:
                                 _c["_coverage_sim"]         = round(float(_sim), 4)
                                 # P2.5: anchor score — injected after MMR so Layer 3 already ran;
                                 # set _final_legal_score directly so this chunk survives top_k cut.
-                                _SRC_W_L6 = {"statute": 1.50, "notification": 1.20,
-                                             "circular": 1.10, "case_law": 0.75, "other": 0.80}
                                 _c["_final_legal_score"] = 0.05 * _SRC_W_L6.get(_mcat, 1.0)
                                 reranked_results.append(_c)
                                 _l6_existing_ids.add(_cid)
+                                _l6_added += 1
                                 logger.info(
                                     f"Layer 6 coverage fill: +1 {_mcat} chunk "
                                     f"(sim={float(_sim):.3f}) — "
@@ -1790,7 +1807,6 @@ class Retriever:
                                         trace.record_injected(_c, f"layer6_{_mcat}", score=float(_sim))
                                     except Exception:
                                         pass
-                                break   # one coverage-fill chunk per missing category
                     except Exception as _l6e:
                         logger.warning(f"Layer 6 coverage fill ({_mcat}) failed: {_l6e}")
 
@@ -2009,14 +2025,26 @@ class Retriever:
         except Exception:
             pass   # logging failures must never affect retrieval
 
+        # ── Injection-aware top_k cutoff ──────────────────────────────────────
+        # Layer 5/6/7 injections (coverage_fill, mandatory_inject, self_critique)
+        # are appended AFTER MMR, so they appear at positions >= top_k in
+        # final_results.  A naive [:top_k] slice silently drops them.
+        # Fix: keep exactly top_k core (non-injected) chunks PLUS all injected
+        # chunks unconditionally so the LLM always receives required authorities.
+        _INJECT_FLAGS = ("_coverage_fill", "_mandatory_inject", "_self_critique_inject",
+                         "_circ_floor_inject")
+        _core     = [c for c in final_results if not any(c.get(f) for f in _INJECT_FLAGS)]
+        _injected = [c for c in final_results if any(c.get(f) for f in _INJECT_FLAGS)]
+        final_slice = _core[:top_k] + _injected
+
         # ── TRACE: finalize ───────────────────────────────────────────────────
         if trace is not None:
             try:
-                trace.finalize(final_results[:top_k])
+                trace.finalize(final_slice)
             except Exception:
                 pass
 
-        return final_results[:top_k]
+        return final_slice
 
     def supplement_and_rerank(self, base_chunks: list, advanced_queries: dict, query: str, top_k: int, trace=None) -> list:
         """
