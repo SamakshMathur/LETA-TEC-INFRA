@@ -134,7 +134,7 @@ GST_GOVERNING_AUTHORITIES: dict[str, dict] = {
             "intermediary", "inter-state", "intra-state", "location of supplier",
             "location of recipient", "b2c", "oidar", "online information",
         ],
-        "sections":  ["IGST_SEC_12", "IGST_SEC_13"],
+        "sections":  ["IGST_SEC_2", "IGST_SEC_12", "IGST_SEC_13"],
         "rules":     [],
         "circulars": [],
         "expected_cats": {"statute"},

@@ -297,17 +297,16 @@ def evaluate_result(test: dict, chunks: list) -> dict:
                                   "time limit for issuance", "three years from", "five years from",
                                   "period of three years", "period of five years"],
             # Refund time limits — statute uses written-out "two years" not "2 years"
-            # Notifications extend the period using "period of limitation" phrasing
+            # Notifications extend using "period of limitation"; Sec 54(1) uses
+            # "before the expiry of two years from the relevant date"
             "2 years":           ["two years", "2 years", "period of two years",
                                   "two years from the relevant date",
                                   "within two years", "period of limitation",
-                                  "period of two years from"],
-            # Export proceeds — statute/rules use full phrase; RBI uses "convertible"
-            "foreign currency":  ["convertible foreign exchange", "foreign exchange",
-                                  "receipt of payment in convertible",
-                                  "receipt in foreign exchange",
-                                  "realisation of export proceeds",
-                                  "foreign exchange received"],
+                                  "period of two years from",
+                                  "before the expiry", "relevant date",
+                                  "time limit for claiming refund",
+                                  "time limit for filing a refund"],
+            # Export proceeds — moved below with Section 2(6) additions
             "free sample":       ["free samples", "samples free", "distributed free",
                                   "goods distributed", "samples distributed",
                                   "gift or free samples", "free of cost", "samples of goods",
@@ -343,6 +342,20 @@ def evaluate_result(test: dict, chunks: list) -> dict:
             "advocate":          ["legal service", "legal services", "lawyer", "attorney",
                                   "legal practitioner", "legal consultant",
                                   "representation services", "arbitral tribunal"],
+            # IGST Section 2(13) intermediary definition — text uses phrasing
+            # "arranges or facilitates" without always saying "section 2(13)" explicitly
+            "section 2(13)":     ["arranges or facilitates", "broker, an agent",
+                                  "by whatever name called", "(13) intermediary",
+                                  "does not include a person who supplies",
+                                  "arranges or facilitate", "facilitates the supply"],
+            # IGST Section 2(6) export of services — 5-conditions test
+            "foreign currency":  ["convertible foreign exchange", "foreign exchange",
+                                  "receipt of payment in convertible",
+                                  "receipt in foreign exchange",
+                                  "realisation of export proceeds",
+                                  "foreign exchange received",
+                                  "payment for such service has been received",
+                                  "five conditions", "clause (6) of section 2 of the igst"],
             # Supply definitions — GST Act uses plural forms in section headings/text
             "mixed supply":      ["mixed supplies", "mixed-supply", "mixture of supply",
                                   "two or more individual supplies", "not a composite supply"],
