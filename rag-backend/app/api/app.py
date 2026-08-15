@@ -1103,7 +1103,7 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     )
 
     # Draft/advisory queries: Haiku + 4000 tokens (~23-27s) — fits API Gateway's 29s limit.
-    # Non-draft Q&A: Sonnet (responses are 1000-2500 tokens, ~15-25s) — fits and gives full quality.
+    # Non-draft Q&A: Sonnet (6000-12000 tokens — Quick Take + Key Extracts + Detailed Advisory).
     answer = await _asyncio.to_thread(
         lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=_is_draft))
     )

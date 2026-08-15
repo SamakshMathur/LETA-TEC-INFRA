@@ -90,16 +90,20 @@ def _select_response_mode(complexity: float) -> tuple:
     """
     Maps complexity score to (mode_name, prompt_template, max_tokens).
 
-    brief    (< BRIEF_RESPONSE_THRESHOLD)    → prose, 150–300 words,  ~800 tokens
-    standard (< STANDARD_RESPONSE_THRESHOLD) → prose, 400–700 words,  ~2000 tokens
-    detailed (>= STANDARD_RESPONSE_THRESHOLD)→ prose, 700–1200 words, ~4000 tokens
+    All tiers now follow LETATEC master prompt v2 structure:
+      Quick Take (≤300w) + Key Extracts + Detailed Advisory (500–3000w)
+      → minimum viable response is ~1200 tokens; generous headroom given.
+
+    brief    (< BRIEF_RESPONSE_THRESHOLD)    → Quick Take + KE + DA,  ~6000 tokens
+    standard (< STANDARD_RESPONSE_THRESHOLD) → Quick Take + KE + DA,  ~8000 tokens
+    detailed (>= STANDARD_RESPONSE_THRESHOLD)→ Quick Take + KE + DA, ~12000 tokens
     """
     if complexity < BRIEF_RESPONSE_THRESHOLD:
-        return "brief", BRIEF_PROMPT, 900
+        return "brief", BRIEF_PROMPT, 6000
     elif complexity < STANDARD_RESPONSE_THRESHOLD:
-        return "standard", STANDARD_PROMPT, 2200
+        return "standard", STANDARD_PROMPT, 8000
     else:
-        return "detailed", SYSTEM_PROMPT, 3500
+        return "detailed", SYSTEM_PROMPT, 12000
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -430,7 +434,8 @@ def synthesize_answer_stream(
         use_haiku = force_haiku or (complexity < HAIKU_COMPLEXITY_THRESHOLD)
         use_thinking = (not use_haiku) and (complexity >= SONNET_THINKING_THRESHOLD)
         if force_haiku:
-            max_tokens = min(max_tokens, 2200)
+            # Haiku 4.5 max output is 8192; cap at 6000 to leave headroom
+            max_tokens = min(max_tokens, 6000)
 
     truth_rules_text = rules_engine.get_all_rules_as_text()
     system_prompt = prompt_template.format(context=context, truth_rules=truth_rules_text)
