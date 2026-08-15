@@ -670,17 +670,27 @@ const LetaWorkspace: React.FC = () => {
   };
 
   const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3, delayMs = 8000): Promise<Response> => {
+    let lastError: unknown;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const res = await fetch(url, options);
-      if (res.status !== 503) return res;
+      try {
+        const res = await fetch(url, options);
+        // Retry on 503 (server starting up) or 502/504 (gateway/proxy errors during deploy)
+        if (res.status !== 503 && res.status !== 502 && res.status !== 504) return res;
+        lastError = new Error(`status: ${res.status}`);
+      } catch (err) {
+        // Network exception (Failed to fetch, connection refused, ECS task restarting)
+        lastError = err;
+      }
       if (attempt < maxRetries - 1) {
-        const secs = Math.round(delayMs / 1000);
-        showRetryStatus(`LETA is starting up — retrying in ${secs}s… (${attempt + 1}/${maxRetries - 1})`);
-        await new Promise(r => setTimeout(r, delayMs));
+        // Exponential backoff: 3s → 6s → 12s
+        const backoff = Math.min(3000 * Math.pow(2, attempt), 15000);
+        const secs = Math.round(backoff / 1000);
+        showRetryStatus(`Connection issue — retrying in ${secs}s… (${attempt + 1}/${maxRetries - 1})`);
+        await new Promise(r => setTimeout(r, backoff));
       }
     }
-    // Final attempt — return whatever we get (503 or otherwise)
-    return fetch(url, options);
+    // All retries exhausted — throw so the caller's catch block shows the error
+    throw lastError;
   };
 
   // ─── Main ask handler ─────────────────────────────────────────────────────────
