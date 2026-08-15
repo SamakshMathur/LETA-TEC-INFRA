@@ -91,7 +91,7 @@ function linkifyLegalRefs(markdown, sources) {
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const src of sources) {
     if (!src?.url || !src?.title) continue;
-    const rawName = decodeURIComponent(src.title).replace(/%20/g, ' ').trim();
+    const rawName = (() => { try { return decodeURIComponent(src.title); } catch { return src.title; } })().replace(/%20/g, ' ').trim();
     const nameNoExt = rawName.replace(/\.[a-z]{2,5}$/i, '').trim();
     if (rawName.length < 5) continue;
 
