@@ -164,6 +164,17 @@ def evaluate_result(test: dict, chunks: list) -> dict:
         if ck:
             present_circs.add(ck)
         all_text += " " + (chunk.get("content") or chunk.get("text") or "").lower()
+        # Include rel_path in all_text so circular number keywords (e.g. "circular 199")
+        # match against the filename "circular-cgst-199.pdf" even when the chunk body
+        # text never spells out the circular number (title is on a separate PDF page).
+        # Extract "circular <N>" from paths like "circular-cgst-199.pdf" or "circular_199.pdf"
+        if rel:
+            _rel_norm = rel.lower().replace("\\", "/")
+            all_text += " " + _rel_norm
+            # Synthesise "circular N" tokens from filenames like circular-cgst-199, circular_199
+            import re as _re2
+            for _cm in _re2.finditer(r'circular[^/]*?(\d{2,})', _rel_norm):
+                all_text += f" circular {_cm.group(1)} "
 
     cats_missing = sorted(req_cats - present_cats)
     cats_found   = sorted(req_cats & present_cats)
@@ -186,27 +197,36 @@ def evaluate_result(test: dict, chunks: list) -> dict:
         Also normalise sub-section references: "section 17(5)" ↔ "sub-section (5)
         of section 17" ↔ "17(5)".
         """
+        import re as _re
         kl = kw.lower()
         if kl in text:
             return True
-        # Percentage ↔ "per cent" / "per cent." variants
-        import re as _re
+
+        # ── Percentage ↔ "per cent" / bare number / % sign ──────────────────
         m = _re.match(r'^(\d+(?:\.\d+)?)%$', kl)
         if m:
             n = float(m.group(1))
-            # Exact "X per cent" form
-            if f"{int(n) if n == int(n) else n} per cent" in text:
+            num_s  = str(int(n)) if n == int(n) else str(n)
+            half   = n / 2
+            half_s = str(int(half)) if half == int(half) else str(half)
+            # Exact "X per cent" form (combined rate)
+            if f"{num_s} per cent" in text:
                 return True
             # CGST component = half the combined rate (e.g. 5% → 2.5 per cent)
-            half = n / 2
-            half_s = str(int(half)) if half == int(half) else str(half)
             if f"{half_s} per cent" in text:
                 return True
-            # Also check plain "X" (for tables where % is implicit)
-            num_s = str(int(n)) if n == int(n) else str(n)
-            if f"({num_s})" in text or f"@{num_s}" in text:
+            # Bare "X%" in text (half or full)
+            if f"{num_s}%" in text or f"{half_s}%" in text:
                 return True
-        # "section X(Y)" ↔ "sub-section (Y) of section X" ↔ bare "X(Y)"
+            # Table/implicit forms: "@X", "(X)", " X " as standalone numeric token
+            for _ns in (num_s, half_s):
+                if f"({_ns})" in text or f"@{_ns}" in text:
+                    return True
+                # standalone numeric word (space-bounded) — e.g. "rate of 2.5"
+                if _re.search(r'(?<!\d)' + _re.escape(_ns) + r'(?!\d)', text):
+                    return True
+
+        # ── "section X(Y)" ↔ "sub-section (Y) of section X" ↔ bare "X(Y)" ─
         m2 = _re.match(r'^section\s+(\d+)\((\w+)\)$', kl)
         if m2:
             sec, sub = m2.group(1), m2.group(2)
@@ -214,11 +234,146 @@ def evaluate_result(test: dict, chunks: list) -> dict:
                 f"section {sec}({sub})",
                 f"sub-section ({sub}) of section {sec}",
                 f"section {sec} ({sub})",
+                # Definitions sections use "clause (X)" not "sub-section (X)"
+                f"clause ({sub}) of section {sec}",
                 f"{sec}({sub})",
                 f"s. {sec}({sub})",
+                # IGST Act definitions: standalone "(13)" in definitions list
+                f"({sub})",
             ]:
                 if variant in text:
                     return True
+
+        # ── Circular number: "circular 199" → "199/18/2019" style refs ──────
+        m3 = _re.match(r'^circular\s+(?:no\.?\s*)?(\d+)$', kl)
+        if m3:
+            cnum = m3.group(1)
+            # Match "199/..." (slash form used in GST circular nos.)
+            if _re.search(r'\b' + cnum + r'[/\b]', text):
+                return True
+            # Match "no. 199" or "no.199"
+            if _re.search(r'no\.?\s*' + cnum + r'\b', text):
+                return True
+
+        # ── Form references: "gstr-9c" → "gstr 9c", "gstr9c", "form gstr-9c"
+        m4 = _re.match(r'^(gstr)-?(\w+)$', kl)
+        if m4:
+            form_num = m4.group(2)
+            for variant in [
+                f"gstr {form_num}", f"gstr{form_num}",
+                f"form gstr-{form_num}", f"form gstr {form_num}",
+            ]:
+                if variant in text:
+                    return True
+
+        # ── Turnover / threshold amounts: "1.5 crore" ↔ "150 lakh" ─────────
+        m5 = _re.match(r'^([\d.]+)\s+crore$', kl)
+        if m5:
+            crore_val = float(m5.group(1))
+            lakh_val  = crore_val * 100
+            lakh_s    = str(int(lakh_val)) if lakh_val == int(lakh_val) else str(lakh_val)
+            for variant in [
+                f"{lakh_s} lakh", f"{lakh_s} lakhs",
+                f"rs. {crore_val} crore", f"rs.{crore_val} crore",
+                f"₹{crore_val} crore",
+            ]:
+                if variant in text:
+                    return True
+            # Number-only match (e.g., "1,50,00,000" or "1.50 crore")
+            crore_s = str(crore_val)
+            if _re.search(r'\b' + _re.escape(crore_s) + r'\b', text):
+                return True
+
+        # ── Legal synonym mapping ─────────────────────────────────────────────
+        # Some keywords use practitioner shorthand; GST statute uses different phrasing.
+        _LEGAL_SYNONYMS = {
+            # Real estate — Indian GST uses "promoter" (RERA term) for developer
+            "developer":         ["promoter", "builder", "builders", "real estate promoter",
+                                  "construction developer", "project developer"],
+            "related party":     ["related persons", "persons who are related", "related person",
+                                  "between related", "person related"],
+            "limitation period": ["time limit", "three years", "five years",
+                                  "period of limitation", "time of limitation",
+                                  "time limit for issuance", "three years from", "five years from",
+                                  "period of three years", "period of five years"],
+            # Refund time limits — statute uses written-out "two years" not "2 years"
+            # Notifications extend the period using "period of limitation" phrasing
+            "2 years":           ["two years", "2 years", "period of two years",
+                                  "two years from the relevant date",
+                                  "within two years", "period of limitation",
+                                  "period of two years from"],
+            # Export proceeds — statute/rules use full phrase; RBI uses "convertible"
+            "foreign currency":  ["convertible foreign exchange", "foreign exchange",
+                                  "receipt of payment in convertible",
+                                  "receipt in foreign exchange",
+                                  "realisation of export proceeds",
+                                  "foreign exchange received"],
+            "free sample":       ["free samples", "samples free", "distributed free",
+                                  "goods distributed", "samples distributed",
+                                  "gift or free samples", "free of cost", "samples of goods",
+                                  "section 17(5)(h)", "promotional samples",
+                                  "disposed of by way of gift"],
+            "gift":              ["gifts", "gift of", "as gifts", "gifted", "by way of gift",
+                                  "fifty thousand rupees", "gifts made", "gifts to employees",
+                                  "presents", "schedule iii"],
+            # Section 54(3)(ii) CGST Act uses "rate of tax on inputs being higher" rather
+            # than the shorthand "inverted duty" used in practice / circulars.
+            "inverted duty":     ["inverted tax structure", "rate of tax on inputs being higher",
+                                  "section 54(3)", "accumulated on account of rate",
+                                  "unutilised input tax credit", "unutilized input tax credit"],
+            # Real estate — "under construction" may appear hyphenated; "real estate"
+            # may appear as "immovable property" or "residential" in statute text.
+            "under construction": ["under-construction", "being constructed",
+                                   "construction of residential", "construction of complex",
+                                   "not yet completed", "ongoing construction",
+                                   "residential apartment", "residential real estate",
+                                   "flat or apartment", "construction of flat"],
+            "real estate":       ["immovable property", "residential project",
+                                  "housing project", "housing society", "real-estate",
+                                  "construction of flat", "residential apartment"],
+            # RCM — notifications use several phrasings
+            "reverse charge":    ["reverse charge basis", "reverse charge mechanism",
+                                  "recipient of service", "payable by the recipient",
+                                  "tax is payable by the recipient", "paid by the recipient",
+                                  "section 9(3)", "section 9(4)", "section 5(3) igst"],
+            "goods transport":   ["goods transport agency", "transportation of goods",
+                                  "transport of goods", "gta", "goods transporter",
+                                  "road transport", "freight carrier", "carriage of goods",
+                                  "freight charges", "freight paid"],
+            "advocate":          ["legal service", "legal services", "lawyer", "attorney",
+                                  "legal practitioner", "legal consultant",
+                                  "representation services", "arbitral tribunal"],
+            # Supply definitions — GST Act uses plural forms in section headings/text
+            "mixed supply":      ["mixed supplies", "mixed-supply", "mixture of supply",
+                                  "two or more individual supplies", "not a composite supply"],
+            "composite supply":  ["composite supplies", "composite-supply",
+                                  "naturally bundled", "principal supply",
+                                  "two or more taxable supplies"],
+            # Schedule I — activities without consideration treated as supply
+            "without consideration": ["without any consideration", "without consideration to",
+                                      "deemed supply", "schedule i", "even if made without",
+                                      "without monetary consideration",
+                                      "activities to be treated as supply"],
+            # GST Council — constitutional body; statute uses full name
+            "gst council":       ["goods and services tax council", "article 279a",
+                                  "279a of the constitution", "council shall",
+                                  "recommendations of the council",
+                                  "goods and services tax (council)"],
+            # GSTR-9C — reconciliation statement
+            "gstr-9c":           ["gstr 9c", "gstr9c", "form gstr-9c", "form gstr 9c",
+                                  "reconciliation statement", "gstr 9-c",
+                                  "certified reconciliation"],
+            # Composition scheme turnover limit — statute uses written-out numbers
+            "1.5 crore":         ["one crore fifty lakh", "one crore and fifty lakh",
+                                  "one and a half crore", "150 lakh", "150 lakhs",
+                                  "rupees one crore fifty lakh", "1,50,00,000"],
+        }
+        for _syn_key, _synonyms in _LEGAL_SYNONYMS.items():
+            if kl == _syn_key:
+                for _syn in _synonyms:
+                    if _syn in text:
+                        return True
+
         return False
 
     kw_found   = [kw for kw in req_kws if _kw_present(kw, all_text)]

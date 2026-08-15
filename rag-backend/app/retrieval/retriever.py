@@ -1051,20 +1051,34 @@ class Retriever:
         _STATUTE_PATH_PREFIXES = ("act/", "igst/", "cgst/", "rules/", "utgst/", "export/")
         _OFFICIAL_PATH_PREFIXES = ("circular", "notification")
 
-        def _idx_priority(idx: int) -> int:
-            """Lower = pinned first. Sorts statute text chunks before commentary."""
+        def _idx_sort_key(idx: int):
+            """Lower = pinned first.
+            Primary: statute text > ICAI bare-law > circulars/notifs > AAR.
+            Secondary: longer text wins within the same priority tier — this ensures
+            content-rich chunks (section 9(3) with 'reverse charge' text) are pinned
+            before near-empty section headers ('section 9 9').
+            """
             if idx >= len(self.chunks):
-                return 9
-            _rp = (self.chunks[idx].get("rel_path") or
-                   self.chunks[idx].get("metadata", {}).get("rel_path", "")).replace("\\", "/").lower()
+                return (9, 0)
+            c = self.chunks[idx]
+            _rp = (c.get("rel_path") or
+                   c.get("metadata", {}).get("rel_path", "")).replace("\\", "/").lower()
             if any(_rp.startswith(p) for p in _STATUTE_PATH_PREFIXES):
-                return 0   # actual statute text
-            if "icai" in _rp and "bare law" in _rp:
-                return 1   # ICAI bare-law mega-PDF — contains actual rules text
-            first = _rp.split("/")[0] if "/" in _rp else _rp[:20]
-            if any(first.startswith(p) for p in _OFFICIAL_PATH_PREFIXES):
-                return 2   # official circular / notification
-            return 3       # AAR, HC, SC, ICAI commentary — low priority for statute pin
+                pri = 0   # actual statute text
+            elif "icai" in _rp and "bare law" in _rp:
+                pri = 1   # ICAI bare-law mega-PDF — contains actual rules text
+            else:
+                first = _rp.split("/")[0] if "/" in _rp else _rp[:20]
+                if any(first.startswith(p) for p in _OFFICIAL_PATH_PREFIXES):
+                    pri = 2   # official circular / notification
+                else:
+                    pri = 3   # AAR, HC, SC, ICAI commentary — low priority for statute pin
+            _tlen = len(c.get("content") or c.get("text") or "")
+            return (pri, -_tlen)   # negative so longer text sorts first within tier
+
+        # Keep backward-compat alias used outside this function
+        def _idx_priority(idx: int) -> int:
+            return _idx_sort_key(idx)[0]
 
         def _pin(idx: int, provision_key: str, is_alias: bool = False) -> bool:
             if idx >= len(self.chunks):
@@ -1102,7 +1116,7 @@ class Retriever:
             # Primary lookup: metadata provision keys (CGST_SEC_16, CGST_RUL_89, etc.)
             # P2.5b: sort by statute-path priority so Act/ chunks are pinned before AAR/ICAI
             _raw_indices = self._provision_index.get(ref, [])
-            _sorted_indices = sorted(_raw_indices, key=_idx_priority)
+            _sorted_indices = sorted(_raw_indices, key=_idx_sort_key)
             for idx in _sorted_indices:
                 if _ref_count >= _PER_KEY_CAP:
                     break
@@ -1116,7 +1130,7 @@ class Retriever:
             if ref in _IGST_ALIAS and not self._provision_index.get(ref):
                 alias_key = _IGST_ALIAS[ref]
                 _alias_indices = sorted(
-                    self._provision_index.get(alias_key, []), key=_idx_priority
+                    self._provision_index.get(alias_key, []), key=_idx_sort_key
                 )
                 for idx in _alias_indices:
                     if _ref_count >= _PER_KEY_CAP:
@@ -2035,7 +2049,113 @@ class Retriever:
                          "_circ_floor_inject")
         _core     = [c for c in final_results if not any(c.get(f) for f in _INJECT_FLAGS)]
         _injected = [c for c in final_results if any(c.get(f) for f in _INJECT_FLAGS)]
+
+        # ── Source-diversity cap (case-law only) ──────────────────────────────
+        # AAR/HC/SC documents can monopolise 4-5 slots via broad CGST section
+        # references even when the query is unrelated to that ruling. Cap case-law
+        # chunks at 2 per source file. Statutes, circulars and notifications are
+        # NOT capped — a long circular may legitimately supply 3+ relevant chunks.
+        # Injected chunks bypass this cap entirely.
+        _CASELAW_CAP = 2
+        _caselaw_counts: dict = {}
+        _core_capped = []
+        for _sc in _core:
+            _sc_cat = _chunk_category(_sc)
+            if _sc_cat == "case_law":
+                _sc_meta = _sc.get("metadata", {}) or {}
+                _sc_rel  = (_sc.get("rel_path") or _sc_meta.get("rel_path", "")).replace("\\", "/").lower()
+                if _caselaw_counts.get(_sc_rel, 0) >= _CASELAW_CAP:
+                    continue   # drop this AAR/HC chunk — slot reserved for statute/circular
+                _caselaw_counts[_sc_rel] = _caselaw_counts.get(_sc_rel, 0) + 1
+            _core_capped.append(_sc)
+        _core = _core_capped
+
         final_slice = _core[:top_k] + _injected
+
+        # ── Late notification safety net ───────────────────────────────────────
+        # If taxonomy expects "notification" but none appear in final_slice
+        # (Layer 6 exhausted its search without finding an unclaimed chunk),
+        # do a last-resort injection: take the highest-similarity FAISS hit
+        # from _faiss_notifications that (a) passes category guard and (b) has
+        # at least partial content, ignoring existing-id dedup.  This prevents
+        # single-FAIL cases where one file monopolises the notification sub-index.
+        # ── Gate: taxonomy expects notification OR FAISS has a strong hit ──────
+        _notif_taxonomy_expects = "notification" in _taxonomy.get("expected_cats", set())
+        _notif_absent = not any(_chunk_category(c) == "notification" for c in final_slice)
+        # Also fire when a notification IS present but has zero query-word coverage
+        # (e.g. a GSTR-return notification retrieved for an RCM query). In that case
+        # we inject a second, topic-relevant notification alongside the irrelevant one.
+        _notif_q_words = set(
+            w for w in query.lower().split()
+            if len(w) > 4 and w not in {
+                "under", "about", "where", "which", "their",
+                "would", "could", "should", "shall", "does",
+                "what", "when", "how", "this", "that", "from",
+            }
+        )
+        _notif_best_cov = 0
+        for _nc in final_slice:
+            if _chunk_category(_nc) == "notification":
+                _nt = (_nc.get("content") or _nc.get("text") or "").lower()
+                _notif_best_cov = max(_notif_best_cov,
+                                      sum(1 for w in _notif_q_words if w in _nt))
+        # _notif_irrelevant: taxonomy expects notification but existing one has no overlap
+        _notif_irrelevant = _notif_taxonomy_expects and _notif_best_cov == 0 and not _notif_absent
+        if (not is_draft and query_vec is not None
+                and (_notif_absent or _notif_irrelevant)
+                and getattr(self, "_faiss_notifications", None) is not None):
+            try:
+                _qv_ln = np.array([query_vec]).astype("float32")
+                _ln_D, _ln_I = self._faiss_notifications.search(_qv_ln, 20)
+                # Only force-inject if: (a) taxonomy expects notification, OR
+                # (b) top notification hit has very high similarity (≥ 0.72) even if
+                # the taxonomy didn't predict it.  This handles queries where
+                # multi-topic merging dropped "notification" from expected_cats.
+                _top_notif_sim = float(_ln_D[0][0]) if len(_ln_D[0]) > 0 and _ln_I[0][0] >= 0 else 0.0
+                _should_inject = _notif_taxonomy_expects or _top_notif_sim >= 0.72
+                if _should_inject:
+                    if _notif_irrelevant:
+                        logger.info(
+                            f"Notification safety-net: existing notification irrelevant "
+                            f"(0 query-word hits), injecting topic-relevant one"
+                        )
+                    # Score candidates by (a) FAISS sim + (b) query-term coverage.
+                    # A chunk that mentions the query's key nouns ranks above a chunk
+                    # that is only FAISS-similar but topic-agnostic.
+                    _q_words = _notif_q_words
+                    _best_score = -1.0
+                    _best_chunk = None
+                    _best_sim   = 0.0
+                    for _lsim, _lli in zip(_ln_D[0], _ln_I[0]):
+                        if _lli < 0 or float(_lsim) < 0.15:
+                            break
+                        _lgi = self._notif_idx_map[_lli]
+                        _lc  = self.chunks[_lgi].copy()
+                        if _chunk_category(_lc) != "notification":
+                            continue
+                        _ltext = _lc.get("text", "") or _lc.get("metadata", {}).get("text", "")
+                        if len(_ltext) < 30:
+                            continue
+                        _ltext_l = _ltext.lower()
+                        _kw_hits = sum(1 for w in _q_words if w in _ltext_l)
+                        # Combined score: query coverage dominates, FAISS sim breaks ties
+                        _score = _kw_hits * 10.0 + float(_lsim)
+                        if _score > _best_score:
+                            _best_score = _score
+                            _best_chunk = _lc
+                            _best_sim   = float(_lsim)
+                    if _best_chunk is not None:
+                        _best_chunk["_notif_safety_net"] = True
+                        _best_chunk["_coverage_fill"]    = True
+                        _best_chunk["_final_legal_score"] = 0.05 * 1.20
+                        final_slice.append(_best_chunk)
+                        logger.info(
+                            f"Notification safety-net inject: sim={_best_sim:.3f} "
+                            f"score={_best_score:.1f} tax_exp={_notif_taxonomy_expects} "
+                            f"«{_best_chunk.get('metadata',{}).get('rel_path','')[-60:]}»"
+                        )
+            except Exception as _lne:
+                logger.debug(f"Notification safety net failed (non-fatal): {_lne}")
 
         # ── TRACE: finalize ───────────────────────────────────────────────────
         if trace is not None:
