@@ -90,19 +90,20 @@
   },
 
   "export": {
-    "_comment": "Zero-rated exports — Section 16 IGST Act, LUT, refund Rule 96",
+    "_comment": "Zero-rated exports — Section 16 IGST Act, LUT, refund Rule 96; notifications govern LUT/bond exemptions. IGST_SEC_2 added for the Sec 2(6) export-of-services definition (convertible foreign exchange condition).",
     "keywords": [
       "export", "zero rated", "section 16 igst", "lut", "letter of undertaking",
-      "rule 96", "refund on export", "foreign currency", "deemed export"
+      "rule 96", "refund on export", "foreign currency", "deemed export",
+      "export of services", "export of goods", "section 2(6)"
     ],
-    "sections":  ["IGST_SEC_16", "CGST_SEC_54"],
+    "sections":  ["IGST_SEC_16", "IGST_SEC_2", "CGST_SEC_54"],
     "rules":     ["CGST_RUL_96", "CGST_RUL_89"],
     "circulars": ["CIRCULAR_125", "CIRCULAR_131"],
-    "expected_cats": ["statute", "circular"],
+    "expected_cats": ["statute", "notification", "circular"],
     "authority_adj": {
       "circular":     1.3,
       "statute":      1.2,
-      "notification": 1.0,
+      "notification": 1.2,
       "case_law":     0.9
     }
   },
@@ -129,7 +130,7 @@
   "place_of_supply": {
     "_comment": "Place of supply — Section 12/13 IGST Act, intermediary, OIDAR",
     "keywords": [
-      "place of supply", "pos", "section 12 igst", "section 13 igst",
+      "place of supply", "section 12 igst", "section 13 igst",
       "intermediary", "oidar", "online information", "intra-state", "inter-state"
     ],
     "sections":  ["IGST_SEC_12", "IGST_SEC_13", "IGST_SEC_2"],
@@ -350,7 +351,8 @@
     "keywords": [
       "real estate", "housing project", "commercial apartment", "under construction",
       "notification 3/2019", "affordable housing", "joint development agreement",
-      "jda", "developer"
+      "jda", "developer", "promoter", "residential project", "residential projects",
+      "construction of residential", "residential apartment"
     ],
     "sections":  ["CGST_SEC_17"],
     "rules":     ["CGST_RUL_42"],

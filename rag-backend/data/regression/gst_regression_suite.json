@@ -174,7 +174,7 @@
       "topic": "export",
       "required_cats": ["statute"],
       "required_authorities": ["IGST_SEC_16"],
-      "required_keywords": ["zero rated", "export of services", "foreign currency"],
+      "required_keywords": ["zero rated", "export of services", "convertible foreign exchange"],
       "priority": "high"
     },
 

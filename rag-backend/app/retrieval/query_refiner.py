@@ -1,4 +1,5 @@
 import json
+import re
 import logging
 from app.config import (
     LLM_PROVIDER,
@@ -7,6 +8,12 @@ from app.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# In-memory provision resolution cache (process lifetime)
+# Key: query string  →  Value: list of validated provision keys
+# ─────────────────────────────────────────────────────────────────────────────
+_PROVISION_CACHE: dict[str, list[str]] = {}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Client initialisation
@@ -239,6 +246,96 @@ Respond with ONLY the raw JSON object. No prose. No markdown fences."""
     except Exception as e:
         logger.error(f"generate_advanced_queries parse error: {e} | raw={raw[:200]}")
         return {"queries": [raw_query], "hyde_document": "", "topic": "General", "subtopic": None}
+
+
+_RESOLVE_SYSTEM = """You are a senior Indian GST law expert. Given a user query about GST, identify the EXACT statutory provisions that directly govern it.
+
+Return ONLY a valid JSON object — no prose, no markdown:
+{"provisions": ["CGST_SEC_17", "IGST_SEC_2", "CGST_RUL_42"]}
+
+STRICT RULES for provision key format:
+- CGST Act sections   → CGST_SEC_<number>    e.g. CGST_SEC_9, CGST_SEC_17, CGST_SEC_16
+- IGST Act sections   → IGST_SEC_<number>    e.g. IGST_SEC_2, IGST_SEC_5, IGST_SEC_16
+- CGST Rules          → CGST_RUL_<number>    e.g. CGST_RUL_42, CGST_RUL_89, CGST_RUL_96
+- CBIC Circulars      → CIRCULAR_<number>    e.g. CIRCULAR_199, CIRCULAR_183, CIRCULAR_78
+- Use BASE section number only — never sub-clauses (CGST_SEC_17 not CGST_SEC_17_5)
+- Return 2 to 5 provisions maximum — only the MOST directly governing ones
+- For exports/imports/place-of-supply → use IGST_SEC_X
+- For composition/ITC/RCM/valuation/registration → use CGST_SEC_X
+- For rules (Rule 42, Rule 89, Rule 96) → use CGST_RUL_X
+- If a specific CBIC Circular is definitively governing (e.g. Circular 199 for cross-charge) → include it
+- DO NOT hallucinate. If uncertain, omit rather than guess."""
+
+
+def resolve_provisions(query: str, provision_index: dict) -> list[str]:
+    """
+    LLM-based Generic Provision Resolver — Priority 13.
+
+    Replaces the hardcoded 20-topic authority taxonomy for implicit provision
+    detection.  Works for ANY GST topic across all 900+ sections of CGST Act,
+    IGST Act, CGST Rules, UTGST Act, and CBIC Circulars.
+
+    Flow:
+      1. Check in-memory cache (zero cost on repeated queries)
+      2. Call Claude Haiku with a structured GST law prompt
+      3. Validate returned keys against the actual provision index
+         (keys not in the index are silently dropped — no hallucination risk)
+      4. Return validated keys to be merged into _query_refs in retriever.py
+
+    Latency: ~300–600ms on first call, 0ms on cache hit.
+    Cost:    ~50–100 tokens per call (Claude Haiku — effectively free per query).
+    Fallback: returns [] on any error — retriever falls back to taxonomy + explicit refs.
+    """
+    global _PROVISION_CACHE
+
+    # Normalise query for cache key
+    cache_key = query.strip().lower()
+    if cache_key in _PROVISION_CACHE:
+        cached = _PROVISION_CACHE[cache_key]
+        logger.debug(f"ProvisionResolver cache hit: {cached}")
+        return cached
+
+    raw = _call_llm_json(_RESOLVE_SYSTEM, query, temperature=0.0)
+
+    # Strip markdown fences if present
+    if "```" in raw:
+        raw = re.sub(r"```(?:json)?", "", raw).strip()
+
+    try:
+        data = json.loads(raw)
+        raw_keys: list[str] = data.get("provisions", [])
+    except Exception:
+        logger.warning(f"ProvisionResolver: could not parse LLM JSON: {raw[:200]}")
+        _PROVISION_CACHE[cache_key] = []
+        return []
+
+    # Validate: only return keys that EXIST in the provision index.
+    # If LLM returns CGST_SEC_17_5 but index only has CGST_SEC_17, accept the base.
+    _valid_keys: set[str] = set(provision_index.keys())
+    _base_re    = re.compile(r'^((?:CGST|IGST|UTGST|SGST)_(?:SEC|RUL)_\d+[A-Z]?)', re.IGNORECASE)
+
+    validated: list[str] = []
+    seen: set[str]        = set()
+
+    for k in raw_keys:
+        k = k.strip().upper()
+        if not k:
+            continue
+        if k in _valid_keys and k not in seen:
+            validated.append(k)
+            seen.add(k)
+            continue
+        # Try base section: CGST_SEC_17_5 → CGST_SEC_17
+        m = _base_re.match(k)
+        if m:
+            base = m.group(1).upper()
+            if base in _valid_keys and base not in seen:
+                validated.append(base)
+                seen.add(base)
+
+    logger.info(f"ProvisionResolver: query={query[:60]!r} → raw={raw_keys} → valid={validated}")
+    _PROVISION_CACHE[cache_key] = validated
+    return validated
 
 
 def retrieval_self_critique(query: str, retrieved_sources: list, taxonomy: dict) -> dict:

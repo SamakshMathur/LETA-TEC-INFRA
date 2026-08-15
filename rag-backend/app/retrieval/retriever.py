@@ -1048,7 +1048,12 @@ class Retriever:
         pinned = []
 
         # P2.5b: Priority-sort indices so statute text chunks are pinned first.
-        _STATUTE_PATH_PREFIXES = ("act/", "igst/", "cgst/", "rules/", "utgst/", "export/")
+        # NOTE: "export/" intentionally removed — the export/ folder contains CBIC
+        # circulars (e.g. Circular_161, Circular 202).  Giving them priority 0 (same
+        # as Act text) caused Export circulars to crowd out shorter-but-substantive
+        # statute chunks (e.g. CGST Act Section 8, len=496) from the _PER_KEY_CAP=3
+        # slots.  Export circulars now fall to priority 2 (official), which is correct.
+        _STATUTE_PATH_PREFIXES = ("act/", "igst/", "cgst/", "rules/", "utgst/")
         _OFFICIAL_PATH_PREFIXES = ("circular", "notification")
 
         def _idx_sort_key(idx: int):
@@ -1200,15 +1205,31 @@ class Retriever:
         #           (b) predicted governing authorities from the taxonomy.
         # These chunks are pinned so they always reach the CrossEncoder.
         _explicit_refs = _extract_query_refs(query)
+
+        # --- Priority 13: LLM-based Generic Provision Resolver ---
+        # Replaces hardcoded 20-topic taxonomy for implicit provision detection.
+        # Works for ANY GST topic. Validates keys against provision index before use.
+        # Falls back gracefully to [] on failure — taxonomy refs still apply.
+        _llm_refs: list[str] = []
+        try:
+            from app.retrieval.query_refiner import resolve_provisions as _resolve_provisions
+            _llm_refs = _resolve_provisions(query, self._provision_index)
+        except Exception as _rp_err:
+            logger.warning(f"ProvisionResolver skipped: {_rp_err}")
+
         _taxonomy_refs = (
             _taxonomy["sections"] + _taxonomy["rules"] +
             [f"CIRCULAR_{c.split('_')[-1]}" if c.startswith("CIRCULAR_") else c
              for c in _taxonomy["circulars"]]
         )
-        _query_refs = list(dict.fromkeys(_explicit_refs + _taxonomy_refs))  # dedup, preserve order
+        # Order: explicit (highest confidence) → LLM-resolved → taxonomy (fallback)
+        _query_refs = list(dict.fromkeys(_explicit_refs + _llm_refs + _taxonomy_refs))  # dedup, preserve order
         _pinned = self._direct_ref_lookup(_query_refs) if _query_refs else []
         if _pinned:
-            logger.info(f"Direct ref lookup (explicit+taxonomy): {_query_refs[:8]} → {len(_pinned)} pinned chunks")
+            logger.info(
+                f"Direct ref lookup (explicit={len(_explicit_refs)} llm={len(_llm_refs)} "
+                f"taxonomy={len(_taxonomy_refs)}): {_query_refs[:8]} → {len(_pinned)} pinned chunks"
+            )
 
         # --- Layer 1: Statute-First Retrieval (Deterministic) ---
         statute_results = self.statute_retriever.search_statutes(self.chunks, topic, subtopic)
@@ -2099,8 +2120,9 @@ class Retriever:
                 _nt = (_nc.get("content") or _nc.get("text") or "").lower()
                 _notif_best_cov = max(_notif_best_cov,
                                       sum(1 for w in _notif_q_words if w in _nt))
-        # _notif_irrelevant: taxonomy expects notification but existing one has no overlap
-        _notif_irrelevant = _notif_taxonomy_expects and _notif_best_cov == 0 and not _notif_absent
+        # _notif_irrelevant: taxonomy expects notification but existing one has weak/no overlap
+        # threshold <=1 catches wrong notifications that score 1 generic word (e.g. "payable", "goods")
+        _notif_irrelevant = _notif_taxonomy_expects and _notif_best_cov <= 1 and not _notif_absent
         if (not is_draft and query_vec is not None
                 and (_notif_absent or _notif_irrelevant)
                 and getattr(self, "_faiss_notifications", None) is not None):
@@ -2117,7 +2139,7 @@ class Retriever:
                     if _notif_irrelevant:
                         logger.info(
                             f"Notification safety-net: existing notification irrelevant "
-                            f"(0 query-word hits), injecting topic-relevant one"
+                            f"(<=1 query-word hits, cov={_notif_best_cov}), injecting topic-relevant one"
                         )
                     # Score candidates by (a) FAISS sim + (b) query-term coverage.
                     # A chunk that mentions the query's key nouns ranks above a chunk

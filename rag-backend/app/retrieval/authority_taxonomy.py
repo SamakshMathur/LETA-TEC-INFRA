@@ -88,9 +88,17 @@ GST_GOVERNING_AUTHORITIES: dict[str, dict] = {
             "reverse charge", "rcm", "section 9(3)", "section 9(4)",
             "reverse charge mechanism", "recipient pays", "gta",
             "goods transport", "legal service", "director",
-            "advocate", "sponsorship", "import of service", "oidar",
+            "advocate", "sponsorship",
+            # NOTE: "import of service" and "oidar" intentionally removed —
+            # they belong to the "import_services" topic. Including them here
+            # caused IMP-001 to pin CGST_SEC_9_RCM (GTA chunks) and
+            # CGST_SEC_9_ADVOCATE (advocate chunks), displacing import-specific content.
         ],
-        "sections":  ["CGST_SEC_9", "IGST_SEC_5"],
+        # CGST_SEC_9_RCM: GTA-specific chunks (ICAI + FAQ analysis)
+        # CGST_SEC_9_ADVOCATE: advocate/legal-service chunks
+        # Both needed because _PER_KEY_CAP=3 means a shared key favours GTA chunks
+        # (longer text) over advocate chunks. Separate keys guarantee both surface.
+        "sections":  ["CGST_SEC_9", "IGST_SEC_5", "CGST_SEC_9_RCM", "CGST_SEC_9_ADVOCATE"],
         "rules":     [],
         "circulars": [],
         "expected_cats": {"statute", "notification"},
@@ -130,7 +138,11 @@ GST_GOVERNING_AUTHORITIES: dict[str, dict] = {
     # ── Place of Supply ────────────────────────────────────────────────────
     "place_of_supply": {
         "keywords": [
-            "place of supply", "pos", "section 12", "section 13 igst",
+            # NOTE: "pos" removed — it matches "comPOSite" as a substring, causing
+            # the place_of_supply topic to wrongly fire for composite/mixed supply
+            # queries and pin 9 irrelevant IGST chunks (IGST_SEC_2/12/13).
+            # "place of supply" (full phrase) is the correct unambiguous keyword.
+            "place of supply", "section 12", "section 13 igst",
             "intermediary", "inter-state", "intra-state", "location of supplier",
             "location of recipient", "b2c", "oidar", "online information",
         ],
