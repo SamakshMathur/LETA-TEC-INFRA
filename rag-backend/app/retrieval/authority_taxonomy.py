@@ -87,12 +87,15 @@ GST_GOVERNING_AUTHORITIES: dict[str, dict] = {
         "keywords": [
             "reverse charge", "rcm", "section 9(3)", "section 9(4)",
             "reverse charge mechanism", "recipient pays", "gta",
-            "goods transport", "legal service", "director",
+            "goods transport", "legal service", "director service",
+            "director rcm", "services by director", "director to company",
             "advocate", "sponsorship",
             # NOTE: "import of service" and "oidar" intentionally removed —
             # they belong to the "import_services" topic. Including them here
             # caused IMP-001 to pin CGST_SEC_9_RCM (GTA chunks) and
             # CGST_SEC_9_ADVOCATE (advocate chunks), displacing import-specific content.
+            # NOTE: "director" alone was too broad — matched personal guarantee queries.
+            # Use compound phrases "director service", "director rcm", etc. instead.
         ],
         # CGST_SEC_9_RCM: GTA-specific chunks (ICAI + FAQ analysis)
         # CGST_SEC_9_ADVOCATE: advocate/legal-service chunks
@@ -237,6 +240,27 @@ GST_GOVERNING_AUTHORITIES: dict[str, dict] = {
         "circulars": [],
         "expected_cats": {"statute"},
         "authority_adj": {"statute": 1.2},
+    },
+
+    # ── Personal/Corporate Guarantee ──────────────────────────────────────
+    # Circular 204/16/2023-GST: clarifies taxability of personal guarantee
+    # (nil consideration = not taxable) and corporate guarantee (Rule 28 value:
+    # 1% p.a. of guaranteed amount). Both personal and corporate guarantee queries
+    # must cite this circular — it is the ONLY formal CBIC position on this topic.
+    # Circular 225/2024 extended/clarified the corporate guarantee position further.
+    "personal_guarantee": {
+        "keywords": [
+            "personal guarantee", "corporate guarantee", "director guarantee",
+            "guarantee bank", "guarantee loan", "bank guarantee loan",
+            "taxability of guarantee", "guarantee taxable", "guarantee gst",
+            "director bank", "personal capacity guarantee",
+            "circular 204", "circular no 204",
+        ],
+        "sections":  ["CGST_SEC_7", "CGST_SEC_15"],
+        "rules":     ["CGST_RUL_28"],
+        "circulars": ["CIRCULAR_204", "CIRCULAR_225"],
+        "expected_cats": {"statute", "circular"},
+        "authority_adj": {"circular": 1.6, "statute": 1.2, "notification": 0.8, "case_law": 0.9},
     },
 
     # ── Composition Scheme ─────────────────────────────────────────────────
