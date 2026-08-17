@@ -39,27 +39,42 @@ def _get_mem_logger():
 logger = logging.getLogger(__name__)
 
 # ─── Pool classification — folder patterns per document category ───────────
+# Patterns match both legacy flat names and V2.0 versioned folder names
+# (e.g. "circulars(2017-2025)", "CGST Acts", "CGST Rules 10-08-2026").
 _CASE_LAW_FOLDERS     = {"high court case laws", "supreme court case laws", "aar", "other app result"}
-_STATUTE_FOLDERS      = {"act", "rules", "cgst", "igst", "utgst", "export"}
-_NOTIFICATION_FOLDERS = {"notification", "notifications"}
-_CIRCULAR_FOLDERS     = {"circulars", "circular", "icai", "brochures", "faqs"}
+_STATUTE_FOLDERS      = {"act", "rules", "cgst", "igst", "utgst", "export",
+                          "cgst acts", "igst acts", "igst rules"}   # V2.0 folder names
+_NOTIFICATION_FOLDERS = {"notification", "notifications",
+                          "rate_notifications_2.0"}                 # V2.0 folder name
+_CIRCULAR_FOLDERS     = {"circulars", "circular", "icai", "brochures", "faqs",
+                          "circulars(2017-2025)"}                   # V2.0 folder name
 
 
 def _chunk_category(chunk: dict) -> str:
     path = (chunk.get("rel_path") or chunk.get("source") or
             chunk.get("metadata", {}).get("rel_path", "")).lower().replace("\\", "/")
-    for folder in _CASE_LAW_FOLDERS:
-        if f"/{folder}/" in path or path.startswith(folder + "/"):
-            return "case_law"
-    for folder in _CIRCULAR_FOLDERS:
-        if f"/{folder}/" in path or path.startswith(folder + "/"):
-            return "circular"
-    for folder in _NOTIFICATION_FOLDERS:
-        if f"/{folder}/" in path or path.startswith(folder + "/"):
-            return "notification"
-    for folder in _STATUTE_FOLDERS:
-        if f"/{folder}/" in path or path.startswith(folder + "/"):
-            return "statute"
+    # Split into components for prefix-based matching (handles versioned names
+    # like "cgst rules 10-08-2026" matching the pattern "cgst").
+    parts = [p for p in path.split("/") if p]
+
+    def _matches(folders: set) -> bool:
+        for folder in folders:
+            # Exact path-component match (original logic)
+            if f"/{folder}/" in path or path.startswith(folder + "/"):
+                return True
+            # Prefix match on individual path components — handles versioned
+            # folder names, e.g. "cgst rules 10-08-2026".startswith("cgst") → True.
+            # Guard: folder must be ≥4 chars to avoid spurious "act" matches.
+            if len(folder) >= 4:
+                for part in parts:
+                    if part.startswith(folder):
+                        return True
+        return False
+
+    if _matches(_CASE_LAW_FOLDERS):      return "case_law"
+    if _matches(_CIRCULAR_FOLDERS):      return "circular"
+    if _matches(_NOTIFICATION_FOLDERS):  return "notification"
+    if _matches(_STATUTE_FOLDERS):       return "statute"
     return "other"
 
 
