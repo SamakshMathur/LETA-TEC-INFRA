@@ -1721,11 +1721,7 @@ const LetaWorkspace: React.FC = () => {
                     );
                   })}
 
-                  {isLoading && (
-                    <div className="flex justify-center py-6">
-                      <SimpleSearchLoader />
-                    </div>
-                  )}
+                  {/* Status shown inside LetaResponse bubble — no external spinner needed */}
                   <div ref={messagesEndRef} />
                 </div>
               )}

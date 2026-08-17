@@ -283,10 +283,97 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="p-6 md:p-8">
+
+        {/* ── Thinking indicator: shown while answer is empty (status events flowing) ── */}
+        {!data?.answer && (
+          <div className="flex flex-col gap-4 py-2">
+            {/* Animated dots + live status message */}
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1.5">
+                {[0, 150, 300].map(delay => (
+                  <span
+                    key={delay}
+                    style={{
+                      display: 'inline-block',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#67E8F9',
+                      animation: `leta-thinking-bounce 1.1s ease-in-out ${delay}ms infinite`,
+                      opacity: 0.85,
+                    }}
+                  />
+                ))}
+              </div>
+              <span
+                key={data?.status}
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: '11px',
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  color: '#67E8F9',
+                  opacity: 0.9,
+                  animation: 'leta-status-fade 0.35s ease',
+                }}
+              >
+                {data?.status || 'Initializing Statutory Analyzer...'}
+              </span>
+            </div>
+
+            {/* Stage rail — 5 steps, lights up as status progresses */}
+            {(() => {
+              const stages = [
+                { key: 'init',      label: 'Init',      match: ['initializing', 'computing', 'initializ'] },
+                { key: 'cache',     label: 'Cache',     match: ['cache', 'scanning'] },
+                { key: 'retrieve',  label: 'Retrieve',  match: ['searching', 'database', 'provision'] },
+                { key: 'rerank',    label: 'Rerank',    match: ['expanding', 'precision', 'refin'] },
+                { key: 'generate',  label: 'Generate',  match: ['synthesiz', 'drafting', 'advisory'] },
+              ];
+              const st = (data?.status || '').toLowerCase();
+              let activeIdx = 0;
+              for (let i = stages.length - 1; i >= 0; i--) {
+                if (stages[i].match.some(m => st.includes(m))) { activeIdx = i; break; }
+              }
+              return (
+                <div className="flex items-center gap-0 mt-1" style={{ maxWidth: '340px' }}>
+                  {stages.map((s, i) => (
+                    <React.Fragment key={s.key}>
+                      <div className="flex flex-col items-center gap-1" style={{ minWidth: '52px' }}>
+                        <div style={{
+                          width: '8px', height: '8px', borderRadius: '50%',
+                          background: i <= activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.08)',
+                          boxShadow: i === activeIdx ? '0 0 8px rgba(103,232,249,0.6)' : 'none',
+                          transition: 'all 0.3s ease',
+                        }} />
+                        <span style={{
+                          fontFamily: 'monospace', fontSize: '8px', letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          color: i <= activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.2)',
+                          transition: 'color 0.3s ease',
+                        }}>
+                          {s.label}
+                        </span>
+                      </div>
+                      {i < stages.length - 1 && (
+                        <div style={{
+                          flex: 1, height: '1px', marginBottom: '14px',
+                          background: i < activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.08)',
+                          transition: 'background 0.3s ease',
+                        }} />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Main answer — body: Times New Roman, headings: Bookman Old Style */}
         <div
           className="prose prose-sm md:prose-base max-w-none leading-relaxed"
-          style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }}
+          style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif", display: data?.answer ? 'block' : 'none' }}
         >
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}

@@ -52,26 +52,49 @@ class LegalParser:
     }
 
     # High-Precision Citation Patterns
-    # Supports: Section 17, Section 9(3), Section 17(5)(a), Sec. 16(2), u/s 73
+    # Supports statute-style and case-law shorthand citation formats:
+    #   Section 17, Sec. 16(2), u/s 73, S.16, s. 9(3)
+    #   Rule 42, u/r 96
+    #   Notification No. N/YYYY, Circular No. N/NN/YYYY
+    #   Schedule I / II / III
     CITATION_PATTERNS = {
-        "section": r"(?:Section|Sec\.|u/s)\s+(\d+[A-Z]*(?:\(\d+\))*(?:\([a-z]\))*)",
-        "rule": r"Rule\s+(\d+[A-Z]*(?:\(\d+\))*(?:\([a-z]\))*)",
-        "notification": r"Notification\s+No\.\s+(\d+/\d+)",
-        "circular": r"Circular\s+No\.\s+(\d+/\d+/\d+)",
-        "schedule": r"Schedule\s+(I|II|III)(?:\s+Para\s+(\d+[a-z]?))?",
+        # Statute-style: Section N, Sec. N — and case-law: u/s N, S.N
+        "section": (
+            r"(?:Section|Sec\.|u/s|(?<!\w)S\.)\s*"
+            r"(\d+[A-Z]*(?:\(\d+\))*(?:\([a-z]\))*)"
+        ),
+        "rule": (
+            r"(?:Rule|u/r)\s+"
+            r"(\d+[A-Z]*(?:\(\d+\))*(?:\([a-z]\))*)"
+        ),
+        "notification": r"Notification\s+No\.?\s*(\d+[/-]\d+)",
+        "circular": r"Circular\s+No\.?\s*(\d+[/-]\d+[/-]\d+)",
+        "schedule": r"Schedule\s+(I{1,3}|IV|V|VI|[1-6])(?:\s+Para\s+(\d+[a-z]?))?",
         "act": r"(?:CGST|IGST|SGST|UTGST|GST)\s+Act",
     }
 
-    @staticmethod
-    def normalize_citation(type_str: str, value: str) -> str:
+    # Maps citation type names to canonical key prefixes (consistent with ingest_v2_database.py)
+    _TYPE_PREFIX_MAP = {
+        "section":      "SEC",
+        "rule":         "RULE",
+        "notification": "NOTIF",
+        "circular":     "CIRC",
+        "schedule":     "SCHED",
+    }
+
+    @classmethod
+    def normalize_citation(cls, type_str: str, value: str) -> str:
         """
-        Canonicalizes citations into a standardized format: SOURCE_TYPE_VALUE
-        Example: Section 17 -> CGST_SEC_17
+        Canonicalizes citations into a standardized format: CGST_TYPE_VALUE
+        Examples:
+          Section 17   -> CGST_SEC_17
+          Rule 42      -> CGST_RULE_42   (was: CGST_RUL_42)
+          Schedule II  -> CGST_SCHED_II
         """
-        clean_val = value.replace("/", "_").replace("(", "_").replace(")", "").strip().upper()
-        type_prefix = type_str.upper()[:3]
-        
-        # Default source to CGST if not specified in text (common in GST practice)
+        clean_val  = value.replace("/", "_").replace("(", "_").replace(")", "").strip().upper()
+        type_lower = type_str.lower()
+        # Use explicit map so "rule" → "RULE", not "RUL"
+        type_prefix = cls._TYPE_PREFIX_MAP.get(type_lower, type_lower.upper()[:4])
         return f"CGST_{type_prefix}_{clean_val}"
 
     @classmethod
@@ -104,21 +127,23 @@ class LegalParser:
         # Primary check: Normalized Provision mapping (High Weight)
         normalized_citations = cls.extract_citations(text, normalize=True)
         provision_map = {
-            "CGST_SEC_16": "ITC",
-            "CGST_SEC_17": "ITC",
-            "CGST_RUL_42": "ITC",
-            "CGST_RUL_43": "ITC",
-            "CGST_SEC_15": "Valuation",
-            "CGST_SEC_9": "RCM",
-            "CGST_SEC_8": "Composite_Supply",
-            "CGST_SEC_10": "Place_of_Supply",
-            "CGST_SEC_12": "Place_of_Supply",
-            "CGST_SEC_13": "Place_of_Supply",
-            "CGST_SEC_54": "Refund",
-            "CGST_SEC_122": "Penalty",
-            "CGST_SEC_129": "Penalty",
-            "CGST_SEC_22": "Registration",
-            "CGST_SEC_24": "Registration",
+            "CGST_SEC_16":   "ITC",
+            "CGST_SEC_17":   "ITC",
+            "CGST_RULE_42":  "ITC",
+            "CGST_RULE_43":  "ITC",
+            "CGST_SEC_15":   "Valuation",
+            "CGST_SEC_9":    "RCM",
+            "CGST_SEC_8":    "Composite_Supply",
+            "CGST_SEC_10":   "Place_of_Supply",
+            "CGST_SEC_12":   "Place_of_Supply",
+            "CGST_SEC_13":   "Place_of_Supply",
+            "CGST_SEC_54":   "Refund",
+            "CGST_SEC_122":  "Penalty",
+            "CGST_SEC_129":  "Penalty",
+            "CGST_SEC_22":   "Registration",
+            "CGST_SEC_24":   "Registration",
+            "CGST_SCHED_I":  "Supply",         # Schedule I → deemed supply (related parties)
+            "CGST_SCHED_II": "Supply",
         }
         
         for cit in normalized_citations:
