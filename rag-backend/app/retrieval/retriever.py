@@ -212,35 +212,247 @@ _GST_BIGRAMS = frozenset([
     "input tax", "output tax", "zero rated", "exempt supply",
 ])
 
-# Abbreviation → full-form expansion for BM25 query preprocessing
-_GST_ABBREV = [
-    (re.compile(r'\bitc\b', re.IGNORECASE), 'input tax credit ITC'),
-    (re.compile(r'\brcm\b', re.IGNORECASE), 'reverse charge mechanism RCM'),
-    (re.compile(r'\bscn\b', re.IGNORECASE), 'show cause notice SCN'),
-    (re.compile(r'\bisd\b', re.IGNORECASE), 'input service distributor ISD'),
-    (re.compile(r'\blut\b', re.IGNORECASE), 'letter of undertaking LUT'),
-    (re.compile(r'\bsez\b', re.IGNORECASE), 'special economic zone SEZ'),
-    (re.compile(r'\bcgst\b', re.IGNORECASE), 'central goods services tax CGST'),
-    (re.compile(r'\bigst\b', re.IGNORECASE), 'integrated goods services tax IGST'),
-    (re.compile(r'\bsgst\b', re.IGNORECASE), 'state goods services tax SGST'),
-    (re.compile(r'\bgstr\b', re.IGNORECASE), 'return GSTR'),
-    (re.compile(r'\bfaq\b', re.IGNORECASE), 'frequently asked questions FAQ'),
-    (re.compile(r'\baar\b', re.IGNORECASE), 'advance ruling AAR'),
-    (re.compile(r'\bpoc\b', re.IGNORECASE), 'place of supply POS'),
-    # CBIC expands to full form — circulars/instructions are issued by CBIC
-    (re.compile(r'\bcbic\b', re.IGNORECASE), 'CBIC central board indirect taxes customs circular instruction'),
-    # Normalize section shorthand: "sec 16", "s.16", "s16" → "section 16"
+# Abbreviation → full-form expansion for BM25 query preprocessing.
+# DESIGN: Each pattern runs on the *original* query (not the accumulated result)
+# to prevent cascading double-expansion.  Normalisation patterns (section shorthand)
+# run first in-place; synonym expansions are collected separately and appended.
+#
+# ORGANISATION: patterns are grouped by topic. Within each group, specific phrases
+# come before single-word forms so alternation patterns are unambiguous.
+
+_GST_ABBREV_NORM = [
+    # Section/Rule shorthand: "sec 16", "s.16" → "section 16"
     (re.compile(r'\bsec\.?\s*(\d)', re.IGNORECASE), r'section \1'),
     (re.compile(r'\bs\.\s*(\d)', re.IGNORECASE), r'section \1'),
 ]
 
+_GST_ABBREV_EXPAND = [
+    # ── Core act abbreviations ─────────────────────────────────────────────
+    (re.compile(r'\bitc\b', re.IGNORECASE),   'input tax credit ITC credit'),
+    (re.compile(r'\brcm\b', re.IGNORECASE),   'reverse charge mechanism RCM recipient pays'),
+    (re.compile(r'\bscn\b', re.IGNORECASE),   'show cause notice SCN demand'),
+    (re.compile(r'\bisd\b', re.IGNORECASE),   'input service distributor ISD head office branch distribute'),
+    (re.compile(r'\blut\b', re.IGNORECASE),   'letter of undertaking LUT export zero rated bond'),
+    (re.compile(r'\bsez\b', re.IGNORECASE),   'special economic zone SEZ zero rated supply'),
+    (re.compile(r'\bcgst\b', re.IGNORECASE),  'central goods services tax CGST'),
+    (re.compile(r'\bigst\b', re.IGNORECASE),  'integrated goods services tax IGST interstate'),
+    (re.compile(r'\bsgst\b', re.IGNORECASE),  'state goods services tax SGST'),
+    (re.compile(r'\butgst\b', re.IGNORECASE), 'union territory goods services tax UTGST'),
+    (re.compile(r'\bgstr\b', re.IGNORECASE),  'return GSTR filing'),
+    (re.compile(r'\bfaq\b', re.IGNORECASE),   'frequently asked questions FAQ'),
+    (re.compile(r'\baar\b', re.IGNORECASE),   'advance ruling AAR authority'),
+    (re.compile(r'\baaar\b', re.IGNORECASE),  'appellate advance ruling AAAR authority'),
+    (re.compile(r'\bpos\b', re.IGNORECASE),   'place of supply POS location'),
+    (re.compile(r'\bpoc\b', re.IGNORECASE),   'place of supply POS'),
+    (re.compile(r'\bcbic\b', re.IGNORECASE),  'CBIC central board indirect taxes customs circular instruction'),
+    (re.compile(r'\bcbec\b', re.IGNORECASE),  'central board excise customs CBEC'),
+
+    # ── Real estate / development vocabulary ──────────────────────────────
+    (re.compile(r'\btdr\b', re.IGNORECASE),
+        'transfer of development rights TDR development rights promoter land owner'),
+    (re.compile(r'\bfsi\b', re.IGNORECASE),
+        'floor space index FSI development rights construction'),
+    (re.compile(r'\bjda\b', re.IGNORECASE),
+        'joint development agreement JDA land owner developer consideration'),
+    (re.compile(r'\brera\b', re.IGNORECASE),
+        'real estate regulation RERA builder developer project'),
+    (re.compile(r'\bunsold\s+flat', re.IGNORECASE),
+        'unsold flats un-booked apartments completion certificate OC RCM promoter'),
+    (re.compile(r'\bun.?booked\b', re.IGNORECASE),
+        'un-booked unsold apartments completion certificate promoter'),
+    (re.compile(r'\bcompletion\s+certif', re.IGNORECASE),
+        'completion certificate OC occupancy certificate apartment promoter'),
+    (re.compile(r'\b(?:builder|promoter)\b', re.IGNORECASE),
+        'builder promoter developer real estate residential project apartment'),
+
+    # ── Transport ─────────────────────────────────────────────────────────
+    (re.compile(r'\b(?:gta|goods\s+transport\s+agenc)', re.IGNORECASE),
+        'goods transport agency GTA freight road transportation carriage'),
+    (re.compile(r'\bfreight\b', re.IGNORECASE),
+        'freight transport goods carriage road consignment'),
+    (re.compile(r'\bconsignment\b', re.IGNORECASE),
+        'consignment freight goods transport carriage road'),
+
+    # ── Healthcare ────────────────────────────────────────────────────────
+    (re.compile(r'\b(?:hospital|health\s*care|healthcare)\b', re.IGNORECASE),
+        'hospital health care services clinical establishment patient exempt medical'),
+    (re.compile(r'\bclinical\s+establish', re.IGNORECASE),
+        'clinical establishment health care services hospital medical exempt'),
+    (re.compile(r'\bdiagnos', re.IGNORECASE),
+        'diagnostic test pathology laboratory health care services medical'),
+
+    # ── Finance / banking / guarantee ─────────────────────────────────────
+    (re.compile(r'\bpersonal\s+guarantee\b', re.IGNORECASE),
+        'personal guarantee director bank surety taxable supply corporate guarantee'),
+    (re.compile(r'\bcorporate\s+guarantee\b', re.IGNORECASE),
+        'corporate guarantee personal guarantee director bank surety taxable supply'),
+    (re.compile(r'\bnbfc\b', re.IGNORECASE),
+        'non banking financial company NBFC loan lending RBI'),
+
+    # ── E-commerce / digital ──────────────────────────────────────────────
+    (re.compile(r'\b(?:eca|e.?commerce\s+operator)\b', re.IGNORECASE),
+        'electronic commerce aggregator ECA e-commerce operator TCS'),
+    (re.compile(r'\btcs\b', re.IGNORECASE),
+        'tax collected at source TCS e-commerce operator'),
+    (re.compile(r'\btds\b', re.IGNORECASE),
+        'tax deducted at source TDS deduction'),
+    (re.compile(r'\boidar\b', re.IGNORECASE),
+        'online information database access retrieval OIDAR digital services foreign'),
+    (re.compile(r'\bonline\s+gaming\b', re.IGNORECASE),
+        'online gaming actionable claim 28 percent face value virtual digital'),
+    (re.compile(r'\bfantasy\s+sports?\b', re.IGNORECASE),
+        'fantasy sports online gaming actionable claim 28 percent face value'),
+    (re.compile(r'\bvda\b', re.IGNORECASE),
+        'virtual digital assets VDA cryptocurrency 28 percent'),
+    (re.compile(r'\bcryptocurren', re.IGNORECASE),
+        'cryptocurrency virtual digital assets VDA schedule III'),
+
+    # ── Classification / tariff ───────────────────────────────────────────
+    (re.compile(r'\bhsn\b', re.IGNORECASE),
+        'HSN harmonized system nomenclature tariff heading classification goods'),
+    (re.compile(r'\bsac\b', re.IGNORECASE),
+        'SAC services accounting code classification services'),
+    (re.compile(r'\bworks\s+contract\b', re.IGNORECASE),
+        'works contract immovable property construction civil composite supply'),
+    (re.compile(r'\bcomposite\s+supply\b', re.IGNORECASE),
+        'composite supply principal supply bundled natural'),
+    (re.compile(r'\bmixed\s+supply\b', re.IGNORECASE),
+        'mixed supply highest tax rate multiple supplies combination'),
+
+    # ── Returns / compliance ──────────────────────────────────────────────
+    (re.compile(r'\bgstr.?1\b', re.IGNORECASE),
+        'GSTR-1 outward supply return monthly quarterly'),
+    (re.compile(r'\bgstr.?3b\b', re.IGNORECASE),
+        'GSTR-3B monthly return summary tax'),
+    (re.compile(r'\bgstr.?9c?\b', re.IGNORECASE),
+        'GSTR-9 annual return reconciliation statement audit'),
+    (re.compile(r'\be.?way\b', re.IGNORECASE),
+        'e-way bill electronic way bill transport document movement goods'),
+    (re.compile(r'\banti.?profiteer', re.IGNORECASE),
+        'anti-profiteering section 171 NAA national authority reduction benefit'),
+
+    # ── Supply classification / renting ───────────────────────────────────
+    (re.compile(r'\bzero.?rated\b', re.IGNORECASE),
+        'zero rated supply export SEZ refund LUT bond'),
+    (re.compile(r'\b(?:nil.?rated|exempt\s+supply)\b', re.IGNORECASE),
+        'nil rated exempt supply non-taxable'),
+    (re.compile(r'\brenting\b', re.IGNORECASE),
+        'renting immovable property lessor lessee landlord tenant residential commercial'),
+    (re.compile(r'\b(?:landlord|lessor)\b', re.IGNORECASE),
+        'landlord lessor renting immovable property owner tenant'),
+    (re.compile(r'\btenant\b', re.IGNORECASE),
+        'tenant lessee renting immovable property'),
+
+    # ── Schedule references ────────────────────────────────────────────────
+    (re.compile(r'\bschedule\s+i\b', re.IGNORECASE),
+        'Schedule I deemed supply without consideration'),
+    (re.compile(r'\bschedule\s+ii\b', re.IGNORECASE),
+        'Schedule II classification composite services goods'),
+    (re.compile(r'\bschedule\s+iii\b', re.IGNORECASE),
+        'Schedule III neither supply not taxable'),
+]
+
 
 def _expand_for_bm25(query: str) -> str:
-    """Expand GST abbreviations in a query string for better BM25 keyword coverage."""
-    result = query
-    for pattern, replacement in _GST_ABBREV:
-        result = pattern.sub(replacement, result)
-    return result
+    """
+    Expand GST abbreviations and synonyms for better BM25 keyword coverage.
+
+    Two-phase approach to prevent cascading double-expansion:
+      1. Normalisation (section shorthand) runs sequentially in-place.
+      2. Synonym expansions each run on the *original* query; all unique
+         expansions are concatenated so BM25 sees the full term variety.
+    """
+    # Phase 1 — normalization (in-place, sequential)
+    normed = query
+    for pattern, replacement in _GST_ABBREV_NORM:
+        normed = pattern.sub(replacement, normed)
+
+    # Phase 2 — synonym expansion (each pattern on original query)
+    extras: list[str] = []
+    for pattern, replacement in _GST_ABBREV_EXPAND:
+        expanded = pattern.sub(replacement, query)
+        if expanded != query:
+            extras.append(expanded)
+
+    if extras:
+        return normed + ' ' + ' '.join(extras)
+    return normed
+
+
+# ── GST-domain stopwords for Pseudo-Relevance Feedback ───────────────────────
+# These are too common across all GST documents to be discriminative PRF terms.
+_PRF_STOP = frozenset({
+    # Common English stopwords
+    'the', 'of', 'and', 'in', 'to', 'a', 'an', 'is', 'are', 'for', 'on',
+    'with', 'or', 'at', 'by', 'from', 'it', 'that', 'this', 'as', 'be',
+    'has', 'have', 'was', 'were', 'not', 'but', 'if', 'so', 'its', 'all',
+    'any', 'can', 'also', 'such', 'under', 'shall', 'may', 'where', 'which',
+    'whether', 'their', 'these', 'those', 'each', 'both', 'said', 'been',
+    'will', 'further', 'above', 'below', 'into', 'upon', 'only', 'other',
+    'then', 'than', 'when', 'what', 'how', 'they', 'them', 'there', 'do',
+    'does', 'did', 'would', 'could', 'should', 'no', 'nor', 'same',
+    # GST-domain stopwords (appear in almost every document)
+    'gst', 'tax', 'supply', 'taxable', 'goods', 'services', 'registered',
+    'person', 'section', 'rule', 'notification', 'circular', 'act',
+    'central', 'state', 'order', 'date', 'value', 'amount', 'rate',
+    'applicable', 'case', 'provided', 'made', 'given', 'however',
+    'pursuant', 'thereof', 'therein', 'thereto', 'mentioned', 'respect',
+    'made', 'make', 'para', 'clause', 'sub', 'new', 'prescribed', 'said',
+    'time', 'period', 'total', 'per', 'cent', 'percent', 'cgst', 'igst',
+    'sgst', 'india', 'government', 'ministry', 'department', 'board',
+    'officer', 'authority', 'court',
+})
+
+
+def _prf_expand(query_tokens: list, top_chunk_texts: list, max_terms: int = 8) -> list:
+    """
+    Pseudo-Relevance Feedback (PRF): extract the most distinctive terms
+    from the top BM25 chunks that are NOT already in the query.
+
+    Algorithm:
+      - Tokenize each of the top-N chunks (default 3).
+      - Count how many distinct chunks each token appears in (document frequency
+        within the *top set*, not the whole corpus).
+      - Return up to `max_terms` tokens with highest in-top-set DF, excluding
+        tokens already in the query and domain/English stopwords.
+
+    This bridges the vocabulary gap when users write plain-English queries but
+    legal documents use formal statutory phrasing (e.g. query "unsold flats"
+    → PRF adds "un-booked" "completion" "certificate" "promoter" from top chunks).
+
+    Runs two BM25 passes total; BM25 is µs-fast so overhead is negligible.
+    """
+    if not top_chunk_texts:
+        return []
+
+    from collections import Counter
+    query_token_set = frozenset(t.lower() for t in query_tokens)
+    doc_freq: Counter = Counter()   # token → # of top chunks it appears in
+
+    for text in top_chunk_texts:
+        seen_in_doc: set = set()
+        for tok in tokenize_text(text):
+            tok_l = tok.lower()
+            if (
+                len(tok_l) >= 4
+                and tok_l not in _PRF_STOP
+                and tok_l not in query_token_set
+                and tok_l not in seen_in_doc
+            ):
+                doc_freq[tok_l] += 1
+                seen_in_doc.add(tok_l)
+
+    if not doc_freq:
+        return []
+
+    # Prefer terms that appear in 2+ of the top chunks (multi-doc evidence)
+    high_conf = [tok for tok, cnt in doc_freq.most_common(max_terms + 10) if cnt >= 2]
+    if len(high_conf) < max_terms:
+        # Supplement with top single-occurrence terms
+        low_conf = [tok for tok, cnt in doc_freq.most_common(max_terms * 3) if cnt == 1]
+        high_conf = (high_conf + low_conf)[:max_terms]
+
+    return high_conf[:max_terms]
 
 
 # ─── Direct legal reference extraction ────────────────────────────────────────
@@ -864,15 +1076,20 @@ class Retriever:
             f"{len(self.chunks)} total chunks"
         )
 
-        logger.info("Loading CrossEncoder reranker (cross-encoder/nli-deberta-v3-large)...")
+        # ms-marco-MiniLM-L-6-v2: trained for passage ranking (single float per pair,
+        # higher = more relevant).  CPU-fast: ~150-400ms for 50 pairs at 512 tokens.
+        # Replaced cross-encoder/nli-deberta-v3-large which is an NLI model that
+        # outputs 3-class probability arrays — float(score) always threw, leaving
+        # _rerank_score unset and making all chunks score identically.
+        logger.info("Loading CrossEncoder reranker (cross-encoder/ms-marco-MiniLM-L-6-v2)...")
         try:
             from sentence_transformers import CrossEncoder
             self.cross_encoder = CrossEncoder(
-                "cross-encoder/nli-deberta-v3-large",
+                "cross-encoder/ms-marco-MiniLM-L-6-v2",
                 max_length=512,
                 device="cpu",
             )
-            logger.info("  CrossEncoder loaded: cross-encoder/nli-deberta-v3-large")
+            logger.info("  CrossEncoder loaded: cross-encoder/ms-marco-MiniLM-L-6-v2")
         except Exception as e:
             logger.error(f"Failed to load CrossEncoder: {e}", exc_info=True)
             self.cross_encoder = None
@@ -1314,6 +1531,31 @@ class Retriever:
         _bm25_tokenized_query = tokenize_text(_expand_for_bm25(_bm25_query))  # ontology + abbrev expanded; reused below
         if self.bm25:
             bm25_scores = self.bm25.get_scores(_bm25_tokenized_query)
+
+            # ── Pseudo-Relevance Feedback (PRF) — free vocabulary gap bridge ──────
+            # Pass 1: take top-3 BM25 chunks, extract their most distinctive terms
+            # that aren't already in the query, and append them.
+            # Pass 2: re-score with the augmented token list.
+            # Effect: if the user says "unsold flats" but docs say "un-booked
+            # apartments completion certificate", the PRF terms from pass-1 top
+            # chunks pull the right documents up in pass-2.  BM25 is µs-fast so
+            # two passes add < 1 ms on a 7 k-chunk corpus.
+            try:
+                _prf_top3_idxs = np.argsort(bm25_scores)[::-1][:3]
+                _prf_texts = [
+                    self.chunks[i].get('text', '')
+                    for i in _prf_top3_idxs
+                    if 0 <= i < len(self.chunks)
+                ]
+                _prf_extra = _prf_expand(_bm25_tokenized_query, _prf_texts)
+                if _prf_extra:
+                    logger.debug(f"PRF added {len(_prf_extra)} terms: {_prf_extra}")
+                    _bm25_tokenized_query = _bm25_tokenized_query + _prf_extra
+                    bm25_scores = self.bm25.get_scores(_bm25_tokenized_query)
+            except Exception as _prf_err:
+                logger.debug(f"PRF step failed (non-fatal): {_prf_err}")
+            # ─────────────────────────────────────────────────────────────────────
+
             top_bm25_idxs = np.argsort(bm25_scores)[::-1][:BM25_TOP_K]
             for idx in top_bm25_idxs:
                 if 0 <= idx < len(self.chunks):
@@ -1883,11 +2125,18 @@ class Retriever:
                 _mae_existing_ids = {c.get("chunk_id") for c in reranked_results}
                 _mae_injected = 0
 
-                # P2.5 anchor score for MAE-injected chunks (injected after MMR so
-                # Layer 3 already ran; set _final_legal_score directly).
-                _MAE_STATUTE_SCORE  = 0.05 * 1.50   # = 0.075  (statute × 1.5)
-                _MAE_CIRCULAR_SCORE = 0.05 * 1.10   # = 0.055  (circular × 1.1)
-                _MAE_NOTIF_SCORE    = 0.05 * 1.20   # = 0.060  (notification × 1.2)
+                # MAE anchor scores — set _final_legal_score directly on late-injected
+                # chunks (after CrossEncoder and MMR have already run).
+                # Calibrated for ms-marco-MiniLM-L-6-v2 CrossEncoder score range (-5 to +5):
+                # • Naturally retrieved, highly relevant: fin ≈ 2.0–5.0
+                # • Naturally retrieved, partial match:   fin ≈ 0.3–2.0
+                # • Irrelevant / noise:                   fin < 0
+                # MAE chunks are mandatory legal authorities — they should appear in the
+                # top half of results (visible to LLM) but not override the best naturally
+                # retrieved chunks.  Target: fin ≈ 1.2–1.8 → always visible, never #1.
+                _MAE_STATUTE_SCORE  = 1.50   # statute (critical legal foundation)
+                _MAE_CIRCULAR_SCORE = 1.20   # CBIC circular (authoritative interpretation)
+                _MAE_NOTIF_SCORE    = 1.35   # rate / exemption notification
 
                 # Step 1: Direct provision-index lookup for missing sections/rules
                 _sec_rule_refs = (
@@ -1946,6 +2195,14 @@ class Retriever:
                                 if _cid and _cid not in _mae_existing_ids:
                                     _c["_mandatory_inject"] = True
                                     _c["_mandatory_cat_fill"] = _cat
+                                    # Set score so these appear in visible range
+                                    # (CrossEncoder already ran — set _final_legal_score directly)
+                                    _cat_score = {
+                                        "statute":      _MAE_STATUTE_SCORE,
+                                        "circular":     _MAE_CIRCULAR_SCORE,
+                                        "notification": _MAE_NOTIF_SCORE,
+                                    }
+                                    _c["_final_legal_score"] = _cat_score.get(_cat, 1.0)
                                     reranked_results.append(_c)
                                     _mae_existing_ids.add(_cid)
                                     _mae_injected += 1

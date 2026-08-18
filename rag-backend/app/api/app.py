@@ -1079,8 +1079,9 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         }
 
     retriever = get_retriever()
-    # skip_rerank: FlashRank takes 30-50s on 100+ candidates — bypassed to fit in 29s.
-    # top_k raised now that ALB is in path and Sonnet is used for all queries.
+    # CrossEncoder reranking enabled: ms-marco-MiniLM-L-6-v2 runs in ~200-400ms
+    # for 50 candidate pairs on CPU — well within the 29s ALB timeout.
+    # The old NLI DeBERTa model was both slow AND broken (returned 3-class arrays).
     _top_k = 20 if _is_draft else (18 if _complexity >= 0.60 else 15)
     chunks = retriever.search(
         query=refined_q,
@@ -1089,7 +1090,7 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         advanced_queries=advanced_queries,
         domain_paths=domain_paths,
         is_draft=_is_draft,
-        skip_rerank=True,
+        skip_rerank=False,
     )
 
     citation_block = build_context(chunks, is_draft=_is_draft)
