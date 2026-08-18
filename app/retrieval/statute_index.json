@@ -1,0 +1,269 @@
+{
+    "ITC": {
+        "primary": ["Section 16", "Section 17", "Section 18"],
+        "subtopics": {
+            "Blocked ITC": ["Section 17(5)"],
+            "Apportionment": ["Section 17(1)", "Section 17(2)", "Section 17(3)"],
+            "Availability": ["Section 16(1)", "Section 16(2)"],
+            "Time Limit": ["Section 16(4)"],
+            "Capital Goods": ["Section 16(3)", "Rule 43"],
+            "Reversal": ["Rule 42", "Rule 43", "Section 17(2)"],
+            "ISD": ["Section 20", "Rule 39"],
+            "Rule 86B Restriction": ["Rule 86B"],
+            "Rule 36(4) Restriction": ["Rule 36(4)"]
+        }
+    },
+    "RCM": {
+        "primary": ["Section 9(3)", "Section 9(4)"],
+        "subtopics": {
+            "Services": ["Section 9(3)"],
+            "Goods": ["Section 9(4)"],
+            "Unregistered Supplier": ["Section 9(4)"],
+            "Import of Services": ["Section 5(3) IGST"]
+        }
+    },
+    "Export": {
+        "primary": ["Section 16 IGST", "Section 54"],
+        "subtopics": {
+            "Zero Rated": ["Section 16 IGST"],
+            "Refund on Export": ["Section 54", "Rule 89", "Rule 96"],
+            "LUT": ["Rule 96A"],
+            "IGST Refund": ["Rule 96"],
+            "SEZ Supply": ["Section 16 IGST"]
+        }
+    },
+    "Refund": {
+        "primary": ["Section 54", "Section 55", "Rule 89"],
+        "subtopics": {
+            "Export Refund": ["Section 54(3)", "Rule 89", "Rule 96"],
+            "Inverted Duty": ["Section 54(3)", "Rule 89(5)"],
+            "Excess Payment": ["Section 54(1)"],
+            "Time Limit": ["Section 54(1)"]
+        }
+    },
+    "Registration": {
+        "primary": ["Section 22", "Section 23", "Section 24", "Section 25"],
+        "subtopics": {
+            "Threshold": ["Section 22"],
+            "Compulsory": ["Section 24"],
+            "Exemption from Registration": ["Section 23"],
+            "Voluntary": ["Section 25(3)"],
+            "Cancellation": ["Section 29"],
+            "Amendment": ["Section 28"],
+            "Casual Taxable Person": ["Section 24(ii)", "Section 27"],
+            "Non-Resident Taxable Person": ["Section 24(v)", "Section 27"]
+        }
+    },
+    "Composition Scheme": {
+        "primary": ["Section 10"],
+        "subtopics": {
+            "Eligibility": ["Section 10(1)"],
+            "Service Providers": ["Section 10(2A)"],
+            "Restrictions": ["Section 10(3)", "Section 10(4)"]
+        }
+    },
+    "Valuation": {
+        "primary": ["Section 15"],
+        "subtopics": {
+            "Transaction Value": ["Section 15(1)"],
+            "Inclusions": ["Section 15(2)"],
+            "Discount": ["Section 15(3)"],
+            "Related Party": ["Rule 28"],
+            "Pure Agent": ["Rule 33"]
+        }
+    },
+    "Time of Supply": {
+        "primary": ["Section 12", "Section 13", "Section 14"],
+        "subtopics": {
+            "Goods Forward Charge": ["Section 12(2)"],
+            "Goods Reverse Charge": ["Section 12(3)"],
+            "Services Forward Charge": ["Section 13(2)"],
+            "Services Reverse Charge": ["Section 13(3)"],
+            "Change in Rate": ["Section 14"]
+        }
+    },
+    "Place of Supply": {
+        "primary": ["Section 10 IGST", "Section 11 IGST", "Section 12 IGST", "Section 13 IGST"],
+        "subtopics": {
+            "Goods Domestic": ["Section 10 IGST"],
+            "Goods Import Export": ["Section 11 IGST"],
+            "Services Domestic": ["Section 12 IGST"],
+            "Services Cross Border": ["Section 13 IGST"],
+            "Immovable Property": ["Section 12(3) IGST"]
+        }
+    },
+    "Exemption": {
+        "primary": ["Section 11"],
+        "subtopics": {
+            "Goods Exemption": ["Section 11"],
+            "Services Exemption": ["Section 11"],
+            "Healthcare": ["Section 11"],
+            "Education": ["Section 11"]
+        }
+    },
+    "Demand and Recovery": {
+        "primary": ["Section 73", "Section 74", "Section 75", "Section 79"],
+        "subtopics": {
+            "Non Fraud": ["Section 73"],
+            "Fraud": ["Section 74"],
+            "Voluntary Payment": ["Section 73(5)", "Section 74(5)"],
+            "Recovery": ["Section 79"],
+            "Provisional Attachment": ["Section 83"]
+        }
+    },
+    "Penalty": {
+        "primary": ["Section 122", "Section 123", "Section 125", "Section 129", "Section 130"],
+        "subtopics": {
+            "General Penalty": ["Section 122"],
+            "Detention Seizure": ["Section 129"],
+            "Confiscation": ["Section 130"],
+            "Minor Breach": ["Section 125"],
+            "E-Way Bill Penalty": ["Section 129", "Rule 138"]
+        }
+    },
+    "Appeals": {
+        "primary": ["Section 107", "Section 112", "Section 117"],
+        "subtopics": {
+            "First Appeal": ["Section 107"],
+            "Tribunal Appeal": ["Section 112"],
+            "Pre Deposit": ["Section 107(6)", "Section 112(8)"],
+            "Revision": ["Section 108"],
+            "High Court": ["Section 117"]
+        }
+    },
+    "Returns": {
+        "primary": ["Section 37", "Section 38", "Section 39", "Section 44"],
+        "subtopics": {
+            "GSTR-1": ["Section 37"],
+            "GSTR-3B": ["Section 39"],
+            "Annual Return": ["Section 44", "Rule 80"],
+            "QRMP Scheme": ["Section 39"],
+            "Late Fee": ["Section 47"]
+        }
+    },
+    "Invoice": {
+        "primary": ["Section 31", "Section 34"],
+        "subtopics": {
+            "Tax Invoice": ["Section 31", "Rule 46"],
+            "Bill of Supply": ["Section 31(3)"],
+            "Credit Note": ["Section 34(1)"],
+            "Debit Note": ["Section 34(3)"],
+            "Revised Invoice": ["Section 31(3)"]
+        }
+    },
+    "E-Way Bill": {
+        "primary": ["Rule 138", "Rule 138A", "Rule 138B"],
+        "subtopics": {
+            "Generation": ["Rule 138(1)"],
+            "Validity": ["Rule 138(10)"],
+            "Exemptions": ["Rule 138(14)"],
+            "Verification": ["Rule 138B"]
+        }
+    },
+    "Audit and Investigation": {
+        "primary": ["Section 65", "Section 66", "Section 67", "Section 70"],
+        "subtopics": {
+            "Department Audit": ["Section 65"],
+            "Special Audit": ["Section 66"],
+            "Search and Seizure": ["Section 67"],
+            "Summons": ["Section 70"],
+            "Scrutiny": ["Section 61"]
+        }
+    },
+    "Supply Definition": {
+        "primary": ["Section 7", "Section 2(30)", "Section 2(74)"],
+        "subtopics": {
+            "Composite Supply": ["Section 2(30)", "Section 8"],
+            "Mixed Supply": ["Section 2(74)", "Section 8"],
+            "Schedule I Without Consideration": ["Section 7"],
+            "Schedule II Deemed Supply": ["Section 7"],
+            "Schedule III Non Supply": ["Section 7"]
+        }
+    },
+    "Payment": {
+        "primary": ["Section 49", "Section 49A", "Section 49B"],
+        "subtopics": {
+            "ITC Utilisation Order": ["Section 49", "Rule 88A"],
+            "Electronic Cash Ledger": ["Section 49(1)"],
+            "Electronic Credit Ledger": ["Section 49(2)"],
+            "Interest": ["Section 50"]
+        }
+    },
+    "TDS TCS": {
+        "primary": ["Section 51", "Section 52"],
+        "subtopics": {
+            "TDS": ["Section 51"],
+            "TCS E-Commerce": ["Section 52"]
+        }
+    },
+    "Real Estate": {
+        "primary": ["Section 9"],
+        "subtopics": {
+            "Affordable Housing": ["Section 9"],
+            "Commercial Construction": ["Section 9"],
+            "Works Contract": ["Section 2(119)"]
+        }
+    },
+    "E-Commerce": {
+        "primary": ["Section 9(5)", "Section 52", "Section 24"],
+        "subtopics": {
+            "Operator Liability": ["Section 9(5)"],
+            "TCS": ["Section 52"],
+            "Mandatory Registration": ["Section 24(ix)", "Section 24(x)"]
+        }
+    },
+    "Accounts and Records": {
+        "primary": ["Section 35", "Section 36"],
+        "subtopics": {
+            "Maintenance": ["Section 35"],
+            "Retention Period": ["Section 36"],
+            "Records Required": ["Rule 56"]
+        }
+    },
+    "Job Work": {
+        "primary": ["Section 143"],
+        "subtopics": {
+            "Procedure": ["Section 143"],
+            "Time Limit": ["Section 143(1)"],
+            "ITC on Job Work": ["Section 19"]
+        }
+    },
+    "Anti Profiteering": {
+        "primary": ["Section 171"],
+        "subtopics": {
+            "Price Reduction": ["Section 171(1)"],
+            "Authority": ["Section 171(2)"]
+        }
+    },
+    "Assessment": {
+        "primary": ["Section 59", "Section 60", "Section 61", "Section 62", "Section 63", "Section 64"],
+        "subtopics": {
+            "Self Assessment": ["Section 59"],
+            "Provisional Assessment": ["Section 60"],
+            "Scrutiny": ["Section 61"],
+            "Best Judgment Non Filer": ["Section 62"],
+            "Best Judgment Unregistered": ["Section 63"],
+            "Summary Assessment": ["Section 64"]
+        }
+    },
+    "Intermediary": {
+        "primary": ["Section 2(13) IGST", "Section 13(8) IGST", "Section 13 IGST"],
+        "subtopics": {
+            "Definition": ["Section 2(13) IGST"],
+            "Place of Supply": ["Section 13(8)(b) IGST", "Section 13(8) IGST"],
+            "Cross Border Services": ["Section 13(8) IGST", "Section 2(13) IGST"]
+        }
+    },
+    "Cross_Border_Services": {
+        "primary": ["Section 13 IGST", "Section 2(13) IGST", "Section 16 IGST"],
+        "subtopics": {
+            "Intermediary": ["Section 2(13) IGST", "Section 13(8)(b) IGST"],
+            "Export of Services": ["Section 2(6) IGST", "Section 16 IGST"],
+            "Import of Services": ["Section 5(3) IGST", "Section 5(4) IGST"]
+        }
+    },
+    "General": {
+        "primary": ["Section 9", "Section 7", "Section 15", "Section 16"],
+        "subtopics": {}
+    }
+}

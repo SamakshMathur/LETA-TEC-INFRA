@@ -1,0 +1,34 @@
+# .dockerignore optimized for LETA TITAN
+# Exclude raw documents (not needed at runtime, only for ingestion)
+RAG_INFORMATION_DATABASE/
+
+# Avoid copying virtual environments and local caches
+.venv/
+venv/
+ENV/
+__pycache__/
+.diskcache*/
+.flashrank_cache/
+.pytest_cache/
+
+# Git and OS metadata
+.git/
+.DS_Store
+Thumbs.db
+
+# Documentation and temporary logs
+*.log
+advisory_output.txt
+backend_debug.log
+test_api_res.txt
+startup_trace.log
+
+# Build scripts and local config
+.env
+.env.local
+.python-version
+Dockerfile
+.dockerignore
+setup_ec2.sh
+uv.lock
+pyproject.toml
