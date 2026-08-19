@@ -56,6 +56,7 @@ S3_INDEX_KEY  = "vectordb/index.faiss"
 S3_META_KEY   = "vectordb/index.meta.json"
 
 CATEGORIES = [
+    # ── Legacy flat folders (RAG_INFORMATION_DATABASE/<folder>) ───────────────
     ("Notification",            "Notification", "notifications"),
     ("AAR",                     "AAR",          "aar"),
     ("High Court Case Laws",    "Case Law",     "highcourt"),
@@ -72,6 +73,16 @@ CATEGORIES = [
     ("ICAI",                    "ICAI",         "icai"),
     ("Export",                  "Export",       "export"),
     ("Circulars",               "Circular",     "circulars"),
+
+    # ── Database V2.0 (RAG_INFORMATION_DATABASE/Database_V2.0/<folder>) ──────
+    ("Database_V2.0/CGST Acts",              "Act",          "cgst"),
+    ("Database_V2.0/IGST Acts",              "Act",          "igst"),
+    ("Database_V2.0/CGST Rules 10-08-2026",  "Rules",        "rules"),
+    ("Database_V2.0/IGST rules",             "Rules",        "rules"),
+    ("Database_V2.0/Rate_notifications_2.0", "Notification", "notifications"),
+    ("Database_V2.0/circulars(2017-2025)",   "Circular",     "circulars"),
+    ("Database_V2.0/High Court Case Laws",   "Case Law",     "highcourt"),
+    ("Database_V2.0/Supreme Court Case Laws","Case Law",     "supremecourt"),
 ]
 
 # generated_reports = system output PDFs, not source law — never ingest
@@ -377,7 +388,7 @@ def ingest_pdf(pdf_path: Path, document_type: str, category_key: str,
     # chunk_size=1200 keeps chunks within bge-large-en-v1.5's 512-token sweet spot.
     # chunk_overlap=150 ensures a section heading at the end of one chunk
     # also appears at the start of the next, preserving cross-boundary context.
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
     _splitter = RecursiveCharacterTextSplitter(
         chunk_size=1200,
         chunk_overlap=150,
