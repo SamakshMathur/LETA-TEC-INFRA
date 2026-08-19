@@ -669,7 +669,7 @@ const LetaWorkspace: React.FC = () => {
     });
   };
 
-  const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3, delayMs = 8000): Promise<Response> => {
+  const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 5, delayMs = 8000): Promise<Response> => {
     let lastError: unknown;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
@@ -682,8 +682,8 @@ const LetaWorkspace: React.FC = () => {
         lastError = err;
       }
       if (attempt < maxRetries - 1) {
-        // Exponential backoff: 3s → 6s → 12s
-        const backoff = Math.min(3000 * Math.pow(2, attempt), 15000);
+        // Exponential backoff: 3s → 6s → 12s → 24s → 30s (capped)
+        const backoff = Math.min(3000 * Math.pow(2, attempt), 30000);
         const secs = Math.round(backoff / 1000);
         showRetryStatus(`Connection issue — retrying in ${secs}s… (${attempt + 1}/${maxRetries - 1})`);
         await new Promise(r => setTimeout(r, backoff));

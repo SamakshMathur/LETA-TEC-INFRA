@@ -559,17 +559,13 @@ _ask_logger = logging.getLogger("leta.ask")
 @app.post("/ask")
 @limiter.limit("30/minute")
 async def ask_question(request: Request, req: QuestionRequest):
-    if not _warmup_complete:
-        from starlette.responses import JSONResponse as _jr
-        return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
-
     question = req.question.strip()
     session_id = req.session_id
     query_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
     t0 = time.monotonic()
 
     # IMMEDIATE SAVE: Save User Question First
-    if session_id:
+    if session_id and _warmup_complete:
         collection = get_session_collection()
         if collection is not None:
              collection.update_one(
@@ -579,6 +575,20 @@ async def ask_question(request: Request, req: QuestionRequest):
 
     async def rag_pipeline_orchestrator():
         import asyncio as _asyncio
+        # ── Warmup wait (ECS rolling-deployment grace period) ────────────────────
+        # During a rolling deploy the new task registers in the ALB target group
+        # before finishing model/index load (60-90s).  Instead of 503-ing immediately
+        # and exhausting the frontend's retry budget, we hold the streaming connection
+        # open with a STATUS keepalive and release it as soon as warmup completes.
+        if not _warmup_complete:
+            yield f"__STATUS__:{json.dumps({'msg': 'LETA is starting up — please wait…'})}__END_STATUS__"
+            _wt = 0
+            while not _warmup_complete and _wt < 90:
+                await _asyncio.sleep(3)
+                _wt += 3
+            if not _warmup_complete:
+                yield "\n\n⚠ **LETA is taking longer than expected to start.** Please refresh the page and try your question again in a moment."
+                return
         from app.routing.router import route_query
         from app.generation.synthesizer import _estimate_complexity
         from app.generation.calculation_engine import detect_and_calculate, format_for_context
@@ -990,9 +1000,17 @@ async def ask_question(request: Request, req: QuestionRequest):
 async def ask_question_sync(request: Request, req: QuestionRequest):
     """Non-streaming version of /ask — returns complete JSON response.
     Required for AWS API Gateway HTTP_PROXY compatibility (no SSE streaming support)."""
+    # Wait up to 50s for warmup (well under the ALB 60s idle timeout) so callers
+    # don't see 503 during ECS rolling-deployment warm-up windows.
     if not _warmup_complete:
-        from starlette.responses import JSONResponse as _jr
-        return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
+        import asyncio as _asyncio_w
+        _wt = 0
+        while not _warmup_complete and _wt < 50:
+            await _asyncio_w.sleep(2)
+            _wt += 2
+        if not _warmup_complete:
+            from starlette.responses import JSONResponse as _jr
+            return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
 
     import asyncio as _asyncio
     import urllib.parse as _urlparse
@@ -1160,9 +1178,16 @@ async def ask_question_with_file(
     question: str = Form(...),
     session_id: Optional[str] = Form(None),
 ):
+    # Same 50s warmup wait as /ask-sync (under ALB 60s idle timeout).
     if not _warmup_complete:
-        from starlette.responses import JSONResponse as _jr
-        return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
+        import asyncio as _asyncio_w
+        _wt = 0
+        while not _warmup_complete and _wt < 50:
+            await _asyncio_w.sleep(2)
+            _wt += 2
+        if not _warmup_complete:
+            from starlette.responses import JSONResponse as _jr
+            return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
 
     question_text = question.strip()
 
