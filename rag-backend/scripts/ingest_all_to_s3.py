@@ -56,25 +56,7 @@ S3_INDEX_KEY  = "vectordb/index.faiss"
 S3_META_KEY   = "vectordb/index.meta.json"
 
 CATEGORIES = [
-    # ── Legacy flat folders (RAG_INFORMATION_DATABASE/<folder>) ───────────────
-    ("Notification",            "Notification", "notifications"),
-    ("AAR",                     "AAR",          "aar"),
-    ("High Court Case Laws",    "Case Law",     "highcourt"),
-    ("Supreme Court Case Laws", "Case Law",     "supremecourt"),
-    ("Other APP Result",        "AAR",          "aar"),        # Appellate Authority rulings
-    ("Responses",               "Response",     "responses"),
-    ("Act",                     "Act",          "acts"),
-    ("CGST",                    "CGST Act",     "cgst"),
-    ("IGST",                    "IGST Act",     "igst"),
-    ("Rules",                   "Rules",        "rules"),
-    ("Forms",                   "Form",         "forms"),
-    ("FAQs",                    "FAQ",          "faqs"),
-    ("Brochures",               "Brochure",     "brochures"),
-    ("ICAI",                    "ICAI",         "icai"),
-    ("Export",                  "Export",       "export"),
-    ("Circulars",               "Circular",     "circulars"),
-
-    # ── Database V2.0 (RAG_INFORMATION_DATABASE/Database_V2.0/<folder>) ──────
+    # ── Database V2.0 ONLY (RAG_INFORMATION_DATABASE/Database_V2.0/<folder>) ─
     ("Database_V2.0/CGST Acts",              "Act",          "cgst"),
     ("Database_V2.0/IGST Acts",              "Act",          "igst"),
     ("Database_V2.0/CGST Rules 10-08-2026",  "Rules",        "rules"),
