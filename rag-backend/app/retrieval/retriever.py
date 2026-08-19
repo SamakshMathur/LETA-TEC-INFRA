@@ -807,8 +807,15 @@ class Retriever:
         self._provision_index: dict = {}
         for _ci, _chunk in enumerate(self.chunks):
             _meta = _chunk.get("metadata", {})
-            for _ref in set(_meta.get("provisions", []) + _meta.get("citations", [])):
-                # Skip generic "ACT" citation — matches everything, not useful
+            # Accept both old "provisions"/"citations" schema and new "provision_keys"
+            # schema used by the Database_V2.0 corpus (ingested 2026-08-19+).
+            _refs = set(
+                (_meta.get("provisions") or [])
+                + (_meta.get("citations") or [])
+                + (_meta.get("provision_keys") or [])
+            )
+            for _ref in _refs:
+                # Skip generic sentinel keys — they match everything, not useful
                 if _ref and _ref not in ("ACT", "RULES", "NOTIFICATION"):
                     if _ref not in self._provision_index:
                         self._provision_index[_ref] = []
@@ -935,6 +942,56 @@ class Retriever:
         else:
             self._bm25_circulars = None
             logger.warning("No circular/notification chunks found — circular BM25 skipped")
+
+        # ── Statute-isolated BM25 index ───────────────────────────────────────
+        # The full-corpus BM25 is dominated by case_law (56% of chunks in the
+        # Database_V2.0 corpus).  Case law chunks discuss the same statutory
+        # keywords ("section 16", "ITC", "reverse charge") but should rank below
+        # the actual statute text for tax-law queries.  A statute-only BM25
+        # index normalises length within the statute sub-corpus and ensures the
+        # most keyword-relevant statute chunk always reaches the CrossEncoder pool.
+        logger.info("Building statute-isolated BM25 index...")
+        self._bm25_stat_idx_map: list = [
+            i for i, c in enumerate(self.chunks)
+            if _chunk_category(c) == "statute"
+        ]
+        if self._bm25_stat_idx_map:
+            _stat_tok_corpus = [
+                tokenize_text(self.chunks[i].get("text", ""))
+                for i in self._bm25_stat_idx_map
+            ]
+            self._bm25_statutes = BM25Okapi(_stat_tok_corpus)
+            logger.info(
+                f"Statute BM25 built: {len(self._bm25_stat_idx_map)} statute chunks indexed"
+            )
+        else:
+            self._bm25_statutes = None
+            logger.warning("No statute chunks found — statute BM25 skipped")
+
+        # ── Notification-isolated BM25 index ──────────────────────────────────
+        # Rate notifications (HSN codes, rate schedules, exemption entries) use
+        # very different vocabulary from circulars and statutes.  A combined
+        # circular+notification BM25 index is dominated by the 1760 circular
+        # chunks; a notification-only index (510 chunks) surfaces the most
+        # relevant rate notification for queries about GST rates, SAC codes,
+        # exemptions, and schedules.
+        logger.info("Building notification-isolated BM25 index...")
+        self._bm25_notif_idx_map: list = [
+            i for i, c in enumerate(self.chunks)
+            if _chunk_category(c) == "notification"
+        ]
+        if self._bm25_notif_idx_map:
+            _notif_tok_corpus = [
+                tokenize_text(self.chunks[i].get("text", ""))
+                for i in self._bm25_notif_idx_map
+            ]
+            self._bm25_notifications = BM25Okapi(_notif_tok_corpus)
+            logger.info(
+                f"Notification BM25 built: {len(self._bm25_notif_idx_map)} notification chunks indexed"
+            )
+        else:
+            self._bm25_notifications = None
+            logger.warning("No notification chunks found — notification BM25 skipped")
 
         # ── Circular-isolated FAISS sub-index ─────────────────────────────────
         # BM25-only circular injection misses circulars that use different
@@ -1285,7 +1342,14 @@ class Retriever:
         # as Act text) caused Export circulars to crowd out shorter-but-substantive
         # statute chunks (e.g. CGST Act Section 8, len=496) from the _PER_KEY_CAP=3
         # slots.  Export circulars now fall to priority 2 (official), which is correct.
-        _STATUTE_PATH_PREFIXES = ("act/", "igst/", "cgst/", "rules/", "utgst/")
+        # Paths that identify actual statute text (Acts, Rules).
+        # Covers both legacy flat folder names and Database_V2.0 versioned names
+        # ("Database_V2.0/CGST Acts/", "Database_V2.0/CGST Rules 10-08-2026/", etc.)
+        _STATUTE_PATH_PREFIXES = (
+            "act/", "igst/", "cgst/", "rules/", "utgst/",  # legacy
+            "database_v2.0/cgst acts/", "database_v2.0/igst acts/",  # V2.0 Acts
+            "database_v2.0/cgst rules", "database_v2.0/igst rules",  # V2.0 Rules
+        )
         _OFFICIAL_PATH_PREFIXES = ("circular", "notification")
 
         def _idx_sort_key(idx: int):
@@ -1706,6 +1770,88 @@ class Retriever:
                     )
             except Exception as _ce:
                 logger.warning(f"Circular BM25 injection failed (non-fatal): {_ce}")
+
+        # ── 2d2. Statute-isolated BM25 injection (unconditional) ─────────────
+        # Mirrors 2d above for statutes.  The full-corpus BM25 is dominated by
+        # case_law (4274 of 7631 chunks = 56%) whose judgments discuss every
+        # statutory section by name — so for a query about "Section 16 ITC" the
+        # BM25 top-35 is mostly case_law rather than the CGST Act text itself.
+        # Running BM25 within the statute sub-corpus (1087 chunks, length-
+        # normalised within that set) ensures the most keyword-relevant statute
+        # chunk always enters the CrossEncoder pool alongside the circular results.
+        _STAT_BM25_TOP_N = 10
+        if getattr(self, "_bm25_statutes", None) is not None:
+            try:
+                _stat_scores = self._bm25_statutes.get_scores(_bm25_tokenized_query)
+                _stat_top_local = np.argsort(_stat_scores)[::-1][:_STAT_BM25_TOP_N]
+                _stat_bm25_injected = 0
+                for _local_idx in _stat_top_local:
+                    _score = float(_stat_scores[_local_idx])
+                    if _score <= 0.0:
+                        continue   # no keyword overlap — skip
+                    _global_idx = self._bm25_stat_idx_map[_local_idx]
+                    if not (0 <= _global_idx < len(self.chunks)):
+                        continue
+                    _c = self.chunks[_global_idx].copy()
+                    _cid = _c.get("chunk_id")
+                    if _cid and _cid not in seen_chunk_ids:
+                        _c["_stat_bm25_inject"] = True
+                        _c["_stat_bm25_score"] = _score
+                        candidate_pool.append(_c)
+                        seen_chunk_ids.add(_cid)
+                        _stat_bm25_injected += 1
+                        if trace is not None:
+                            try:
+                                trace.record_injected(_c, "statute_bm25", score=_score)
+                            except Exception:
+                                pass
+                if _stat_bm25_injected:
+                    logger.info(
+                        f"Statute BM25 inject: +{_stat_bm25_injected} statute chunks "
+                        f"(top score={float(_stat_scores[_stat_top_local[0]]):.3f})"
+                    )
+            except Exception as _se:
+                logger.warning(f"Statute BM25 injection failed (non-fatal): {_se}")
+
+        # ── 2d3. Notification-isolated BM25 injection (unconditional) ─────────
+        # Rate notifications use vocabulary (HSN codes, schedule entry numbers,
+        # "per cent" rate figures) that is under-represented in the full-corpus
+        # BM25 relative to the 1760-chunk circular corpus.  A notification-only
+        # BM25 index ensures the most rate-relevant notification chunk always
+        # reaches the CrossEncoder for rate and exemption queries.
+        _NOTIF_BM25_TOP_N = 8
+        if getattr(self, "_bm25_notifications", None) is not None:
+            try:
+                _notif_scores = self._bm25_notifications.get_scores(_bm25_tokenized_query)
+                _notif_top_local = np.argsort(_notif_scores)[::-1][:_NOTIF_BM25_TOP_N]
+                _notif_bm25_injected = 0
+                for _local_idx in _notif_top_local:
+                    _score = float(_notif_scores[_local_idx])
+                    if _score <= 0.0:
+                        continue
+                    _global_idx = self._bm25_notif_idx_map[_local_idx]
+                    if not (0 <= _global_idx < len(self.chunks)):
+                        continue
+                    _c = self.chunks[_global_idx].copy()
+                    _cid = _c.get("chunk_id")
+                    if _cid and _cid not in seen_chunk_ids:
+                        _c["_notif_bm25_inject"] = True
+                        _c["_notif_bm25_score"] = _score
+                        candidate_pool.append(_c)
+                        seen_chunk_ids.add(_cid)
+                        _notif_bm25_injected += 1
+                        if trace is not None:
+                            try:
+                                trace.record_injected(_c, "notification_bm25", score=_score)
+                            except Exception:
+                                pass
+                if _notif_bm25_injected:
+                    logger.info(
+                        f"Notification BM25 inject: +{_notif_bm25_injected} notification chunks "
+                        f"(top score={float(_notif_scores[_notif_top_local[0]]):.3f})"
+                    )
+            except Exception as _ne:
+                logger.warning(f"Notification BM25 injection failed (non-fatal): {_ne}")
 
         # ── 2e. Circular FAISS injection — semantic search within circular sub-corpus ──
         # BM25 (step 2d) finds circulars by keyword overlap; FAISS finds them by

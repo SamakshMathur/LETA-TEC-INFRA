@@ -100,6 +100,9 @@ def _chunk_category(chunk: dict) -> str:
     paths like "act/cgst_act.pdf" (no leading slash).  The retriever.py version
     is correct — it uses startswith(folder + "/") for top-level paths.
     This version matches that logic with the same folder sets.
+
+    Fix (2026-08-19): added substring matches for the Database_V2.0 corpus
+    layout where folder names are "CGST Acts", "circulars(2017-2025)", etc.
     """
     meta = chunk.get("metadata", {})
     rel  = (chunk.get("rel_path") or meta.get("rel_path", "")).replace("\\", "/").lower()
@@ -118,12 +121,21 @@ def _chunk_category(chunk: dict) -> str:
     for folder in _CIRCULAR:
         if f"/{folder}/" in r:
             return "circular"
+    # Database_V2.0 corpus: "circulars(2017-2025)" — prefix match
+    if "/circulars" in r:
+        return "circular"
     for folder in _NOTIF:
         if f"/{folder}/" in r:
             return "notification"
+    # Database_V2.0 corpus: "rate_notifications_2.0"
+    if "notification" in r:
+        return "notification"
     for folder in _STATUTE:
         if f"/{folder}/" in r:
             return "statute"
+    # Database_V2.0 corpus: "CGST Acts", "IGST Acts", "CGST Rules ...", "IGST rules"
+    if "cgst acts" in r or "igst acts" in r or "cgst rules" in r or "igst rules" in r or "utgst" in r:
+        return "statute"
     return "other"
 
 
@@ -146,7 +158,8 @@ def evaluate_result(test: dict, chunks: list) -> dict:
     for chunk in chunks:
         meta = chunk.get("metadata", {}) or {}
         present_cats.add(_chunk_category(chunk))
-        for p in meta.get("provisions", []) + meta.get("citations", []):
+        # Accept both "provisions" (old schema) and "provision_keys" (Database_V2.0 schema)
+        for p in (meta.get("provisions", []) or []) + (meta.get("citations", []) or []) + (meta.get("provision_keys", []) or []):
             if p:
                 present_provs.add(p)
         # P2.5b: metadata.provisions is stripped by supplement_and_rerank flattening.
@@ -164,17 +177,6 @@ def evaluate_result(test: dict, chunks: list) -> dict:
         if ck:
             present_circs.add(ck)
         all_text += " " + (chunk.get("content") or chunk.get("text") or "").lower()
-        # Include rel_path in all_text so circular number keywords (e.g. "circular 199")
-        # match against the filename "circular-cgst-199.pdf" even when the chunk body
-        # text never spells out the circular number (title is on a separate PDF page).
-        # Extract "circular <N>" from paths like "circular-cgst-199.pdf" or "circular_199.pdf"
-        if rel:
-            _rel_norm = rel.lower().replace("\\", "/")
-            all_text += " " + _rel_norm
-            # Synthesise "circular N" tokens from filenames like circular-cgst-199, circular_199
-            import re as _re2
-            for _cm in _re2.finditer(r'circular[^/]*?(\d{2,})', _rel_norm):
-                all_text += f" circular {_cm.group(1)} "
 
     cats_missing = sorted(req_cats - present_cats)
     cats_found   = sorted(req_cats & present_cats)
@@ -238,8 +240,6 @@ def evaluate_result(test: dict, chunks: list) -> dict:
                 f"clause ({sub}) of section {sec}",
                 f"{sec}({sub})",
                 f"s. {sec}({sub})",
-                # IGST Act definitions: standalone "(13)" in definitions list
-                f"({sub})",
             ]:
                 if variant in text:
                     return True
@@ -296,25 +296,9 @@ def evaluate_result(test: dict, chunks: list) -> dict:
                                   "period of limitation", "time of limitation",
                                   "time limit for issuance", "three years from", "five years from",
                                   "period of three years", "period of five years"],
-            # Refund time limits — statute uses written-out "two years" not "2 years"
-            # Notifications extend using "period of limitation"; Sec 54(1) uses
-            # "before the expiry of two years from the relevant date"
-            "2 years":           ["two years", "2 years", "period of two years",
-                                  "two years from the relevant date",
-                                  "within two years", "period of limitation",
-                                  "period of two years from",
-                                  "before the expiry", "relevant date",
-                                  "time limit for claiming refund",
-                                  "time limit for filing a refund"],
-            # Export proceeds — moved below with Section 2(6) additions
             "free sample":       ["free samples", "samples free", "distributed free",
-                                  "goods distributed", "samples distributed",
-                                  "gift or free samples", "free of cost", "samples of goods",
-                                  "section 17(5)(h)", "promotional samples",
-                                  "disposed of by way of gift"],
-            "gift":              ["gifts", "gift of", "as gifts", "gifted", "by way of gift",
-                                  "fifty thousand rupees", "gifts made", "gifts to employees",
-                                  "presents", "schedule iii"],
+                                  "goods distributed", "samples distributed"],
+            "gift":              ["gifts", "gift of", "as gifts", "gifted", "by way of gift"],
             # Section 54(3)(ii) CGST Act uses "rate of tax on inputs being higher" rather
             # than the shorthand "inverted duty" used in practice / circulars.
             "inverted duty":     ["inverted tax structure", "rate of tax on inputs being higher",
@@ -324,9 +308,7 @@ def evaluate_result(test: dict, chunks: list) -> dict:
             # may appear as "immovable property" or "residential" in statute text.
             "under construction": ["under-construction", "being constructed",
                                    "construction of residential", "construction of complex",
-                                   "not yet completed", "ongoing construction",
-                                   "residential apartment", "residential real estate",
-                                   "flat or apartment", "construction of flat"],
+                                   "not yet completed"],
             "real estate":       ["immovable property", "residential project",
                                   "housing project", "housing society", "real-estate",
                                   "construction of flat", "residential apartment"],
@@ -337,49 +319,9 @@ def evaluate_result(test: dict, chunks: list) -> dict:
                                   "section 9(3)", "section 9(4)", "section 5(3) igst"],
             "goods transport":   ["goods transport agency", "transportation of goods",
                                   "transport of goods", "gta", "goods transporter",
-                                  "road transport", "freight carrier", "carriage of goods",
-                                  "freight charges", "freight paid"],
+                                  "road transport", "freight carrier"],
             "advocate":          ["legal service", "legal services", "lawyer", "attorney",
-                                  "legal practitioner", "legal consultant",
-                                  "representation services", "arbitral tribunal"],
-            # IGST Section 2(13) intermediary definition — text uses phrasing
-            # "arranges or facilitates" without always saying "section 2(13)" explicitly
-            "section 2(13)":     ["arranges or facilitates", "broker, an agent",
-                                  "by whatever name called", "(13) intermediary",
-                                  "does not include a person who supplies",
-                                  "arranges or facilitate", "facilitates the supply"],
-            # IGST Section 2(6) export of services — 5-conditions test
-            "foreign currency":  ["convertible foreign exchange", "foreign exchange",
-                                  "receipt of payment in convertible",
-                                  "receipt in foreign exchange",
-                                  "realisation of export proceeds",
-                                  "foreign exchange received",
-                                  "payment for such service has been received",
-                                  "five conditions", "clause (6) of section 2 of the igst"],
-            # Supply definitions — GST Act uses plural forms in section headings/text
-            "mixed supply":      ["mixed supplies", "mixed-supply", "mixture of supply",
-                                  "two or more individual supplies", "not a composite supply"],
-            "composite supply":  ["composite supplies", "composite-supply",
-                                  "naturally bundled", "principal supply",
-                                  "two or more taxable supplies"],
-            # Schedule I — activities without consideration treated as supply
-            "without consideration": ["without any consideration", "without consideration to",
-                                      "deemed supply", "schedule i", "even if made without",
-                                      "without monetary consideration",
-                                      "activities to be treated as supply"],
-            # GST Council — constitutional body; statute uses full name
-            "gst council":       ["goods and services tax council", "article 279a",
-                                  "279a of the constitution", "council shall",
-                                  "recommendations of the council",
-                                  "goods and services tax (council)"],
-            # GSTR-9C — reconciliation statement
-            "gstr-9c":           ["gstr 9c", "gstr9c", "form gstr-9c", "form gstr 9c",
-                                  "reconciliation statement", "gstr 9-c",
-                                  "certified reconciliation"],
-            # Composition scheme turnover limit — statute uses written-out numbers
-            "1.5 crore":         ["one crore fifty lakh", "one crore and fifty lakh",
-                                  "one and a half crore", "150 lakh", "150 lakhs",
-                                  "rupees one crore fifty lakh", "1,50,00,000"],
+                                  "legal practitioner", "legal consultant"],
         }
         for _syn_key, _synonyms in _LEGAL_SYNONYMS.items():
             if kl == _syn_key:
@@ -1034,12 +976,12 @@ def main():
     try:
         from app.dependencies import get_retriever
         retriever = get_retriever()
-        # Disable CrossEncoder locally: the nli-deberta-v3-large model reloads
-        # from disk every query on Windows (no symlink cache) and fails with a
-        # 0-dim scalar error anyway (wrong model for ranking).  Nulling it makes
-        # _cascade_rerank fall back to RRF order — same as prod fallback path.
-        retriever.cross_encoder = None
-        print("  [local] CrossEncoder disabled — RRF fallback active (no cost, correct behavior)")
+        # CrossEncoder (ms-marco-MiniLM-L-6-v2) works correctly now.
+        # Keep it enabled for accurate local regression scores.
+        if retriever.cross_encoder is not None:
+            print("  [local] CrossEncoder enabled (ms-marco-MiniLM-L-6-v2)")
+        else:
+            print("  [local] CrossEncoder unavailable — RRF fallback active")
     except Exception as exc:
         print(f"ERROR: Cannot initialise Retriever: {exc}", file=sys.stderr)
         raise
