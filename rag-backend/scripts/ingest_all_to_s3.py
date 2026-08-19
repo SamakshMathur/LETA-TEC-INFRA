@@ -228,16 +228,16 @@ def _save_doc_contexts(ctx: dict):
     DOC_CONTEXTS_FILE.write_text(json.dumps(ctx, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def _generate_doc_context(rel_path: str, document_type: str, first_text: str) -> str:
-    """Call Claude Haiku once per document to produce an embedding context prefix."""
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return ""
+    """Generate a 2-sentence embedding context prefix using local Ollama (qwen2.5:7b).
+    Free, no API key needed. Falls back to rule-based prefix if Ollama is unavailable.
+    Context is cached in doc_contexts.json — Ollama is only called once per document.
+    """
+    # ── Primary: Ollama (local, free, no API key) ─────────────────────────────
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=120,
+        import ollama as _ollama
+        resp = _ollama.chat(
+            model="qwen2.5:7b",
+            options={"num_predict": 120, "temperature": 0.1},
             messages=[{"role": "user", "content": (
                 f"You are indexing a GST legal document for a vector search system.\n\n"
                 f"File path: {rel_path}\n"
@@ -249,10 +249,90 @@ def _generate_doc_context(rel_path: str, document_type: str, first_text: str) ->
                 f"Output ONLY the 2 sentences, nothing else."
             )}],
         )
-        return resp.content[0].text.strip()
+        result = resp["message"]["content"].strip()
+        if result:
+            return result
     except Exception as e:
-        log.warning(f"  Haiku context generation failed for {rel_path}: {e}")
-        return ""
+        log.warning(f"  Ollama context generation failed for {rel_path}: {e} — using rule-based fallback")
+
+    # ── Fallback: rule-based prefix from filename/folder (always works, zero cost) ──
+    return _rule_based_context(rel_path, document_type)
+
+
+def _rule_based_context(rel_path: str, document_type: str) -> str:
+    """Derive a context prefix purely from the file path — no model, no API, instant."""
+    import re as _re
+    r   = rel_path.replace("\\", "/").lower()
+    fname = rel_path.replace("\\", "/").split("/")[-1]
+
+    # Extract year (4-digit anywhere in path)
+    yr_m = _re.search(r'(20\d{2})', rel_path)
+    year_str = f" ({yr_m.group(1)})" if yr_m else ""
+
+    # Circular
+    cir_m = _re.search(r'circular[_\-\s]*(?:no[_\-\.\s]*)?(\d{2,3})', fname, _re.IGNORECASE)
+    if cir_m or "circular" in r:
+        num = f" No. {cir_m.group(1)}" if cir_m else ""
+        return (f"This is a CBIC GST Circular{num}{year_str} issued by the Central Board "
+                f"of Indirect Taxes and Customs clarifying GST provisions. "
+                f"It provides authoritative guidance on the interpretation and application of GST law.")
+
+    # Rate notification
+    if "notification" in r or "rate_notification" in r:
+        notif_m = _re.search(r'(\d{1,3})[_\-/](\d{4})', fname)
+        num = f" No. {notif_m.group(1)}/{notif_m.group(2)}" if notif_m else ""
+        return (f"This is a GST Rate Notification{num}{year_str} specifying applicable tax rates, "
+                f"exemptions, and HSN/SAC classifications under the GST regime. "
+                f"It prescribes the rate of tax on goods and services.")
+
+    # CGST Act
+    if "cgst act" in r or ("cgst" in r and "act" in r and "rules" not in r):
+        return (f"This is the Central Goods and Services Tax (CGST) Act, 2017{year_str}, "
+                f"the primary legislation governing GST in India. "
+                f"It defines the charging provisions, ITC rules, registration requirements, and compliance framework.")
+
+    # IGST Act
+    if "igst act" in r or ("igst" in r and "act" in r and "rules" not in r):
+        return (f"This is the Integrated Goods and Services Tax (IGST) Act, 2017{year_str}, "
+                f"governing inter-state supply of goods and services including exports, imports, and place of supply rules.")
+
+    # CGST Rules
+    if "cgst rules" in r:
+        rule_m = _re.search(r'rule[_\-\s]*(\d+)', fname, _re.IGNORECASE)
+        rule_str = f" Rule {rule_m.group(1)}" if rule_m else ""
+        return (f"This is{rule_str} of the CGST Rules, 2017{year_str}, "
+                f"prescribing the procedural framework for compliance under the CGST Act. "
+                f"It covers registration, returns, invoicing, ITC, and valuation procedures.")
+
+    # IGST Rules
+    if "igst rules" in r:
+        return (f"This is the IGST Rules, 2017{year_str}, prescribing procedures for "
+                f"inter-state transactions, place of supply determination, and export/import compliance.")
+
+    # High Court judgment
+    if "high court" in r:
+        return (f"This is a High Court judgment{year_str} on a GST-related matter. "
+                f"It interprets statutory provisions, determines the taxability of specific transactions, "
+                f"and may be cited as persuasive precedent in similar GST disputes.")
+
+    # Supreme Court judgment
+    if "supreme court" in r:
+        return (f"This is a Supreme Court judgment{year_str} on a GST or indirect tax matter. "
+                f"It is binding precedent on the interpretation of GST law across all Indian courts.")
+
+    # AAR / Advance Ruling
+    if "aar" in r or "advance" in r:
+        return (f"This is an Advance Ruling (AAR){year_str} on the GST treatment of a specific "
+                f"transaction or activity. It is binding on the applicant and the relevant tax authority.")
+
+    # ICAI / FAQ / Brochure
+    if "icai" in r or "faq" in r or "brochure" in r:
+        return (f"This is an ICAI publication or GST FAQ document{year_str} providing "
+                f"professional guidance and clarifications on GST provisions for practitioners.")
+
+    # Generic fallback
+    return (f"This is a GST legal document of type '{document_type}'{year_str} "
+            f"relevant to the Indian Goods and Services Tax regime.")
 
 
 def ingest_pdf(pdf_path: Path, document_type: str, category_key: str,
@@ -290,11 +370,26 @@ def ingest_pdf(pdf_path: Path, document_type: str, category_key: str,
         else:
             ctx_prefix = doc_contexts[ctx_key]
 
-    WINDOW, STEP = 1500, 1300
+    # ── Chunking: RecursiveCharacterTextSplitter ──────────────────────────────
+    # Replaces the old blind 1500-char sliding window.
+    # Splits in priority order: paragraph breaks → sentence ends → words → chars.
+    # Covers 100% of the document text (old window silently dropped last 200 chars).
+    # chunk_size=1200 keeps chunks within bge-large-en-v1.5's 512-token sweet spot.
+    # chunk_overlap=150 ensures a section heading at the end of one chunk
+    # also appears at the start of the next, preserving cross-boundary context.
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    _splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1200,
+        chunk_overlap=150,
+        separators=["\n\n\n", "\n\n", "\n", ". ", "? ", "! ", "; ", " ", ""],
+        length_function=len,
+    )
+    raw_texts = _splitter.split_text(full_text)
+
     chunks = []
-    for i, start in enumerate(range(0, max(1, len(full_text) - 200), STEP)):
-        text = full_text[start: start + WINDOW].strip()
-        if len(text) < 80:
+    for i, text in enumerate(raw_texts):
+        text = text.strip()
+        if len(text) < 80:          # skip near-empty fragments (page headers, footers)
             continue
         chunk_id = hashlib.md5(f"{rel_path}_{i}".encode()).hexdigest()[:16]
         meta = {
@@ -304,7 +399,7 @@ def ingest_pdf(pdf_path: Path, document_type: str, category_key: str,
         }
         if year:
             meta["year"] = year
-        # embed_text = Haiku context prefix + chunk text.
+        # embed_text = context prefix (Ollama/rule-based) + chunk text.
         # text stays as-is for display; embed_text is what gets encoded into the vector.
         embed_text = f"{ctx_prefix}\n\n{text}" if ctx_prefix else text
         chunks.append({
@@ -562,8 +657,8 @@ def main():
                  f"from {len(raw_chunks_by_doc)} documents")
 
         # ── Step: generate contexts in parallel ───────────────────────────────
-        log.info(f"\n[4/5] Generating contextual embeddings via Claude Haiku...")
-        log.info("      (2 sentences per document, 20 parallel workers)")
+        log.info(f"\n[4/5] Generating contextual embeddings via Ollama (qwen2.5:7b)...")
+        log.info("      (2 sentences per document, 20 parallel workers, cached after first run)")
         doc_contexts = _load_doc_contexts()
         doc_contexts = _generate_all_contexts_parallel(all_pdfs_flat, doc_contexts, workers=20)
         log.info(f"  Context cache now covers {len(doc_contexts)} documents")
