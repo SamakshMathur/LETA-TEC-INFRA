@@ -41,6 +41,9 @@ def _extract_pages(file_path: Path, rel_path: str) -> List[Dict]:
     try:
         if ext == ".pdf":
             pages = extract_text_from_pdf(str(file_path))
+            if not pages or sum(len(p.get("text", "")) for p in pages) < 100:
+                from app.ingestion.pdf_scanned import extract_text_from_scanned_pdf
+                pages = extract_text_from_scanned_pdf(str(file_path))
         elif ext == ".docx":
             pages = extract_text_from_docx(file_path)
         elif ext in (".xlsx", ".xls"):

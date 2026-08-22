@@ -25,6 +25,9 @@ export const getStoredAuthSession = (): Session | null => {
 export const clearAuthSession = (): void => {
   localStorage.removeItem(STORAGE_KEY);
   sessionStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem('leta_access_token');
+  localStorage.removeItem('leta_refresh_token');
+  localStorage.removeItem('leta_session');
 };
 
 export const updateStoredTokens = (tokens: Tokens): void => {

@@ -120,6 +120,24 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
+def _sanitize_json_types(obj):
+    """Recursively converts NumPy numeric types and NaNs/Infs to standard JSON-compatible Python types."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_json_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_json_types(x) for x in obj]
+    elif isinstance(obj, (np.float32, np.float64)):
+        val = float(obj)
+        return 0.0 if np.isnan(val) or np.isinf(val) else val
+    elif isinstance(obj, (np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, float):
+        return 0.0 if np.isnan(obj) or np.isinf(obj) else obj
+    elif hasattr(obj, "item") and callable(getattr(obj, "item")):
+        return obj.item()
+    return obj
+
+
 # ── Layer 1: Exact Hash Cache ────────────────────────────────────────────────
 
 def get_exact(query: str):
@@ -153,7 +171,7 @@ def set_exact(query: str, answer: str, confidence: float, sources: list = None) 
         logger.debug(f"Cache L1 SKIP (low confidence {confidence:.2f}) | q={query[:60]}")
         return
     key = _exact_key(query)
-    payload = {"answer": answer, "confidence": confidence, "sources": sources or [], "ts": time.time()}
+    payload = _sanitize_json_types({"answer": answer, "confidence": confidence, "sources": sources or [], "ts": time.time()})
     # Try Redis first
     r = _get_redis()
     if r is not None:
@@ -344,14 +362,14 @@ def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_te
             (answer[:100] + query_text[:50]).encode()
         ).hexdigest()[:16]
 
-        entry = {
+        entry = _sanitize_json_types({
             "vec_hex": _vec_to_bytes(query_vec).hex(),
             "answer": answer,
             "query_text": query_text,
             "confidence": confidence,
             "sources": sources or [],
             "ts": time.time(),
-        }
+        })
         r.hset(index_key, entry_key, json.dumps(entry))
         r.expire(index_key, CACHE_TTL_SECONDS)
 

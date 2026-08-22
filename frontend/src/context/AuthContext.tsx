@@ -31,6 +31,29 @@ interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const parseExpiry = (value?: string | number): number => {
+  if (!value) return 0;
+  return typeof value === 'number' ? value : new Date(value).getTime();
+};
+
+const getValidStoredSession = (): Session | null => {
+  const stored = getStoredAuthSession();
+
+  if (!stored?.tokens?.accessToken || !stored?.tokens?.refreshToken) {
+    clearAuthSession();
+    return null;
+  }
+
+  const refreshExpiresAt = parseExpiry(stored.tokens.refreshTokenExpiresAt);
+
+  if (!Number.isFinite(refreshExpiresAt) || refreshExpiresAt <= Date.now()) {
+    clearAuthSession();
+    return null;
+  }
+
+  return stored;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [isInitialised, setIsInitialised] = useState(false);
@@ -39,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (DEMO_MODE) {
       // Use real session if one exists (real login takes precedence over demo).
       // Only fall back to demo session when no real user is logged in.
-      const existing = getStoredAuthSession();
+      const existing = getValidStoredSession();
       const isRealSession = existing && existing.tokens?.accessToken !== 'demo-preview-token';
       if (!isRealSession) {
         localStorage.setItem('pro.auth.session', JSON.stringify(DEMO_SESSION));
@@ -51,8 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     // Restore session from localStorage on page load (set by the login flow)
-    const stored = getStoredAuthSession();
-    setSession(stored);
+    setSession(getValidStoredSession());
     setIsInitialised(true);
   }, []);
 

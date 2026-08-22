@@ -1463,6 +1463,10 @@ class Retriever:
             logger.warning("search() called but retriever is not initialized (missing index/bm25)")
             return []
 
+        import time
+        from app.ai_logger import update_ai_log
+        t_start = time.monotonic()
+
         # --- 1. Query Topic & Subtopic (from pre-computed advanced_queries, no extra LLM call) ---
         topic = "General"
         subtopic = None
@@ -1550,10 +1554,14 @@ class Retriever:
         def _add_to_pool(idx):
             """Add chunk by index if not already in pool and index is valid."""
             if 0 <= idx < len(self.chunks):
-                cid = self.chunks[idx].get("chunk_id")
+                chunk = self.chunks[idx]
+                rel_path = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
+                if rel_path in self.inactive_paths:
+                    return
+                cid = chunk.get("chunk_id")
                 if cid and cid not in seen_chunk_ids:
                     seen_chunk_ids.add(cid)
-                    candidate_pool.append(self.chunks[idx].copy())
+                    candidate_pool.append(chunk.copy())
 
         # 1. Vector Search — primary query
         faiss_chunks: list = []
@@ -1982,6 +1990,9 @@ class Retriever:
         # Cap total candidates for reranker (FlashRank OOM above ~300)
         RERANK_MAX = 80
         reranker_input = combined_results[:RERANK_MAX]
+
+        t_retrieval_end = time.monotonic()
+        t_rerank_start = time.monotonic()
 
         # --- Semantic Reranking (FlashRank) ---
         # skip_rerank=True bypasses the cross-encoder to stay within API Gateway's 29s timeout
@@ -2457,6 +2468,8 @@ class Retriever:
                     if key not in res:  # don't overwrite existing keys
                         res[key] = val
             final_results.append(res)
+
+        final_results = [r for r in final_results if r.get("rel_path") not in self.inactive_paths]
 
         logger.debug(
             f"search() complete: query='{query[:60]}' | "

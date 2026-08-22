@@ -5,6 +5,8 @@ export interface User {
   email?: string;
   phone?: string;
   role: string;
+  gender?: string;
+  profession?: string;
   plan?: string;
   [key: string]: any;
 }
