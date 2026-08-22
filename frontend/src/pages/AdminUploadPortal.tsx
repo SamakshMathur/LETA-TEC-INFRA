@@ -5,10 +5,7 @@ import {
   Users, Key, Webhook, CreditCard, Settings, Terminal, Compass, Activity, Server, HardDrive, BarChart3, BellRing
 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
-import SelectSwitcher from '../components/ui/SelectSwitcher';
-=======
 import { SelectSwitcher } from '../components/ui';
->>>>>>> main
 
 const CATEGORIES = [
   { key: 'acts', label: 'Acts' },

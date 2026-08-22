@@ -858,7 +858,6 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
         "plan":      plan,
     }
 
-<<<<<<< HEAD
     _log_auth_activity(
         request=request,
         started_at=started_at,
@@ -866,16 +865,6 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
         user=user_info,
         metadata=_auth_contact_metadata(req.contact, otp_record.get("method")),
     )
-=======
-    tokens: dict = {
-        "accessToken":           access_token,
-        "refreshToken":          refresh_token,
-        "expiresAt":             now_ms + (15 * 60 * 1000),
-        "refreshTokenExpiresAt": now_ms + (7 * 24 * 60 * 60 * 1000),
-        "tokenType":             "bearer",
-        # session_end_ms absent here — clock only starts after payment (see /api/payments/verify)
-    }
->>>>>>> origin/main
 
     return _build_auth_response(user_info, session_end_ms=session_end_ms)
 
