@@ -5,7 +5,11 @@ import {
   Users, Key, Webhook, CreditCard, Settings, Terminal, Compass, Activity, Server, HardDrive, BarChart3, BellRing
 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
-import { SelectSwitcher } from '../components/ui';
+import { useAuth } from '../hooks/useAuth';
+import { useKnowledgePolling } from '../hooks/useKnowledgePolling';
+import { KnowledgeDocument, AuditLog, SystemStatus, IngestionJob } from '../types/admin';
+import { hasRole, getActiveRole } from '../lib/permissions';
+import { AXIOS_INSTANCE } from '../utils/api';
 
 const CATEGORIES = [
   { key: 'acts', label: 'Acts' },
@@ -531,60 +535,22 @@ const AdminUploadPortal: React.FC = () => {
           })}
         </aside>
 
-        {/* ── System Stats ───────────────────────────────────────────────── */}
-        {sysStatus && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Total Vectors" value={sysStatus.faiss?.total_vectors?.toLocaleString()} sub="FAISS index" />
-            <StatCard label="Embedding Dim" value={sysStatus.faiss?.dimension} sub="BGE-large" />
-            <StatCard label="Total Chunks"  value={sysStatus.faiss?.total_chunks?.toLocaleString()} sub="chunks.jsonl" />
-            <StatCard label="Documents"
-              value={Object.values(sysStatus.categories || {}).reduce((a: any, b: any) => a + b, 0) as number}
-              sub={`across ${Object.keys(sysStatus.categories || {}).length} categories`} />
-          </div>
-        )}
+        {/* Right Dashboard Area */}
+        <main className="flex-grow space-y-8 min-w-0">
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* ── Upload Panel ─────────────────────────────────────────────── */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Category selector */}
-            <div className="bg-secondary rounded-2xl border border-white/[0.05] p-6 shadow-xl">
-              <p className="text-xs font-semibold text-white uppercase tracking-wider mb-4 font-mono">Target Category</p>
-              <SelectSwitcher
-                options={CATEGORIES.map(({ key, label }) => ({ id: key, label }))}
-                value={selectedCategory}
-                onChange={setSelectedCategory}
-                variant="primary"
-                layout="grid"
-                columns={4}
-              />
-            </div>
-
-            {/* Drop zone */}
-            <div
-              onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`relative border-2 border-dashed rounded-2xl p-14 text-center cursor-pointer transition-all select-none ${
-                dragging
-                  ? 'border-[#67E8F9] bg-[#67E8F9]/5 scale-[1.01]'
-                  : 'border-white/[0.05] hover:border-white/[0.1] bg-secondary hover:bg-hover'
-              }`}>
-              <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.xlsx,.xls,.txt"
-                className="hidden" onChange={(e) => addFiles(Array.from(e.target.files || []))} />
-              <div className="text-5xl mb-4 transition-transform">{dragging ? '📂' : '📄'}</div>
-              <p className="text-white font-semibold text-sm">
-                {dragging ? 'Drop files here' : 'Drag & drop files, or click to browse'}
-              </p>
-              <p className="text-[#9a9a9a]/60 text-xs mt-1.5 font-mono">PDF · DOCX · XLSX · XLS · TXT</p>
-            </div>
-
-            {/* File queue */}
-            {fileQueue.length > 0 && (
-              <div className="bg-secondary rounded-2xl border border-white/[0.05] overflow-hidden shadow-xl">
-                <div className="px-5 py-4 border-b border-white/[0.05] flex items-center justify-between">
-                  <span className="text-sm font-medium text-white">
-                    {fileQueue.length} file{fileQueue.length > 1 ? 's' : ''} ready
+          {/* Header Panel */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/[0.05] pb-6 gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold font-display tracking-tight text-white uppercase">LETATEC Control Center</h1>
+                <span className="text-[10px] font-black tracking-[0.2em] uppercase text-[#67E8F9] bg-[#67E8F9]/10 border border-[#67E8F9]/20 px-2.5 py-0.5 rounded-full">v1.5 Enterprise</span>
+                {healthInfo?.score !== undefined && (
+                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full font-mono ${
+                    healthInfo.score >= 80 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                    healthInfo.score >= 50 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                    'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                  }`}>
+                    Health: {healthInfo.score}% ({healthInfo.overall_status})
                   </span>
                 )}
               </div>
