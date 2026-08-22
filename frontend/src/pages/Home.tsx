@@ -5,8 +5,8 @@ import {
   StatutoryDomains,
   SimulatedWorkspace,
   SovereignTrust,
+  CABotDemo,
 } from '../components/landing';
-import CABotDemo from '../components/landing/CABotDemo';
 
 const Home: React.FC = () => {
   return (

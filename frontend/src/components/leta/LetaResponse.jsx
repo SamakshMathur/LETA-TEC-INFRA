@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BASE_URL } from '../../config/api';
-import { ShieldCheck, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import { ShieldCheck, Copy, Check, RefreshCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import ThinkingSources from './ThinkingSources';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,20 +56,27 @@ function linkifyLegalRefs(markdown, sources) {
   const placeholders = [];
   const shield = m => { placeholders.push(m); return `\x00LINK${placeholders.length - 1}\x00`; };
 
-  // Preserve existing doc links so we don't double-wrap them.
-  // Strip whitespace/newlines from captured URLs — LLMs sometimes wrap long
-  // URLs across lines which embeds \n inside the URL, causing CommonMark to
-  // reject it as a link and render the raw (url) as plain text.
+  // ── PRE-CLEAN: Strip ALL LLM-generated /api/ URLs before linkification ───
+  //
+  // Root cause: the LLM embeds document URLs inline (e.g. [Section 2(47)](url))
+  // using a URL format that differs from what the frontend expects.  When these
+  // links span a newline the URL leaks as raw visible text in the rendered output.
+  //
+  // Fix: strip every /api/ URL the LLM produces here.  The linkification regexes
+  // below (Sections, Circulars, Rules…) then re-add correct links that point to
+  // the actual consulted_sources already known by the frontend.
+  // Use [\s\S]*? (lazy dotAll) so URLs that the LLM wraps across multiple lines
+  // are still matched. The previous [^)]* stopped at newlines, letting the URL
+  // portion leak as visible plain text in the rendered output.
   let safe = markdown
-    // Collapse split links: LLMs sometimes put the URL on a new line after ]
-    .replace(/\]\(\s*\n\s*(\/api\/)/g, ']($1')       // handles ](\n/api/
-    .replace(/\]\s*\n+\s*\((?=\s*\/api\/)/g, '](')   // handles ]\n(/api/
-    // Process all [text](url) patterns
-    .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, url) => {
-      const cleanUrl = url.replace(/\s+/g, ''); // strip embedded whitespace/newlines
-      if (cleanUrl.includes('/api/documents/')) return shield(`[${text}](${cleanUrl})`);
-      return text;           // strip non-doc markdown links to plain text
-    });
+    // 1. Full [text](/api/...) links — handles URLs spanning multiple lines
+    .replace(/\[([^\]]*)\]\s*\(\/api\/[\s\S]*?\)/g, '$1')
+    // 2. Orphan ]/n(/api/...) — ] already on previous line, URL on this line
+    .replace(/\]\s*\(\/api\/[\s\S]*?\)/g, ']')
+    // 3. Bare (/api/...) — standalone URL not preceded by ] (multi-line safe)
+    .replace(/(?<!\])\(\/api\/[\s\S]*?\)/g, '')
+    // 4. All remaining [text](url) — strip any other LLM-inserted hyperlinks
+    .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text) => text);
 
   const wrap = (text, src) => (src?.url ? `[${text}](${src.url})` : text);
 
@@ -85,7 +91,7 @@ function linkifyLegalRefs(markdown, sources) {
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const src of sources) {
     if (!src?.url || !src?.title) continue;
-    const rawName = decodeURIComponent(src.title).replace(/%20/g, ' ').trim();
+    const rawName = (() => { try { return decodeURIComponent(src.title); } catch { return src.title; } })().replace(/%20/g, ' ').trim();
     const nameNoExt = rawName.replace(/\.[a-z]{2,5}$/i, '').trim();
     if (rawName.length < 5) continue;
 
@@ -207,7 +213,6 @@ function linkifyLegalRefs(markdown, sources) {
 
 const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
   const [hasCopied, setHasCopied] = useState(false);
-  const [activeSnippet, setActiveSnippet] = useState(null);
 
   const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
 
@@ -231,15 +236,6 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
       // Remove naked [text] brackets left when their URL was stripped
       .replace(/\[([^\]\x00]{1,300})\](?!\()/g, '$1');
   }, [data?.answer, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /** Open a source document in the right-panel viewer. */
-  const openDoc = (src) => {
-    if (!onDocumentClick) return;
-    const cleanTitle = (src.title || 'Document').replace(/%20/g, ' ');
-    let url = src.url || '';
-    if (url.startsWith('/api/')) url = BASE_URL + url;
-    onDocumentClick({ url, page: src.page, title: cleanTitle });
-  };
 
   return (
     <motion.div
@@ -287,19 +283,97 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="p-6 md:p-8">
-        {/* Thinking / sources panel (collapsible, shown during + after streaming) */}
-        {(sources.length > 0 || data.status) && (
-          <ThinkingSources
-            sources={sources}
-            status={data.status}
-            onDocumentClick={onDocumentClick}
-          />
+
+        {/* ── Thinking indicator: shown while answer is empty (status events flowing) ── */}
+        {!data?.answer && (
+          <div className="flex flex-col gap-4 py-2">
+            {/* Animated dots + live status message */}
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1.5">
+                {[0, 150, 300].map(delay => (
+                  <span
+                    key={delay}
+                    style={{
+                      display: 'inline-block',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#67E8F9',
+                      animation: `leta-thinking-bounce 1.1s ease-in-out ${delay}ms infinite`,
+                      opacity: 0.85,
+                    }}
+                  />
+                ))}
+              </div>
+              <span
+                key={data?.status}
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: '11px',
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  color: '#67E8F9',
+                  opacity: 0.9,
+                  animation: 'leta-status-fade 0.35s ease',
+                }}
+              >
+                {data?.status || 'Initializing Statutory Analyzer...'}
+              </span>
+            </div>
+
+            {/* Stage rail — 5 steps, lights up as status progresses */}
+            {(() => {
+              const stages = [
+                { key: 'init',      label: 'Init',      match: ['initializing', 'computing', 'initializ'] },
+                { key: 'cache',     label: 'Cache',     match: ['cache', 'scanning'] },
+                { key: 'retrieve',  label: 'Retrieve',  match: ['searching', 'database', 'provision'] },
+                { key: 'rerank',    label: 'Rerank',    match: ['expanding', 'precision', 'refin'] },
+                { key: 'generate',  label: 'Generate',  match: ['synthesiz', 'drafting', 'advisory'] },
+              ];
+              const st = (data?.status || '').toLowerCase();
+              let activeIdx = 0;
+              for (let i = stages.length - 1; i >= 0; i--) {
+                if (stages[i].match.some(m => st.includes(m))) { activeIdx = i; break; }
+              }
+              return (
+                <div className="flex items-center gap-0 mt-1" style={{ maxWidth: '340px' }}>
+                  {stages.map((s, i) => (
+                    <React.Fragment key={s.key}>
+                      <div className="flex flex-col items-center gap-1" style={{ minWidth: '52px' }}>
+                        <div style={{
+                          width: '8px', height: '8px', borderRadius: '50%',
+                          background: i <= activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.08)',
+                          boxShadow: i === activeIdx ? '0 0 8px rgba(103,232,249,0.6)' : 'none',
+                          transition: 'all 0.3s ease',
+                        }} />
+                        <span style={{
+                          fontFamily: 'monospace', fontSize: '8px', letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          color: i <= activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.2)',
+                          transition: 'color 0.3s ease',
+                        }}>
+                          {s.label}
+                        </span>
+                      </div>
+                      {i < stages.length - 1 && (
+                        <div style={{
+                          flex: 1, height: '1px', marginBottom: '14px',
+                          background: i < activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.08)',
+                          transition: 'background 0.3s ease',
+                        }} />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
         )}
 
         {/* Main answer — body: Times New Roman, headings: Bookman Old Style */}
         <div
           className="prose prose-sm md:prose-base max-w-none leading-relaxed"
-          style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }}
+          style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif", display: data?.answer ? 'block' : 'none' }}
         >
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
@@ -321,6 +395,15 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
               th: p => <th className="px-4 py-3 text-left font-bold text-white" {...p} />,
               td: p => <td className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#CBD5E1' }} {...p} />,
               a: p => {
+                // ── Safety net layer 2 ──────────────────────────────────────────
+                // view_by_path URLs are NEVER produced by linkifyLegalRefs — they
+                // only appear when the LLM hallucinates a raw /api/ path despite the
+                // prompt rule. Render as plain text so the URL never leaks visually.
+                // The pre-render regex (layer 1) handles the same case for URLs that
+                // ReactMarkdown couldn't parse as a proper link (e.g. multiline URLs).
+                if (p.href && p.href.includes('view_by_path')) {
+                  return <>{p.children}</>;
+                }
                 const isDocLink = p.href && p.href.includes('/api/documents/');
                 const openInViewer = (href, linkText) => {
                   let baseUrl = href;
@@ -379,134 +462,6 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
           )}
         </div>
 
-        {/* ── Referenced Documents + inline snippet panel ───────────────── */}
-        {sources.length > 0 && (
-          <div
-            className="mt-6 pt-4"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
-          >
-            <span
-              className="text-[9px] font-mono uppercase tracking-[0.2em] block mb-2.5"
-              style={{ color: '#475569' }}
-            >
-              Referenced Documents &nbsp;·&nbsp; {sources.length} source{sources.length !== 1 ? 's' : ''}
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {sources.map((src, i) => {
-                const label = (src.title || 'Document')
-                  .replace(/%20/g, ' ')
-                  .replace(/\.[a-z]{2,5}$/i, '');
-                const isActive = activeSnippet?.url === src.url && activeSnippet?.page === src.page;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => setActiveSnippet(isActive ? null : src)}
-                    title={src.snippet ? 'Click to preview excerpt' : `Open ${label}`}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono transition-all"
-                    style={{
-                      background: isActive ? 'rgba(103,232,249,0.14)' : 'rgba(103,232,249,0.05)',
-                      border: `1px solid ${isActive ? 'rgba(103,232,249,0.5)' : 'rgba(103,232,249,0.15)'}`,
-                      color: isActive ? '#67E8F9' : '#94A3B8',
-                    }}
-                    onMouseEnter={e => {
-                      if (!isActive) {
-                        e.currentTarget.style.borderColor = 'rgba(103,232,249,0.5)';
-                        e.currentTarget.style.background = 'rgba(103,232,249,0.12)';
-                        e.currentTarget.style.color = '#67E8F9';
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (!isActive) {
-                        e.currentTarget.style.borderColor = 'rgba(103,232,249,0.15)';
-                        e.currentTarget.style.background = 'rgba(103,232,249,0.05)';
-                        e.currentTarget.style.color = '#94A3B8';
-                      }
-                    }}
-                  >
-                    <FileText size={10} />
-                    <span className="max-w-[180px] truncate">{label}</span>
-                    {src.page && src.page > 1 && (
-                      <span style={{ color: isActive ? '#4FB7C5' : '#475569' }}>p.{src.page}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* ── Snippet panel ─────────────────────────────────────────────── */}
-            {activeSnippet && (
-              <div
-                className="mt-3 rounded-xl overflow-hidden"
-                style={{ border: '1px solid rgba(103,232,249,0.2)', background: 'rgba(10,18,32,0.85)' }}
-              >
-                {/* Panel header */}
-                <div
-                  className="flex items-center justify-between px-4 py-2.5"
-                  style={{ borderBottom: '1px solid rgba(103,232,249,0.1)', background: 'rgba(103,232,249,0.06)' }}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText size={11} style={{ color: '#4FB7C5', flexShrink: 0 }} />
-                    <span
-                      className="text-[10px] font-mono truncate"
-                      style={{ color: '#67E8F9' }}
-                    >
-                      {(activeSnippet.title || 'Document').replace(/%20/g, ' ').replace(/\.[a-z]{2,5}$/i, '')}
-                    </span>
-                    {activeSnippet.page && (
-                      <span
-                        className="text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0"
-                        style={{ background: 'rgba(103,232,249,0.12)', color: '#4FB7C5' }}
-                      >
-                        p.{activeSnippet.page}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => openDoc(activeSnippet)}
-                      className="text-[9px] font-mono px-2.5 py-1 rounded transition-all"
-                      style={{ border: '1px solid rgba(103,232,249,0.3)', color: '#4FB7C5' }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(103,232,249,0.12)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                    >
-                      Full Document →
-                    </button>
-                    <button
-                      onClick={() => setActiveSnippet(null)}
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors"
-                      style={{ color: '#475569' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#94A3B8'; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-
-                {/* Snippet text */}
-                <div className="px-5 py-4 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(103,232,249,0.2) transparent' }}>
-                  {activeSnippet.snippet ? (
-                    <p
-                      className="leading-relaxed whitespace-pre-wrap"
-                      style={{
-                        fontFamily: "'Georgia', 'Times New Roman', serif",
-                        fontSize: '13px',
-                        color: '#CBD5E1',
-                        lineHeight: '1.75',
-                      }}
-                    >
-                      {activeSnippet.snippet}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] font-mono text-center py-4" style={{ color: '#475569' }}>
-                      No excerpt available — click Full Document to open the PDF.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}

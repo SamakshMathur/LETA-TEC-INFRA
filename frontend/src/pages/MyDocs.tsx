@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { useSavedDocs, SavedDoc } from '../hooks/useSavedDocs';
 import { getDocumentContext } from '../constants/documentLibrary';
 import { BASE_URL as VITE_API_BASE } from '../config/api';
-import DocPreviewSidebar from '../components/documents/DocPreviewSidebar';
+import { DocPreviewSidebar } from '../components/documents';
 
 const API_BASE = `${VITE_API_BASE}/api/documents`;
 

@@ -231,30 +231,39 @@ const DocumentRow: React.FC<{
   );
 };
 
-// ── Circulars year-tab row ────────────────────────────────────────────────
-const CircularsRow: React.FC<{
+// ── Reusable year-tab row (used by circulars AND notifications) ───────────
+const YearTabRow: React.FC<{
   category: CategoryRow;
+  endpoint: string;
+  activeColor: string;
+  activeBg: string;
   onDocClick: (d: DocItem) => void;
   onDownload: (d: DocItem) => void;
   isSaved: (id: string) => boolean;
   onToggleSave: (d: DocItem) => void;
-}> = ({ category, onDocClick, onDownload, isSaved, onToggleSave }) => {
-  const [byYear, setByYear]     = useState<Record<string, DocItem[]>>({});
-  const [loading, setLoading]   = useState(true);
+}> = ({ category, endpoint, activeColor, activeBg, onDocClick, onDownload, isSaved, onToggleSave }) => {
+  const [byYear, setByYear]         = useState<Record<string, DocItem[]>>({});
+  const [loading, setLoading]       = useState(true);
   const [activeYear, setActiveYear] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/list/circulars/by-year`)
+    fetch(endpoint)
       .then(r => r.json())
       .then(data => {
-        setByYear(data);
-        const years = Object.keys(data).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
-        if (years.length) setActiveYear(years[0]);
+        // Validate: must be a plain object where every value is an array.
+        // Guards against 404 JSON errors like {"detail":"Not Found"} which would
+        // set activeYear="detail", then activeDocs="Not Found" (string → .map crash).
+        if (data && typeof data === 'object' && !Array.isArray(data) &&
+            Object.values(data).every(v => Array.isArray(v))) {
+          setByYear(data);
+          const years = Object.keys(data).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
+          if (years.length) setActiveYear(years[0]);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [endpoint]);
 
   const scroll = (dir: 'left' | 'right') => {
     if (!scrollRef.current) return;
@@ -265,7 +274,9 @@ const CircularsRow: React.FC<{
   };
 
   const years = Object.keys(byYear).filter(y => y !== 'other').sort((a, b) => Number(b) - Number(a));
-  const activeDocs = byYear[activeYear] || [];
+  // Always guarantee an array — guards against any malformed API response slipping through
+  const rawDocs = byYear[activeYear];
+  const activeDocs: DocItem[] = Array.isArray(rawDocs) ? rawDocs : [];
   const totalCount = Object.values(byYear).reduce((s, arr) => s + arr.length, 0);
 
   return (
@@ -296,13 +307,13 @@ const CircularsRow: React.FC<{
                   fontSize: '11px',
                   fontFamily: 'monospace',
                   fontWeight: y === activeYear ? 700 : 400,
-                  border: `1px solid ${y === activeYear ? 'rgba(79,183,197,0.4)' : 'rgba(255,255,255,0.06)'}`,
-                  background: y === activeYear ? 'rgba(79,183,197,0.18)' : 'rgba(255,255,255,0.03)',
-                  color: y === activeYear ? '#4FB7C5' : '#6B7280',
+                  border: `1px solid ${y === activeYear ? activeColor.replace(')', ', 0.4)').replace('rgb', 'rgba') : 'rgba(255,255,255,0.06)'}`,
+                  background: y === activeYear ? activeBg : 'rgba(255,255,255,0.03)',
+                  color: y === activeYear ? activeColor : '#6B7280',
                   cursor: 'pointer',
                   transition: 'all 0.15s',
                   whiteSpace: 'nowrap',
-                  textAlign: 'center',
+                  textAlign: 'center' as const,
                 }}
               >
                 {y}
@@ -327,6 +338,38 @@ const CircularsRow: React.FC<{
     </div>
   );
 };
+
+// ── Circulars year-tab row (teal theme) ──────────────────────────────────
+const CircularsRow: React.FC<{
+  category: CategoryRow;
+  onDocClick: (d: DocItem) => void;
+  onDownload: (d: DocItem) => void;
+  isSaved: (id: string) => boolean;
+  onToggleSave: (d: DocItem) => void;
+}> = (props) => (
+  <YearTabRow
+    {...props}
+    endpoint={`${API_BASE}/list/circulars/by-year`}
+    activeColor="#4FB7C5"
+    activeBg="rgba(79,183,197,0.18)"
+  />
+);
+
+// ── Notifications year-tab row (violet theme) ─────────────────────────────
+const NotificationsRow: React.FC<{
+  category: CategoryRow;
+  onDocClick: (d: DocItem) => void;
+  onDownload: (d: DocItem) => void;
+  isSaved: (id: string) => boolean;
+  onToggleSave: (d: DocItem) => void;
+}> = (props) => (
+  <YearTabRow
+    {...props}
+    endpoint={`${API_BASE}/list/notifications/by-year`}
+    activeColor="#8B5CF6"
+    activeBg="rgba(139,92,246,0.18)"
+  />
+);
 
 
 // ── Redesigned Core DocumentLibrary Component ─────────────────────────────
@@ -373,11 +416,12 @@ export const DocumentLibrary: React.FC = () => {
 
     const filtered = selectedFilter === 'all' ? scored : scored.filter(({ doc }) => {
       const cat = doc.category || '';
-      if (selectedFilter === 'rules')     return cat === 'acts'      || cat === 'rules';
-      if (selectedFilter === 'circulars') return cat === 'circulars' || cat === 'cgst' || cat === 'igst';
-      if (selectedFilter === 'case-laws') return cat === 'highcourt' || cat === 'supremecourt';
-      if (selectedFilter === 'aar')       return cat === 'aars';
-      if (selectedFilter === 'forms')     return cat === 'forms'     || cat === 'brochures' || cat === 'flyers';
+      if (selectedFilter === 'circulars')     return cat === 'circulars';
+      if (selectedFilter === 'notifications') return cat === 'notifications';
+      if (selectedFilter === 'rules')         return cat === 'acts' || cat === 'rules' || cat === 'cgst' || cat === 'igst';
+      if (selectedFilter === 'case-laws')     return cat === 'highcourt' || cat === 'supremecourt';
+      if (selectedFilter === 'aar')           return cat === 'aars' || cat === 'flyers';
+      if (selectedFilter === 'forms')         return cat === 'forms' || cat === 'brochures' || cat === 'faqs';
       return true;
     });
 
@@ -394,11 +438,12 @@ export const DocumentLibrary: React.FC = () => {
     
     return CATEGORY_GROUPS.map(group => {
       const filteredRows = group.rows.filter(row => {
-        if (selectedFilter === 'rules') return row.id === 'acts' || row.id === 'rules';
-        if (selectedFilter === 'circulars') return row.id === 'circulars' || row.id === 'cgst' || row.id === 'igst';
-        if (selectedFilter === 'case-laws') return row.id === 'highcourt' || row.id === 'supremecourt';
-        if (selectedFilter === 'aar') return row.id === 'aars';
-        if (selectedFilter === 'forms') return row.id === 'forms' || row.id === 'brochures' || row.id === 'flyers';
+        if (selectedFilter === 'circulars')     return row.id === 'circulars';
+        if (selectedFilter === 'notifications') return row.id === 'notifications';
+        if (selectedFilter === 'rules')         return row.id === 'acts' || row.id === 'rules' || row.id === 'cgst' || row.id === 'igst';
+        if (selectedFilter === 'case-laws')     return row.id === 'highcourt' || row.id === 'supremecourt';
+        if (selectedFilter === 'aar')           return row.id === 'aars' || row.id === 'flyers';
+        if (selectedFilter === 'forms')         return row.id === 'forms' || row.id === 'brochures' || row.id === 'faqs';
         return true;
       });
       return { ...group, rows: filteredRows };
@@ -522,6 +567,9 @@ export const DocumentLibrary: React.FC = () => {
                 {group.rows.map(row => (
                   row.id === 'circulars'
                     ? <CircularsRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
+                        isSaved={isSaved} onToggleSave={toggleSave} />
+                    : row.id === 'notifications'
+                    ? <NotificationsRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
                         isSaved={isSaved} onToggleSave={toggleSave} />
                     : <DocumentRow key={row.id} category={row} onDocClick={setSelectedDoc} onDownload={handleDownload}
                         searchQuery="" isSaved={isSaved} onToggleSave={toggleSave} />

@@ -5,15 +5,10 @@ import {
   Users, Key, Webhook, CreditCard, Settings, Terminal, Compass, Activity, Server, HardDrive, BarChart3, BellRing
 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
-<<<<<<< HEAD
-import { useAuth } from '../hooks/useAuth';
-import { useKnowledgePolling } from '../hooks/useKnowledgePolling';
-import { KnowledgeDocument, AuditLog, SystemStatus, IngestionJob } from '../types/admin';
-import { hasRole, getActiveRole } from '../lib/permissions';
-import { AXIOS_INSTANCE } from '../utils/api';
-=======
 import SelectSwitcher from '../components/ui/SelectSwitcher';
->>>>>>> origin/main
+=======
+import { SelectSwitcher } from '../components/ui';
+>>>>>>> main
 
 const CATEGORIES = [
   { key: 'acts', label: 'Acts' },
@@ -539,24 +534,6 @@ const AdminUploadPortal: React.FC = () => {
           })}
         </aside>
 
-<<<<<<< HEAD
-        {/* Right Dashboard Area */}
-        <main className="flex-grow space-y-8 min-w-0">
-          
-          {/* Header Panel */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/[0.05] pb-6 gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold font-display tracking-tight text-white uppercase">LETATEC Control Center</h1>
-                <span className="text-[10px] font-black tracking-[0.2em] uppercase text-[#67E8F9] bg-[#67E8F9]/10 border border-[#67E8F9]/20 px-2.5 py-0.5 rounded-full">v1.5 Enterprise</span>
-                {healthInfo?.score !== undefined && (
-                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full font-mono ${
-                    healthInfo.score >= 80 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                    healthInfo.score >= 50 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                    'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                  }`}>
-                    Health: {healthInfo.score}% ({healthInfo.overall_status})
-=======
         {/* ── System Stats ───────────────────────────────────────────────── */}
         {sysStatus && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -611,7 +588,6 @@ const AdminUploadPortal: React.FC = () => {
                 <div className="px-5 py-4 border-b border-white/[0.05] flex items-center justify-between">
                   <span className="text-sm font-medium text-white">
                     {fileQueue.length} file{fileQueue.length > 1 ? 's' : ''} ready
->>>>>>> origin/main
                   </span>
                 )}
               </div>

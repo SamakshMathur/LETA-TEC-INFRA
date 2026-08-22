@@ -302,11 +302,23 @@ def list_all_documents():
 
 # ─── List by category ─────────────────────────────────────────────────────────
 
+import re as _re
+_YEAR_IN_PART_RE = _re.compile(r'[-_](\d{4})[-_.]')   # year embedded in filename
+
 def _extract_year(key_parts: list) -> str | None:
-    """Extract a 4-digit year (2010-2030) from S3 key path parts."""
+    """
+    Extract a 4-digit year (2010-2030) from S3 key path parts.
+    Checks both standalone folder names (e.g. .../2022/...) and
+    years embedded in filenames (e.g. cir-252-09-2025-cgst.pdf).
+    """
     for part in key_parts:
+        # Case 1: part is just the year (subfolder structure)
         if part.isdigit() and 2010 <= int(part) <= 2030:
             return part
+        # Case 2: year embedded inside filename like "cir-252-09-2025-cgst.pdf"
+        m = _YEAR_IN_PART_RE.search(part)
+        if m and 2010 <= int(m.group(1)) <= 2030:
+            return m.group(1)
     return None
 
 
@@ -316,7 +328,8 @@ def list_documents(category: str):
     if not folder_name:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    is_circulars = category.lower() == "circulars"
+    # Extract year from folder path for any category that organises files by year subfolder
+    is_year_tagged = category.lower() in ("circulars", "notifications")
     docs = []
 
     if not S3_BUCKET and BASE_DIR.exists():
@@ -327,7 +340,7 @@ def list_documents(category: str):
                      if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS]
         for idx, file_path in enumerate(all_files[:300]):
             rel = str(file_path.relative_to(BASE_DIR)).replace("\\", "/")
-            year = _extract_year(rel.split("/")) if is_circulars else None
+            year = _extract_year(rel.split("/")) if is_year_tagged else None
             docs.append({
                 "id": f"{category}_{idx}",
                 "title": file_path.name,
@@ -336,7 +349,7 @@ def list_documents(category: str):
                 "size": f"{round(file_path.stat().st_size / 1024, 1)} KB",
                 "filename": file_path.name,
                 "path": rel,
-                **({"year": year} if is_circulars else {}),
+                **({"year": year} if is_year_tagged else {}),
             })
         return docs
 
@@ -352,7 +365,7 @@ def list_documents(category: str):
                     if Path(key).suffix.lower() not in SUPPORTED_EXTS:
                         continue
                     rel = key[len(f"{S3_DOCS_PREFIX}/"):]
-                    year = _extract_year(key.split("/")) if is_circulars else None
+                    year = _extract_year(key.split("/")) if is_year_tagged else None
                     docs.append({
                         "id": f"{category}_{len(docs)}",
                         "title": Path(key).name,
@@ -361,28 +374,38 @@ def list_documents(category: str):
                         "size": f"{round(obj['Size'] / 1024, 1)} KB",
                         "filename": Path(key).name,
                         "path": rel,
-                        **({"year": year} if is_circulars else {}),
+                        **({"year": year} if is_year_tagged else {}),
                     })
         except Exception as e:
             print(f"S3 list error for {folder_name}: {e}")
     return docs
 
 
-@router.get("/list/circulars/by-year")
-def list_circulars_by_year():
-    """Return circulars grouped by year: { '2017': [...], '2018': [...], ... }"""
-    all_docs = list_documents("circulars")
+def _group_by_year(category_id: str) -> dict:
+    """Shared helper: fetch all docs for a category and bucket them by year."""
+    all_docs = list_documents(category_id)
     grouped: dict = {}
     for doc in all_docs:
         year = doc.get("year") or "other"
         grouped.setdefault(year, []).append(doc)
-    # Sort years descending (newest first), keep 'other' at end
     sorted_grouped = {}
     for y in sorted((k for k in grouped if k != "other"), reverse=True):
         sorted_grouped[y] = grouped[y]
     if "other" in grouped:
         sorted_grouped["other"] = grouped["other"]
     return sorted_grouped
+
+
+@router.get("/list/circulars/by-year")
+def list_circulars_by_year():
+    """Return circulars grouped by year: { '2017': [...], '2018': [...], ... }"""
+    return _group_by_year("circulars")
+
+
+@router.get("/list/notifications/by-year")
+def list_notifications_by_year():
+    """Return notifications grouped by year: { '2017': [...], '2018': [...], ... }"""
+    return _group_by_year("notifications")
 
 
 # ─── AI Search ────────────────────────────────────────────────────────────────

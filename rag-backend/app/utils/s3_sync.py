@@ -24,9 +24,13 @@ def sync_from_s3():
 
             for obj in result["Contents"]:
                 key = obj["Key"]
-                
-                # Create local directory structure
-                local_path = os.path.join(os.getcwd(), key)
+
+                # Guard against S3 keys with path traversal sequences
+                base_path = os.path.realpath(os.getcwd())
+                local_path = os.path.realpath(os.path.join(base_path, key))
+                if not local_path.startswith(base_path + os.sep):
+                    logger.warning(f"S3 key rejected (path traversal): {key!r}")
+                    continue
                 
                 # If key ends with '/', it's a directory
                 if key.endswith('/'):

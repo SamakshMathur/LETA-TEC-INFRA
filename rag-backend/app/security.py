@@ -12,16 +12,14 @@ from app.database import get_user_collection
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# JWT CONFIG
-# ─────────────────────────────────────────────────────────────────────────────
-
-SECRET_KEY = os.getenv(
-    "SECRET_KEY",
-    "dev-only-insecure-key-do-not-use-in-production"
-)
-ADMIN_MASTER_SECRET = os.getenv("ADMIN_MASTER_SECRET", "")
-
+# ── Configuration ─────────────────────────────────────────────────────────────
+_secret = os.environ.get("SECRET_KEY")
+if not _secret:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set. "
+        'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
+    )
+SECRET_KEY: str = _secret
 ALGORITHM = "HS256"
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 15

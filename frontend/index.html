@@ -3,11 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Preconnect to Google Fonts origin so the DNS + TLS are resolved early -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/png" href="/LETA_WHITE_ON_BLACK_4K.png" />
-    <title>LETA TITAN</title>
+
+    <!-- Non-blocking font load: media="print" tricks the browser into downloading
+         without blocking render; onload swaps it to 'all' once available.
+         The <noscript> fallback covers browsers with JS disabled. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&family=Space+Grotesk:wght@500;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    >
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&family=Space+Grotesk:wght@500;600;700;800&display=swap"
+      >
+    </noscript>
+
+    <!-- Inline SVG favicon — zero network request, scales perfectly at any size.
+         Replace with a proper .ico once one is generated. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23060816'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='17' fill='%2367E8F9'%3EL%3C/text%3E%3C/svg%3E" />
+
+    <title>LETA</title>
   </head>
   <body style="background-color:#060816">
     <div id="root"></div>

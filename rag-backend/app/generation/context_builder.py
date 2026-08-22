@@ -186,8 +186,10 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         if len(chunk_text) > max_chunk:
             chunk_text = chunk_text[:max_chunk] + "... [truncated]"
 
-        # Include DOCUMENT LINK in the source block so the LLM can output clickable links.
-        # The frontend renders markdown hyperlinks; the model is instructed to use this URL.
+        # NOTE: Do NOT include DOCUMENT LINK in the instruction to the LLM.
+        # The frontend linkifies all legal refs (sections, circulars, rules, etc.)
+        # automatically using consulted_sources. If the LLM embeds raw URLs, they
+        # render as broken visible text. Cite by filename / section number only.
         year_tag = ""
         doc_year = c.get("year") or c.get("metadata", {}).get("year")
         if doc_year:
@@ -196,20 +198,46 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         context_blocks.append(
             f"════════════════════════════════════════\n"
             f"SOURCE: «{filename}» | {authority_rank} | {source_type}{year_tag}\n"
-            f"DOCUMENT LINK: {link}\n"
             f"Page: {c.get('page', 'N/A')}{relevance_tag}\n"
             f"════════════════════════════════════════\n"
-            f"[QUOTABLE TEXT — cite «{filename}» verbatim and include its DOCUMENT LINK as [📄 View]({link})]\n"
+            f"[QUOTABLE TEXT — cite as «{filename}» by name; do NOT embed any URLs]\n"
             f"\"\"\"\n"
             f"{chunk_text}\n"
             f"\"\"\"\n"
             f"════════════════════════════════════════"
         )
 
-    sources_section = "\n\n".join(context_blocks)
+    # ── Step 2.5: Interleave circulars AND notifications so they survive char-truncation ──
+    # LegalReranker ranks Acts/Rules highest → without interleaving, all circular and
+    # notification blocks appear at the end and get cut by the char budget.
+    # Notifications are just as query-critical as circulars for rate/exemption questions.
+    # Pattern: 1 secondary block (Circular/Notification) FIRST, then 1 primary-law block,
+    #          alternating. Circular-first ensures the LLM sees CBIC clarifications at the
+    #          top of the context window and is forced to engage with them.
+    _secondary_blocks, _primary_blocks = [], []
+    for _b, _c in zip(context_blocks, chunks):
+        _rpath = (
+            _c.get("rel_path") or _c.get("metadata", {}).get("rel_path", "") or _c.get("source", "")
+        ).lower()
+        if "circular" in _rpath or "notification" in _rpath:
+            _secondary_blocks.append(_b)
+        else:
+            _primary_blocks.append(_b)
+
+    ordered_blocks = []
+    _oi, _ci = 0, 0
+    while _oi < len(_primary_blocks) or _ci < len(_secondary_blocks):
+        # Circular/notification FIRST in each pair — forces LLM to encounter
+        # CBIC clarifications before statutory text, boosting citation rate.
+        if _ci < len(_secondary_blocks):
+            ordered_blocks.append(_secondary_blocks[_ci]); _ci += 1
+        if _oi < len(_primary_blocks):
+            ordered_blocks.append(_primary_blocks[_oi]); _oi += 1
+
+    sources_section = "\n\n".join(ordered_blocks)
 
     # ── Step 3: Assemble Full Context ─────────────────────────
-    full_context = (
+    _header = (
         f"╔══════════════════════════════════════════╗\n"
         f"║   VERIFIED CITATION REGISTRY             ║\n"
         f"╚══════════════════════════════════════════╝\n"
@@ -217,11 +245,21 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         f"╔══════════════════════════════════════════╗\n"
         f"║   RETRIEVED SOURCE DOCUMENTS             ║\n"
         f"╚══════════════════════════════════════════╝\n"
-        f"{sources_section}"
     )
+    full_context = _header + sources_section
 
     if len(full_context) > max_context:
-        full_context = full_context[:max_context] + "\n\n[Context truncated to stay within token limits]"
+        # Block-aware truncation: never cut mid-document.
+        # Rebuild incrementally, adding whole source blocks until budget is exhausted.
+        _kept = _header
+        _sep = ""
+        for _blk in ordered_blocks:
+            _candidate = _kept + _sep + _blk
+            if len(_candidate) > max_context:
+                break
+            _kept = _candidate
+            _sep = "\n\n"
+        full_context = _kept + "\n\n[Context truncated to stay within token limits]"
 
     return full_context
 

@@ -62,7 +62,7 @@ def publish_event_sync(event: dict) -> None:
     """
     _event_log.append(event)
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if loop.is_running():
             loop.call_soon_threadsafe(
                 lambda: asyncio.ensure_future(publish_event(event))

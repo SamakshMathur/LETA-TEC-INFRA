@@ -1,0 +1,442 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "GST Governing Authority Registry — editable by legal team without code changes.",
+    "last_updated": "2026-08-08",
+    "updated_by": "initial-export",
+    "instructions": [
+      "Add new topics as top-level keys.",
+      "To update authorities for an existing topic, edit sections/rules/circulars arrays.",
+      "Circular numbers: use CIRCULAR_<number> format (e.g. CIRCULAR_199).",
+      "Section keys: use CGST_SEC_<number> or IGST_SEC_<number>.",
+      "Rule keys:    use CGST_RUL_<number>.",
+      "authority_adj weights: number > 1.0 boosts that doc category, < 1.0 reduces it.",
+      "expected_cats: which document categories MUST be represented in results.",
+      "After editing, commit this file — it loads automatically at next restart."
+    ]
+  },
+
+  "cross_charge": {
+    "_comment": "Cross-charge between distinct persons (head office / branches) — Circular 199 is mandatory",
+    "keywords": [
+      "cross charge", "distinct person", "isd", "input service distributor",
+      "head office", "branch office", "inter-branch", "internally generated services",
+      "section 25(4)", "section 25(5)", "schedule i entry 2"
+    ],
+    "sections":  ["CGST_SEC_20", "CGST_SEC_25", "IGST_SEC_8"],
+    "rules":     ["CGST_RUL_28", "CGST_RUL_39"],
+    "circulars": ["CIRCULAR_199"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "circular":     1.4,
+      "statute":      1.1,
+      "notification": 0.9,
+      "case_law":     0.8
+    }
+  },
+
+  "itc": {
+    "_comment": "Input Tax Credit availability, conditions, and restrictions",
+    "keywords": [
+      "input tax credit", "itc", "input service", "capital goods",
+      "section 16", "section 17", "itc claim", "itc reversal"
+    ],
+    "sections":  ["CGST_SEC_16", "CGST_SEC_17", "CGST_SEC_18"],
+    "rules":     ["CGST_RUL_36", "CGST_RUL_42", "CGST_RUL_43"],
+    "circulars": ["CIRCULAR_123", "CIRCULAR_167"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "circular":     1.3,
+      "statute":      1.2,
+      "notification": 0.9,
+      "case_law":     1.0
+    }
+  },
+
+  "gst_rate": {
+    "_comment": "GST rate classification — Notifications are the PRIMARY authority (not the Act)",
+    "keywords": [
+      "rate", "gst rate", "hsn", "sac", "nil rated", "5%", "12%", "18%", "28%",
+      "tariff heading", "schedule i rate", "rate notification"
+    ],
+    "sections":  ["CGST_SEC_9", "IGST_SEC_5"],
+    "rules":     [],
+    "circulars": [],
+    "expected_cats": ["notification", "statute"],
+    "authority_adj": {
+      "notification": 1.6,
+      "statute":      0.8,
+      "circular":     1.1,
+      "case_law":     0.7
+    }
+  },
+
+  "rcm": {
+    "_comment": "Reverse Charge Mechanism — Section 9(3)/9(4) CGST Act",
+    "keywords": [
+      "reverse charge", "rcm", "reverse charge mechanism", "section 9(3)",
+      "section 9(4)", "unregistered dealer", "notification 13/2017"
+    ],
+    "sections":  ["CGST_SEC_9", "IGST_SEC_5"],
+    "rules":     ["CGST_RUL_85", "CGST_RUL_86"],
+    "circulars": ["CIRCULAR_136"],
+    "expected_cats": ["statute", "notification"],
+    "authority_adj": {
+      "notification": 1.4,
+      "statute":      1.2,
+      "circular":     1.0,
+      "case_law":     0.8
+    }
+  },
+
+  "export": {
+    "_comment": "Zero-rated exports — Section 16 IGST Act, LUT, refund Rule 96; notifications govern LUT/bond exemptions. IGST_SEC_2 added for the Sec 2(6) export-of-services definition (convertible foreign exchange condition).",
+    "keywords": [
+      "export", "zero rated", "section 16 igst", "lut", "letter of undertaking",
+      "rule 96", "refund on export", "foreign currency", "deemed export",
+      "export of services", "export of goods", "section 2(6)"
+    ],
+    "sections":  ["IGST_SEC_16", "IGST_SEC_2", "CGST_SEC_54"],
+    "rules":     ["CGST_RUL_96", "CGST_RUL_89"],
+    "circulars": ["CIRCULAR_125", "CIRCULAR_131"],
+    "expected_cats": ["statute", "notification", "circular"],
+    "authority_adj": {
+      "circular":     1.3,
+      "statute":      1.2,
+      "notification": 1.2,
+      "case_law":     0.9
+    }
+  },
+
+  "works_contract": {
+    "_comment": "Works contract — Section 17(5)(c)(d) blocked ITC, Schedule II Entry 6",
+    "keywords": [
+      "works contract", "construction service", "immovable property",
+      "section 17(5)(c)", "section 17(5)(d)", "schedule ii entry 6",
+      "civil construction", "building construction"
+    ],
+    "sections":  ["CGST_SEC_17"],
+    "rules":     ["CGST_RUL_42"],
+    "circulars": ["CIRCULAR_177"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "statute":      1.3,
+      "circular":     1.2,
+      "notification": 1.0,
+      "case_law":     1.0
+    }
+  },
+
+  "place_of_supply": {
+    "_comment": "Place of supply — Section 12/13 IGST Act, intermediary, OIDAR",
+    "keywords": [
+      "place of supply", "section 12 igst", "section 13 igst",
+      "intermediary", "oidar", "online information", "intra-state", "inter-state"
+    ],
+    "sections":  ["IGST_SEC_12", "IGST_SEC_13", "IGST_SEC_2"],
+    "rules":     [],
+    "circulars": ["CIRCULAR_159", "CIRCULAR_127"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "statute":      1.4,
+      "circular":     1.3,
+      "notification": 0.9,
+      "case_law":     1.0
+    }
+  },
+
+  "registration": {
+    "_comment": "GST registration — sections 22-25 CGST Act",
+    "keywords": [
+      "registration", "gst registration", "section 22", "section 23",
+      "section 24", "section 25", "compulsory registration", "voluntary registration",
+      "aggregate turnover", "gstin", "gstn"
+    ],
+    "sections":  ["CGST_SEC_22", "CGST_SEC_23", "CGST_SEC_24", "CGST_SEC_25"],
+    "rules":     ["CGST_RUL_8", "CGST_RUL_9", "CGST_RUL_12"],
+    "circulars": ["CIRCULAR_198"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "statute":      1.3,
+      "circular":     1.2,
+      "notification": 1.0,
+      "case_law":     0.8
+    }
+  },
+
+  "refund": {
+    "_comment": "Refund — Section 54 CGST Act, Rule 89, unjust enrichment",
+    "keywords": [
+      "refund", "section 54", "rule 89", "unjust enrichment",
+      "refund of itc", "inverted duty structure", "refund application"
+    ],
+    "sections":  ["CGST_SEC_54", "CGST_SEC_55"],
+    "rules":     ["CGST_RUL_89", "CGST_RUL_90", "CGST_RUL_91", "CGST_RUL_92"],
+    "circulars": ["CIRCULAR_125", "CIRCULAR_135"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "circular":     1.3,
+      "statute":      1.2,
+      "notification": 0.9,
+      "case_law":     1.0
+    }
+  },
+
+  "valuation": {
+    "_comment": "GST Valuation — Section 15, Rules 27-31, related-party Rule 28",
+    "keywords": [
+      "valuation", "transaction value", "section 15", "rule 27", "rule 28",
+      "rule 29", "rule 30", "rule 31", "open market value", "related party",
+      "arm's length", "second proviso rule 28"
+    ],
+    "sections":  ["CGST_SEC_15"],
+    "rules":     ["CGST_RUL_27", "CGST_RUL_28", "CGST_RUL_29", "CGST_RUL_30"],
+    "circulars": ["CIRCULAR_138"],
+    "expected_cats": ["statute"],
+    "authority_adj": {
+      "statute":      1.4,
+      "circular":     1.2,
+      "notification": 0.8,
+      "case_law":     1.0
+    }
+  },
+
+  "annual_return": {
+    "_comment": "GSTR-9/9C annual return — Section 44, Rule 80",
+    "keywords": [
+      "annual return", "gstr-9", "gstr-9c", "reconciliation statement",
+      "section 44", "rule 80", "annual reconciliation"
+    ],
+    "sections":  ["CGST_SEC_44"],
+    "rules":     ["CGST_RUL_80"],
+    "circulars": ["CIRCULAR_170", "CIRCULAR_179"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "circular":     1.3,
+      "statute":      1.2,
+      "notification": 0.9,
+      "case_law":     0.7
+    }
+  },
+
+  "penalty_demand": {
+    "_comment": "Demand, SCN, adjudication — Sections 73/74",
+    "keywords": [
+      "penalty", "demand", "section 73", "section 74", "show cause notice",
+      "adjudication", "interest", "section 50", "fraud", "wilful misstatement"
+    ],
+    "sections":  ["CGST_SEC_73", "CGST_SEC_74", "CGST_SEC_50"],
+    "rules":     ["CGST_RUL_142"],
+    "circulars": ["CIRCULAR_171"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "statute":      1.4,
+      "circular":     1.2,
+      "case_law":     1.2,
+      "notification": 0.7
+    }
+  },
+
+  "import_services": {
+    "_comment": "Import of services — Section 5(3) IGST, reverse charge on imports",
+    "keywords": [
+      "import of services", "import services", "section 5(3) igst", "section 5(4) igst",
+      "cross border services", "reverse charge import", "foreign service provider"
+    ],
+    "sections":  ["IGST_SEC_5", "CGST_SEC_9"],
+    "rules":     [],
+    "circulars": ["CIRCULAR_107"],
+    "expected_cats": ["statute", "notification"],
+    "authority_adj": {
+      "statute":      1.3,
+      "notification": 1.3,
+      "circular":     1.0,
+      "case_law":     0.8
+    }
+  },
+
+  "ecommerce": {
+    "_comment": "E-commerce operators — TCS Section 52, Section 9(5)",
+    "keywords": [
+      "e-commerce", "tcs", "tax collected at source", "section 52",
+      "e-commerce operator", "section 9(5)", "notification 17/2021",
+      "online aggregator", "gig economy"
+    ],
+    "sections":  ["CGST_SEC_52", "CGST_SEC_9"],
+    "rules":     ["CGST_RUL_67"],
+    "circulars": ["CIRCULAR_167"],
+    "expected_cats": ["statute", "notification"],
+    "authority_adj": {
+      "notification": 1.4,
+      "statute":      1.2,
+      "circular":     1.0,
+      "case_law":     0.7
+    }
+  },
+
+  "job_work": {
+    "_comment": "Job work — Section 19 CGST Act, Rule 45",
+    "keywords": [
+      "job work", "section 19", "rule 45", "return of goods",
+      "goods for job work", "principal manufacturer", "job worker"
+    ],
+    "sections":  ["CGST_SEC_19", "CGST_SEC_143"],
+    "rules":     ["CGST_RUL_45"],
+    "circulars": ["CIRCULAR_38"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "statute":      1.3,
+      "circular":     1.2,
+      "notification": 0.8,
+      "case_law":     0.9
+    }
+  },
+
+  "tds_gst": {
+    "_comment": "TDS under GST — Section 51, Rule 66, GSTR-7",
+    "keywords": [
+      "tds gst", "tax deducted at source gst", "section 51", "rule 66",
+      "deductor", "gstr-7", "tds deduction", "government entity gst"
+    ],
+    "sections":  ["CGST_SEC_51"],
+    "rules":     ["CGST_RUL_66"],
+    "circulars": ["CIRCULAR_65"],
+    "expected_cats": ["statute", "notification"],
+    "authority_adj": {
+      "statute":      1.3,
+      "notification": 1.2,
+      "circular":     1.0,
+      "case_law":     0.7
+    }
+  },
+
+  "sez": {
+    "_comment": "Special Economic Zones — zero-rated supply, exemptions",
+    "keywords": [
+      "sez", "special economic zone", "sez unit", "sez developer",
+      "deemed export", "rule 89", "zero rated sez", "supply to sez"
+    ],
+    "sections":  ["IGST_SEC_16", "CGST_SEC_54"],
+    "rules":     ["CGST_RUL_89"],
+    "circulars": ["CIRCULAR_48"],
+    "expected_cats": ["statute", "notification"],
+    "authority_adj": {
+      "statute":      1.3,
+      "notification": 1.3,
+      "circular":     1.0,
+      "case_law":     0.8
+    }
+  },
+
+  "intermediary": {
+    "_comment": "Intermediary — Section 2(13) IGST Act, place of supply implications",
+    "keywords": [
+      "intermediary", "section 2(13) igst", "agent", "broker",
+      "sub-broker", "arranging supply", "commission agent"
+    ],
+    "sections":  ["IGST_SEC_2", "IGST_SEC_13"],
+    "rules":     [],
+    "circulars": ["CIRCULAR_159"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "statute":      1.4,
+      "circular":     1.3,
+      "notification": 0.8,
+      "case_law":     1.1
+    }
+  },
+
+  "real_estate": {
+    "_comment": "Real estate / housing projects — post-March 2019 notifications",
+    "keywords": [
+      "real estate", "housing project", "commercial apartment", "under construction",
+      "notification 3/2019", "affordable housing", "joint development agreement",
+      "jda", "developer", "promoter", "residential project", "residential projects",
+      "construction of residential", "residential apartment"
+    ],
+    "sections":  ["CGST_SEC_17"],
+    "rules":     ["CGST_RUL_42"],
+    "circulars": ["CIRCULAR_177"],
+    "expected_cats": ["notification", "circular"],
+    "authority_adj": {
+      "notification": 1.5,
+      "circular":     1.3,
+      "statute":      0.9,
+      "case_law":     1.0
+    }
+  },
+
+  "transitional_credit": {
+    "_comment": "Transitional provisions — Tran-1, Section 140, pre-GST CENVAT credit",
+    "keywords": [
+      "transitional credit", "tran-1", "tran-2", "section 140",
+      "pre-gst credit", "cenvat credit carryforward", "transition provisions"
+    ],
+    "sections":  ["CGST_SEC_140", "CGST_SEC_141"],
+    "rules":     ["CGST_RUL_117", "CGST_RUL_118"],
+    "circulars": ["CIRCULAR_1"],
+    "expected_cats": ["statute"],
+    "authority_adj": {
+      "statute":      1.5,
+      "case_law":     1.3,
+      "circular":     1.0,
+      "notification": 0.7
+    }
+  },
+
+  "gst_audit": {
+    "_comment": "GST audit by department — Sections 65/66",
+    "keywords": [
+      "gst audit", "departmental audit", "section 65", "section 66",
+      "rule 101", "rule 102", "audit report", "special audit"
+    ],
+    "sections":  ["CGST_SEC_65", "CGST_SEC_66"],
+    "rules":     ["CGST_RUL_101", "CGST_RUL_102"],
+    "circulars": ["CIRCULAR_136"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "statute":      1.3,
+      "circular":     1.2,
+      "case_law":     1.1,
+      "notification": 0.8
+    }
+  },
+
+  "composition": {
+    "_comment": "Composition scheme — Section 10, Rule 7",
+    "keywords": [
+      "composition", "composition scheme", "section 10", "rule 7",
+      "composition dealer", "1%", "5% composition", "6% composition",
+      "quarterly return", "cmp-08"
+    ],
+    "sections":  ["CGST_SEC_10"],
+    "rules":     ["CGST_RUL_7"],
+    "circulars": ["CIRCULAR_98"],
+    "expected_cats": ["statute", "notification"],
+    "authority_adj": {
+      "statute":      1.3,
+      "notification": 1.2,
+      "circular":     1.0,
+      "case_law":     0.7
+    }
+  },
+
+  "supply": {
+    "_comment": "Definition and scope of supply — Section 7, composite/mixed supply",
+    "keywords": [
+      "supply", "section 7", "composite supply", "mixed supply",
+      "principal supply", "bundled supply", "naturally bundled",
+      "schedule ii", "schedule iii non-supply"
+    ],
+    "sections":  ["CGST_SEC_7", "CGST_SEC_8"],
+    "rules":     [],
+    "circulars": ["CIRCULAR_47"],
+    "expected_cats": ["statute", "circular"],
+    "authority_adj": {
+      "statute":      1.4,
+      "circular":     1.2,
+      "notification": 0.8,
+      "case_law":     1.0
+    }
+  }
+}

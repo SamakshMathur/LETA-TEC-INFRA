@@ -34,7 +34,7 @@ const getSessionFirstName = (): string => {
 import { LetaResponse } from '../components/leta';
 import { SimpleSearchLoader } from '../components/effects';
 import { DocumentViewer } from '../components/documents';
-import SessionClock from '../components/layout/SessionClock';
+import { SessionClock } from '../components/layout';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -191,6 +191,26 @@ const LetaWorkspace: React.FC = () => {
   // Document Viewer splits
   const [openDocuments, setOpenDocuments] = useState<OpenDoc[]>([]);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
+
+  // ─── Rename state ───────────────────────────────────────────────────────────
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [sidebarSearch, setSidebarSearch] = useState('');
+
+  const handleRenameStart = (session: Session) => {
+    setRenamingId(session.session_id);
+    setRenameValue(session.title);
+  };
+
+  const handleRenameCommit = async (sessionId: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) { setRenamingId(null); return; }
+    setSessions(prev => prev.map(s => s.session_id === sessionId ? { ...s, title: trimmed } : s));
+    setRenamingId(null);
+    try {
+      await axios.patch(`${BASE_URL}/api/sessions/${sessionId}/rename`, { title: trimmed }, { headers: getAuthHeaders() });
+    } catch { fetchSessions(); }
+  };
 
   // ─── Repository State ────────────────────────────────────────────────────────
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
@@ -462,6 +482,7 @@ const LetaWorkspace: React.FC = () => {
   };
 
   const userScrolledUpRef = useRef(false);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   // Only auto-scroll when the user is already near the bottom (ChatGPT behaviour)
   const scrollToBottom = (force = false) => {
@@ -469,6 +490,8 @@ const LetaWorkspace: React.FC = () => {
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (force || nearBottom) {
+      userScrolledUpRef.current = false;
+      setShowScrollBtn(false);
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   };
@@ -480,6 +503,7 @@ const LetaWorkspace: React.FC = () => {
     const onScroll = () => {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
       userScrolledUpRef.current = !nearBottom;
+      setShowScrollBtn(!nearBottom);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -633,6 +657,42 @@ const LetaWorkspace: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // ─── Retry fetch on 503 (service warming up after deployment) ────────────────
+  const showRetryStatus = (msg: string) => {
+    setMessages(prev => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last?.role === 'assistant') {
+        next[next.length - 1] = { ...last, current_status: msg };
+      }
+      return next;
+    });
+  };
+
+  const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 5, delayMs = 8000): Promise<Response> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const res = await fetch(url, options);
+        // Retry on 503 (server starting up) or 502/504 (gateway/proxy errors during deploy)
+        if (res.status !== 503 && res.status !== 502 && res.status !== 504) return res;
+        lastError = new Error(`status: ${res.status}`);
+      } catch (err) {
+        // Network exception (Failed to fetch, connection refused, ECS task restarting)
+        lastError = err;
+      }
+      if (attempt < maxRetries - 1) {
+        // Exponential backoff: 3s → 6s → 12s → 24s → 30s (capped)
+        const backoff = Math.min(3000 * Math.pow(2, attempt), 30000);
+        const secs = Math.round(backoff / 1000);
+        showRetryStatus(`Connection issue — retrying in ${secs}s… (${attempt + 1}/${maxRetries - 1})`);
+        await new Promise(r => setTimeout(r, backoff));
+      }
+    }
+    // All retries exhausted — throw so the caller's catch block shows the error
+    throw lastError;
+  };
+
   // ─── Main ask handler ─────────────────────────────────────────────────────────
   const handleAsk = async (queryOverride?: string) => {
     const activeQuery = typeof queryOverride === 'string' ? queryOverride : query;
@@ -696,7 +756,9 @@ const LetaWorkspace: React.FC = () => {
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
-        const fileRes = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
+        // Add placeholder assistant bubble so showRetryStatus has a target
+        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        const fileRes = await fetchWithRetry(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
         if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
 
@@ -705,8 +767,7 @@ const LetaWorkspace: React.FC = () => {
 
         if (!reader) throw new Error('Response stream unavailable');
 
-        // Add assistant message now that we have a live stream
-        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        // Assistant bubble already added before fetchWithRetry
         setIsStreaming(true);
         // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
 
@@ -804,9 +865,29 @@ const LetaWorkspace: React.FC = () => {
 
         setIsLoading(false);
         setIsStreaming(false);
+        setMessages(prev => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === 'assistant') {
+            if (!last.content.trim()) {
+              next[next.length - 1] = {
+                ...last,
+                content: last.current_status
+                  ? `⚠ **${last.current_status}**\n\nLETA was unable to generate a response. Please use the **↻** button above to retry.`
+                  : '⚠ **LETA returned an empty response.** Please use the **↻** button above to retry.',
+                current_status: undefined,
+              };
+            } else {
+              next[next.length - 1] = { ...last, current_status: undefined };
+            }
+          }
+          return next;
+        });
       } else {
         // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
-        const streamRes = await fetch(`${BASE_URL}/ask`, {
+        // Add placeholder assistant bubble before fetch so showRetryStatus has a target during 503 retries
+        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        const streamRes = await fetchWithRetry(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
@@ -820,8 +901,7 @@ const LetaWorkspace: React.FC = () => {
 
         if (!reader) throw new Error('Response stream unavailable');
 
-        // Add assistant message now that we have a live stream
-        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        // Assistant bubble already added before fetchWithRetry
         setIsStreaming(true);
         // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
 
@@ -919,6 +999,26 @@ const LetaWorkspace: React.FC = () => {
 
         setIsLoading(false);
         setIsStreaming(false);
+        // Clear status label; if the response ended up empty (silent backend crash),
+        // surface a visible error so the user isn't left staring at a blank screen.
+        setMessages(prev => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === 'assistant') {
+            if (!last.content.trim()) {
+              next[next.length - 1] = {
+                ...last,
+                content: last.current_status
+                  ? `⚠ **${last.current_status}**\n\nLETA was unable to generate a response. Please use the **↻** button above to retry, or rephrase your question.`
+                  : '⚠ **LETA returned an empty response.** This can happen when the server is under load or the query is unusually complex. Please use the **↻** button above to retry.',
+                current_status: undefined,
+              };
+            } else {
+              next[next.length - 1] = { ...last, current_status: undefined };
+            }
+          }
+          return next;
+        });
       }
 
       setSelectedFile(null);
@@ -942,7 +1042,12 @@ const LetaWorkspace: React.FC = () => {
       const isNetworkInterrupt = error?.name === 'TypeError' || error?.message?.includes('network') || error?.message?.includes('Failed to fetch');
       if (!isNetworkInterrupt) pendingRetryRef.current = null;
       console.error('LETA API Error:', error);
-      const errMsg = 'Unable to reach the advisory server. Please check your connection and try again.';
+      const status = error?.message?.match(/status: (\d+)/)?.[1];
+      const errMsg = status === '503'
+        ? 'LETA is starting up after a deployment — please wait a moment and try again.'
+        : status === '401'
+        ? 'Your session has expired. Please refresh the page and log in again.'
+        : 'Unable to reach the advisory server. Please check your connection and try again.';
       setMessages(prev => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -1196,6 +1301,16 @@ const LetaWorkspace: React.FC = () => {
                 >
                   {/* Session list */}
                   <div>
+                    {/* Search bar */}
+                    <div className="relative mb-3">
+                      <input
+                        type="text"
+                        value={sidebarSearch}
+                        onChange={e => setSidebarSearch(e.target.value)}
+                        placeholder="Search consultations..."
+                        className="w-full bg-white/[0.02] border border-white/[0.05] rounded-lg px-3 py-1.5 text-xs text-[#A1AAB8] placeholder-[#475569] focus:outline-none focus:border-[#4FB7C5]/30 transition-colors"
+                      />
+                    </div>
                     <span className="text-[10px] font-mono uppercase tracking-[0.2em] px-2 text-[#6B7280] block mb-2.5">
                       Saved Consultations
                     </span>
@@ -1205,13 +1320,16 @@ const LetaWorkspace: React.FC = () => {
                           No consultation history
                         </div>
                       ) : (
-                        sessions.map(session => {
+                        sessions
+                          .filter(s => !sidebarSearch || s.title.toLowerCase().includes(sidebarSearch.toLowerCase()))
+                          .map(session => {
                           const meta = getSessionDetails(session.title);
                           const isSelected = currentSessionId === session.session_id;
+                          const isRenaming = renamingId === session.session_id;
                           return (
                             <div
                               key={session.session_id}
-                              onClick={() => handleSelectSession(session.session_id)}
+                              onClick={() => !isRenaming && handleSelectSession(session.session_id)}
                               className={`group p-3.5 rounded-xl cursor-pointer border transition-all duration-200 relative ${
                                 isSelected
                                   ? 'bg-[#131D2B] border-[#4FB7C5]/30'
@@ -1223,17 +1341,32 @@ const LetaWorkspace: React.FC = () => {
                                   <span className="text-xs font-mono tracking-wider font-semibold" style={{ color: meta.statusColor }}>
                                     {meta.provision}
                                   </span>
-                                  <h3 className={`text-xs font-semibold truncate mt-1 ${isSelected ? 'text-white' : 'text-[#A1AAB8]'}`}>
-                                    {meta.type}
-                                  </h3>
+                                  {isRenaming ? (
+                                    <input
+                                      autoFocus
+                                      value={renameValue}
+                                      onChange={e => setRenameValue(e.target.value)}
+                                      onBlur={() => handleRenameCommit(session.session_id)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') handleRenameCommit(session.session_id);
+                                        if (e.key === 'Escape') setRenamingId(null);
+                                      }}
+                                      onClick={e => e.stopPropagation()}
+                                      className="w-full mt-1 bg-transparent border-b border-[#4FB7C5]/40 text-xs text-white focus:outline-none pb-0.5"
+                                    />
+                                  ) : (
+                                    <h3
+                                      onDoubleClick={e => { e.stopPropagation(); handleRenameStart(session); }}
+                                      className={`text-xs font-semibold truncate mt-1 ${isSelected ? 'text-white' : 'text-[#A1AAB8]'}`}
+                                      title="Double-click to rename"
+                                    >
+                                      {session.title}
+                                    </h3>
+                                  )}
                                   <div className="flex items-center gap-2 mt-2">
                                     <span className="text-[9px] font-mono text-[#52525B] flex items-center gap-1">
                                       <Calendar size={10} />
                                       {new Date(session.updated_at).toLocaleDateString()}
-                                    </span>
-                                    <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.statusColor }} />
-                                    <span className="text-[9px] font-mono uppercase tracking-wider text-[#52525B]">
-                                      {meta.status}
                                     </span>
                                   </div>
                                 </div>
@@ -1385,6 +1518,29 @@ const LetaWorkspace: React.FC = () => {
           </button>
 
           {/* CHAT MESSAGE AREA */}
+          <div className="flex-1 min-h-0 relative flex flex-col">
+            {/* Scroll-to-bottom floating button */}
+            <AnimatePresence>
+              {showScrollBtn && (
+                <motion.button
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={() => scrollToBottom(true)}
+                  className="absolute bottom-6 left-1/2 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border transition-all"
+                  style={{
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(0,0,0,0.85)',
+                    border: '1px solid rgba(79,183,197,0.3)',
+                    color: '#4FB7C5',
+                    backdropFilter: 'blur(8px)',
+                  }}
+                >
+                  ↓ scroll to bottom
+                </motion.button>
+              )}
+            </AnimatePresence>
           <div
             ref={chatScrollRef}
             data-lenis-prevent
@@ -1441,11 +1597,8 @@ const LetaWorkspace: React.FC = () => {
                         className={`w-full flex ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
                       >
                         {isUser ? (
-                          <div className="max-w-[70%] rounded-2xl p-4 bg-[#000000] border border-[#4FB7C5]/15 shadow-md">
-                            <span className="text-[9px] font-sans font-semibold text-[#4FB7C5]/80 uppercase tracking-wider block mb-1.5">
-                              ADVISORY CONSULTATION QUERY
-                            </span>
-                            <p className="whitespace-pre-wrap leading-relaxed text-xs text-[#E4E4E7]">
+                          <div className="max-w-[70%] rounded-2xl px-4 py-3 shadow-md" style={{ background: 'rgba(79,183,197,0.07)', border: '1px solid rgba(79,183,197,0.12)' }}>
+                            <p className="whitespace-pre-wrap leading-relaxed text-sm text-[#E4E4E7]">
                               {msg.content}
                             </p>
                           </div>
@@ -1568,16 +1721,13 @@ const LetaWorkspace: React.FC = () => {
                     );
                   })}
 
-                  {isLoading && (
-                    <div className="flex justify-center py-6">
-                      <SimpleSearchLoader />
-                    </div>
-                  )}
+                  {/* Status shown inside LetaResponse bubble — no external spinner needed */}
                   <div ref={messagesEndRef} />
                 </div>
               )}
             </div>
           </div>
+          </div>{/* end scroll-to-bottom wrapper */}
 
           {/* CHAT INPUT AREA */}
           <div className="p-6 md:px-10 py-6 border-t border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 relative z-20">

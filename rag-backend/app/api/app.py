@@ -60,6 +60,10 @@ app = FastAPI(
     description="In-house GST knowledge assistant",
 )
 
+# Readiness gate: ALB health check returns 503 until models are loaded.
+# Prevents live traffic from hitting a task that isn't ready to serve yet.
+_warmup_complete: bool = False
+
 @app.on_event("startup")
 async def _startup_tasks():
     """Seed feed store and pre-warm AI models in background."""
@@ -79,12 +83,15 @@ async def _startup_tasks():
     # 2. Pre-load embedding model + FAISS index so the first /ask-sync request
     #    doesn't pay the ~15-20s cold-start cost and timeout at API Gateway.
     async def _warmup():
+        global _warmup_complete
         try:
             from app.dependencies import preload_all_models
             await _asyncio.to_thread(preload_all_models)
             logger.info("Startup model warmup complete")
         except Exception as e:
             logger.warning(f"Startup warmup failed (non-fatal): {e}")
+        finally:
+            _warmup_complete = True  # always unblock health check, even on error
 
     _asyncio.ensure_future(_warmup())
 
@@ -183,7 +190,11 @@ _request_logger = logging.getLogger("leta.request")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    query_id = str(uuid.uuid4())[:8]
+    # Full query_id: LETA-YYYYMMDD-HHMMSS-XXXXXXXX (CloudWatch-searchable prefix)
+    import datetime as _dt_mw
+    _ts = _dt_mw.datetime.now().strftime("%Y%m%d-%H%M%S")
+    _rand = str(uuid.uuid4()).replace("-", "")[:6].upper()
+    query_id = f"LETA-{_ts}-{_rand}"
     request.state.query_id = query_id
     t0 = time.monotonic()
 
@@ -201,19 +212,7 @@ async def log_requests(request: Request, call_next):
             "client_ip": request.client.host if request.client else "unknown",
         },
     )
-    return response
-
-
-# ── Security headers middleware ───────────────────────────────────────────────
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
-    # Skip X-Frame-Options for document view so the frontend iframe can embed PDFs
-    if not request.url.path.startswith("/api/documents/view"):
-        response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Request-ID"] = query_id
     return response
 
 # Rate limiting — user-ID keyed, Redis-backed when available
@@ -309,6 +308,9 @@ app.include_router(transcribe.router, prefix="/api", tags=["Transcribe"])
 from app.api import payments
 app.include_router(payments.router, tags=["Payments"])
 
+from app.api import debug as _debug_api
+app.include_router(_debug_api.router, tags=["Debug"])
+
 # ---------- Request / Response ----------
 class QuestionRequest(BaseModel):
     question: str
@@ -334,6 +336,21 @@ from datetime import datetime
 # ---------- Endpoint ----------
 @app.get("/api/health")
 async def health_check():
+    from starlette.responses import JSONResponse
+
+    # Return 503 while models are still loading so ALB withholds live traffic
+    # until this task is genuinely ready to serve requests.
+    if not _warmup_complete:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "warming_up",
+                "timestamp": datetime.now().isoformat(),
+                "message": "Model warmup in progress — retry in 30s",
+            },
+            headers={"Retry-After": "30"},
+        )
+
     health_status = {
         "status": "active",
         "timestamp": datetime.now().isoformat(),
@@ -343,7 +360,7 @@ async def health_check():
             "retriever": "unknown"
         }
     }
-    
+
     # Check Database
     try:
         from app.database import get_db
@@ -469,6 +486,32 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         _logger.warning(f"Answer verifier error: {e}")
                         return None
 
+                async def run_authority_verifier():
+                    """Priority 10: Answer Verification Agent.
+                    Checks if the LLM answer cited every mandatory governing authority
+                    predicted by the authority taxonomy. Runs in ~1ms (string matching,
+                    no LLM call). Logs gaps for monitoring and future regression tracking."""
+                    try:
+                        from app.dependencies import get_retriever
+                        from app.retrieval.query_refiner import verify_answer_authority_coverage
+                        _ret = get_retriever()
+                        _tax = getattr(_ret, "_last_taxonomy", {})
+                        _cov = getattr(_ret, "_last_coverage", {})
+                        if _tax.get("confidence", 0) > 0 and (_tax.get("sections") or _tax.get("circulars")):
+                            _av = verify_answer_authority_coverage(user_query, full_answer, _tax, _cov)
+                            if _av["verdict"] != "pass":
+                                _logger.warning(
+                                    f"[AUTHORITY_VERIFY] verdict={_av['verdict']} | "
+                                    f"topics={_tax.get('topics')} | "
+                                    f"cited={_av['cited']} | "
+                                    f"missing={_av['missing']} | "
+                                    f"note={_av['note']}"
+                                )
+                        return None
+                    except Exception as e:
+                        _logger.warning(f"Authority verifier error: {e}")
+                        return None
+
                 async def run_hallucination_guard():
                     try:
                         from app.generation.hallucination_guard import check_hallucinated_numbers
@@ -491,14 +534,15 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                         asyncio.gather(
                             run_citation_validator(),
                             run_hallucination_guard(),
+                            run_authority_verifier(),
                         ),
-                        timeout=3.0,
+                        timeout=4.0,
                     )
                 except asyncio.TimeoutError:
                     _logger.warning("Post-generation validators timed out — skipping")
-                    results = (full_answer, "")
+                    results = (full_answer, "", None)
 
-                _, hallu_warn = results
+                _, hallu_warn, _ = results
 
                 # Log internally — validator output is NEVER streamed to the user.
                 # Citation validator already logs its own warnings.
@@ -580,7 +624,7 @@ async def ask_question(request: Request, req: QuestionRequest):
     )
 
     # IMMEDIATE SAVE: Save User Question First
-    if session_id:
+    if session_id and _warmup_complete:
         collection = get_session_collection()
         if collection is not None:
              collection.update_one(
@@ -590,12 +634,30 @@ async def ask_question(request: Request, req: QuestionRequest):
 
     async def rag_pipeline_orchestrator():
         import asyncio as _asyncio
+        # ── Warmup wait (ECS rolling-deployment grace period) ────────────────────
+        # During a rolling deploy the new task registers in the ALB target group
+        # before finishing model/index load (60-90s).  Instead of 503-ing immediately
+        # and exhausting the frontend's retry budget, we hold the streaming connection
+        # open with a STATUS keepalive and release it as soon as warmup completes.
+        if not _warmup_complete:
+            yield f"__STATUS__:{json.dumps({'msg': 'LETA is starting up — please wait…'})}__END_STATUS__"
+            _wt = 0
+            while not _warmup_complete and _wt < 90:
+                await _asyncio.sleep(3)
+                _wt += 3
+            if not _warmup_complete:
+                yield "\n\n⚠ **LETA is taking longer than expected to start.** Please refresh the page and try your question again in a moment."
+                return
         from app.routing.router import route_query
         from app.generation.synthesizer import _estimate_complexity
         from app.generation.calculation_engine import detect_and_calculate, format_for_context
         from app.generation.context_compressor import compress_context
         from app.cache import cache_lookup
         from app.retrieval.retriever import embed_query
+        from app.retrieval.retrieval_trace import RetrievalTrace, store_trace
+
+        # ── RetrievalTrace — created once per query, threaded through entire pipeline ──
+        _trace = RetrievalTrace(query_id=query_id, query=question)
 
         # ── Stage 1: Instant intent classification (pure keyword, ~1ms) ──────────
         route = route_query(question)
@@ -621,6 +683,17 @@ async def ask_question(request: Request, req: QuestionRequest):
             r'\b(provide|give|state|share)\s+(the\s+)?(definition|meaning|explanation|rate|provision)',
             r'\b(relevant\s+circular|applicable\s+circular|circular\s+on)\b',
             r'\b(full\s+form|abbreviation|what\s+does\s+.+stand\s+for)\b',
+            # Correction / continuation signals — never reroute to advisory/drafting mode
+            r'you\s+got\s+me\s+(all\s+)?wrong',
+            r'(that\'s|that\s+is)\s+(wrong|incorrect|not\s+right|off\s+route|off\s+track)',
+            r'completely\s+(switched|diverted|changed)\s+to',
+            r'stick\s+to\s+(our|the|this)\s+conversation',
+            r'take\s+it\s+forward|taking\s+(it|this)\s+forward',
+            r'continue\s+(the|our|this)\s+(discussion|conversation|analysis|thread|topic)',
+            r'\bi\s+(already|have\s+already)\s+(said|told|replied|mentioned)',
+            r'\bi\s+replied\s+to\s+you',
+            r'as\s+(i|we)\s+(said|mentioned|discussed|told|replied)',
+            r'not\s+what\s+(i|we)\s+(asked|said|meant)',
         ]
         import re as _re
         _is_never_draft = any(_re.search(p, _q) for p in _NEVER_DRAFT_PATTERNS)
@@ -656,6 +729,70 @@ async def ask_question(request: Request, req: QuestionRequest):
             "issue raised","section invoked","to draft a strong reply",
         ]
 
+        # Phrases that indicate the user is referencing a previous session
+        _CROSS_SESSION_KW = [
+            "remember", "that chat", "previous session", "last time", "we discussed",
+            "earlier session", "you mentioned", "from before", "that consultation",
+            "we talked about", "as discussed", "recall when", "in our previous",
+            "that case we", "previous chat", "last session",
+        ]
+        _is_cross_session_ref = any(k in question.lower() for k in _CROSS_SESSION_KW)
+
+        def _fetch_cross_session_context():
+            """Search the user's other sessions for relevant content when they reference a past chat."""
+            if not _is_cross_session_ref:
+                return ""
+            _coll = get_session_collection()
+            if _coll is None:
+                return ""
+            # Get the user_id from the current session
+            _sess_doc = _coll.find_one({"session_id": session_id}, {"user_id": 1}) if session_id else None
+            if not _sess_doc:
+                return ""
+            _user_id = _sess_doc.get("user_id", "")
+            if not _user_id:
+                return ""
+            # Build search terms: strip cross-session keywords and use remaining words
+            _search_q = question.lower()
+            for kw in _CROSS_SESSION_KW:
+                _search_q = _search_q.replace(kw, " ")
+            _search_terms = [w for w in _search_q.split() if len(w) > 3][:6]
+            if not _search_terms:
+                return ""
+            _regex = "|".join(_search_terms)
+            try:
+                _matches = list(_coll.find(
+                    {"user_id": _user_id, "session_id": {"$ne": session_id},
+                     "messages.content": {"$regex": _regex, "$options": "i"}},
+                    {"_id": 0, "session_id": 1, "title": 1, "messages": 1, "updated_at": 1}
+                ).sort("updated_at", -1).limit(3))
+            except Exception:
+                return ""
+            if not _matches:
+                return ""
+            _ctx_parts = []
+            for _m in _matches:
+                # Find the most relevant message pair (user question + LETA answer)
+                _msgs = _m.get("messages", [])
+                _best_pair = ""
+                for _i, _msg in enumerate(_msgs):
+                    _content = _msg.get("content", "")
+                    if any(t in _content.lower() for t in _search_terms):
+                        # Include user question + LETA response pair
+                        _u_msg = _msgs[_i - 1]["content"][:300] if _i > 0 and _msgs[_i-1]["role"] == "user" else ""
+                        _a_msg = _content[:500]
+                        if _u_msg:
+                            _best_pair = f"USER: {_u_msg}\nLETA: {_a_msg}"
+                        else:
+                            _best_pair = f"LETA: {_a_msg}"
+                        break
+                if _best_pair:
+                    _title = _m.get("title", "Previous Session")
+                    _date = _m.get("updated_at", "")
+                    _date_str = _date.strftime("%b %d, %Y") if hasattr(_date, "strftime") else str(_date)[:10]
+                    _ctx_parts.append(f'[MEMORY — "{_title}" ({_date_str})]:\n{_best_pair}')
+            return "\n\n".join(_ctx_parts)
+
         def _fetch_history_sync():
             if not session_id:
                 return "", False
@@ -672,14 +809,21 @@ async def ask_question(request: Request, req: QuestionRequest):
             # the full sequence: LETA-questions → USER-answers → produce draft.
             _recent = _sess["messages"][-7:]
             _hist = "".join(f"{m['role'].upper()}: {m['content']}\n" for m in _recent)
-            _is_d = any(k in _hist.lower() for k in _HISTORY_DRAFT_KW)
+            # Draft detection: check only the 2 most recent messages so a single
+            # old advisory turn doesn't permanently lock the whole session into
+            # drafting mode for every follow-up question.
+            _last_2_text = " ".join(
+                m.get("content", "") for m in _sess["messages"][-2:]
+            ).lower()
+            _is_d = any(k in _last_2_text for k in _HISTORY_DRAFT_KW)
             return _hist, _is_d
 
         yield f"__STATUS__:{json.dumps({'msg': 'Scanning Semantic Cache...'})}__END_STATUS__"
 
-        (history_context, _session_is_draft), query_vec = await _asyncio.gather(
+        (history_context, _session_is_draft), query_vec, cross_session_context = await _asyncio.gather(
             _asyncio.to_thread(_fetch_history_sync),
             _asyncio.to_thread(embed_query, question),
+            _asyncio.to_thread(_fetch_cross_session_context),
         )
         _is_draft = _is_draft_early or _session_is_draft
 
@@ -688,6 +832,17 @@ async def ask_question(request: Request, req: QuestionRequest):
         if cached_answer:
             cached_text, cached_sources = cached_answer
             _ask_logger.info("Cache HIT", extra={"query_id": query_id, "cache_hit": True})
+            # Log minimal trace for cache hits so query_id is still searchable
+            try:
+                _trace.record_preprocessing(
+                    original_query=question, refined_query=question,
+                    domain_route=domain_paths, complexity_score=_complexity,
+                    response_mode="cache_hit",
+                )
+                _trace.answer = {"cache_hit": True, "query_id": query_id}
+                store_trace(_trace)
+            except Exception:
+                pass
             yield f"__STATUS__:{json.dumps({'msg': 'Cache Hit — Instant Retrieval Complete.'})}__END_STATUS__"
             if cached_sources:
                 yield f"__METADATA__:{json.dumps({'type': 'metadata', 'sources': cached_sources})}__END_METADATA__"
@@ -740,18 +895,29 @@ async def ask_question(request: Request, req: QuestionRequest):
                 "queries": [_retrieval_q, _statute_q, _caselaw_q, _circular_q],
                 "hyde_document": "", "topic": "General", "subtopic": None,
             }
+            # Record preprocessing before handing off to retriever
+            _trace.record_preprocessing(
+                original_query=question, refined_query=_retrieval_q,
+                sub_queries=[_statute_q, _caselaw_q, _circular_q],
+                topic="General", domain_route=domain_paths,
+                complexity_score=_complexity, response_mode="draft",
+            )
             chunks = await _asyncio.to_thread(
                 retriever.search, _retrieval_q, _retrieval_top_k,
                 route["use_sources"], _adv, domain_paths, True,
+                False, _trace,   # skip_rerank=False, trace=_trace
             )
 
-        elif _complexity >= 0.35:
-            # Complex non-draft: run query expansion + fast retrieval IN PARALLEL.
-            # Fast retrieval uses original query without expansion (skip_rerank for speed).
-            # When expansion arrives, we supplement the pool and do ONE final rerank.
+        else:
+            # All non-draft queries: run query expansion + fast retrieval IN PARALLEL.
+            # Expansion uses 4 angle-specific sub-queries (statutory/circular/notification/factual)
+            # + a corpus-authentic HyDE document. Parallel execution means the LLM expansion
+            # adds zero latency beyond what retrieval already takes.
             yield f"__STATUS__:{json.dumps({'msg': 'Expanding Query for Precision Retrieval...'})}__END_STATUS__"
 
             def _fast_retrieve():
+                # Trace is NOT passed here — fast retrieve is skip_rerank=True
+                # and supplement_and_rerank runs the full reranking pass with trace.
                 return retriever.search(
                     _retrieval_q, _retrieval_top_k, route["use_sources"],
                     None, domain_paths, False, skip_rerank=True,
@@ -761,32 +927,76 @@ async def ask_question(request: Request, req: QuestionRequest):
                 from app.retrieval.query_refiner import generate_advanced_queries
                 return generate_advanced_queries(_retrieval_q)
 
-            fast_chunks, advanced_queries = await _asyncio.gather(
-                _asyncio.to_thread(_fast_retrieve),
-                _asyncio.to_thread(_expand),
-            )
+            try:
+                fast_chunks, advanced_queries = await _asyncio.gather(
+                    _asyncio.to_thread(_fast_retrieve),
+                    _asyncio.to_thread(_expand),
+                )
 
-            # Supplement the fast pool with expanded-query FAISS results,
-            # then do ONE FlashRank + LegalReranker pass on the merged pool.
-            chunks = await _asyncio.to_thread(
-                retriever.supplement_and_rerank,
-                fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
-            )
+                # Record preprocessing now that we have expanded queries
+                _adv_qs = advanced_queries or {}
+                _trace.record_preprocessing(
+                    original_query=question,
+                    refined_query=_retrieval_q,
+                    sub_queries=_adv_qs.get("queries", []),
+                    hyde_doc=_adv_qs.get("hyde_document", ""),
+                    topic=_adv_qs.get("topic", "General"),
+                    subtopic=_adv_qs.get("subtopic"),
+                    domain_route=domain_paths,
+                    complexity_score=_complexity,
+                    response_mode=(
+                        "detailed" if _complexity >= 0.60
+                        else "standard" if _complexity >= 0.25
+                        else "brief"
+                    ),
+                )
 
-        else:
-            # Simple query: direct retrieval (already fast)
-            _adv = {"queries": [_retrieval_q], "hyde_document": "", "topic": "General", "subtopic": None}
-            chunks = await _asyncio.to_thread(
-                retriever.search, _retrieval_q, _retrieval_top_k,
-                route["use_sources"], _adv, domain_paths, False,
-            )
+                # Supplement the fast pool with expanded-query FAISS results,
+                # then do ONE FlashRank + LegalReranker pass on the merged pool.
+                chunks = await _asyncio.to_thread(
+                    retriever.supplement_and_rerank,
+                    fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
+                    _trace,   # trace
+                )
+            except Exception as _retrieval_exc:
+                import traceback as _tb
+                logger.error(
+                    "[CRASH] rag_pipeline_orchestrator retrieval stage failed | "
+                    f"query_id={query_id} | {_retrieval_exc!r}\n{_tb.format_exc()}"
+                )
+                yield f"__STATUS__:{json.dumps({'msg': 'Retrieval engine error. Please try again.'})}__END_STATUS__"
+                yield "\n\n⚠ **LETA encountered a retrieval error.** The statutory database search failed for this query. Please try again — if the problem persists, try rephrasing your question."
+                return
 
         # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
         citation_block   = build_context(chunks, is_draft=_is_draft)
         compressed_block = compress_context(chunks, question, is_draft=_is_draft)
 
+        # Detect if this is a follow-up / correction so the model gets a strong
+        # continuation signal and doesn't restart from first principles.
+        _FOLLOWUP_KW = [
+            "you got me wrong", "you are wrong", "that's wrong", "that is wrong",
+            "off route", "off track", "completely switched", "completely diverted",
+            "stick to our conversation", "stick to the conversation",
+            "take it forward", "taking it forward", "continue the discussion",
+            "as i said", "as i mentioned", "i already said", "i already told",
+            "i replied", "i have said", "i told you", "you mentioned",
+            "building on", "following up", "based on what you said",
+            "not what i asked", "not what i meant", "you missed",
+        ]
+        _is_followup = bool(history_context) and (
+            len(question.split()) < 25
+            or any(k in question.lower() for k in _FOLLOWUP_KW)
+        )
+        _history_label = (
+            "⚠ ACTIVE CONVERSATION — CONTINUE FROM HERE. Do NOT restart with basics already covered. "
+            "Directly continue the specific legal discussion in progress.\n"
+            if _is_followup else "CHAT HISTORY"
+        )
+
         full_rag_context = (
-            (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
+            (f"--- MEMORY FROM PREVIOUS SESSIONS ---\n{cross_session_context}\n--- END MEMORY ---\n\n" if cross_session_context else "")
+            + (f"--- {_history_label} ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
             + citation_block
             + (f"\n\n{calc_block}" if calc_block else "")
             + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
@@ -811,12 +1021,45 @@ async def ask_question(request: Request, req: QuestionRequest):
             question, full_rag_context, session_is_draft=_is_draft
         )
 
-        async for chunk in stream_and_save(
-            response_stream, session_id, question,
-            chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
-            query_vec=query_vec, is_draft_session=_is_draft,
-        ):
-            yield chunk
+        # ── Log and store the retrieval trace ────────────────────────────────
+        # This fires before streaming starts — captures everything up to synthesis.
+        # Answer metadata (latency, model) is captured later in stream_and_save.
+        try:
+            _trace.answer = {
+                "query_id":   query_id,
+                "cache_hit":  False,
+                "complexity": round(_complexity, 3),
+                "mode":       ("draft" if _is_draft else
+                               "detailed" if _complexity >= 0.60 else
+                               "standard" if _complexity >= 0.25 else "brief"),
+            }
+            store_trace(_trace)
+            # Single structured JSON log line — filterable in CloudWatch Logs Insights:
+            #   filter trace_type = "retrieval_trace"
+            #   filter query_id = "LETA-20260810-..."
+            import logging as _log_mod
+            _tlog = _log_mod.getLogger("leta.trace")
+            _tlog.info(
+                "retrieval_trace",
+                extra=_trace.to_log_dict(),
+            )
+        except Exception as _te:
+            logger.debug(f"Trace logging failed (non-fatal): {_te}")
+
+        try:
+            async for chunk in stream_and_save(
+                response_stream, session_id, question,
+                chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
+                query_vec=query_vec, is_draft_session=_is_draft,
+            ):
+                yield chunk
+        except Exception as _synth_exc:
+            import traceback as _tb
+            logger.error(
+                "[CRASH] rag_pipeline_orchestrator synthesis stage failed | "
+                f"query_id={query_id} | {_synth_exc!r}\n{_tb.format_exc()}"
+            )
+            yield "\n\n⚠ **LETA encountered an error while generating the response.** The statutory sources were retrieved successfully but the synthesis step failed. Please try asking again — your question is valid and the answer exists in our database."
 
     async def log_wrapper(generator):
         success = False
@@ -891,6 +1134,18 @@ def log_analytics_sync(endpoint_name: str):
 async def ask_question_sync(request: Request, req: QuestionRequest):
     """Non-streaming version of /ask — returns complete JSON response.
     Required for AWS API Gateway HTTP_PROXY compatibility (no SSE streaming support)."""
+    # Wait up to 50s for warmup (well under the ALB 60s idle timeout) so callers
+    # don't see 503 during ECS rolling-deployment warm-up windows.
+    if not _warmup_complete:
+        import asyncio as _asyncio_w
+        _wt = 0
+        while not _warmup_complete and _wt < 50:
+            await _asyncio_w.sleep(2)
+            _wt += 2
+        if not _warmup_complete:
+            from starlette.responses import JSONResponse as _jr
+            return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
+
     import asyncio as _asyncio
     import urllib.parse as _urlparse
     from fastapi.responses import JSONResponse as _JSONResponse
@@ -957,8 +1212,9 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     ]
     _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW)
 
-    # Skip LLM-based query expansion in sync mode — saves ~10-15s from the extra Sonnet call.
-    # Use rule-based multi-query for drafts only (no LLM needed).
+    # Sync mode: use rule-based 4-angle multi-query (avoids extra LLM latency on the sync path).
+    # Covers statutory, circular, notification, and factual angles — same structure as the
+    # LLM expansion but keyword-driven so it completes in microseconds.
     refined_q = question
     if _is_draft:
         advanced_queries = {
@@ -971,11 +1227,20 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
             "hyde_document": "", "topic": "General", "subtopic": None,
         }
     else:
-        advanced_queries = {"queries": [question], "hyde_document": "", "topic": "General", "subtopic": None}
+        advanced_queries = {
+            "queries": [
+                refined_q,
+                refined_q + " section CGST Act rule proviso conditions eligibility",
+                refined_q + " CBIC Circular clarification instruction",
+                refined_q + " GST Notification Central Tax Rate exemption 2017 2018 2019 2020 2021 2022 2023 2024 2025",
+            ],
+            "hyde_document": "", "topic": "General", "subtopic": None,
+        }
 
     retriever = get_retriever()
-    # skip_rerank: FlashRank takes 30-50s on 100+ candidates — bypassed to fit in 29s.
-    # top_k raised now that ALB is in path and Sonnet is used for all queries.
+    # CrossEncoder reranking enabled: ms-marco-MiniLM-L-6-v2 runs in ~200-400ms
+    # for 50 candidate pairs on CPU — well within the 29s ALB timeout.
+    # The old NLI DeBERTa model was both slow AND broken (returned 3-class arrays).
     _top_k = 20 if _is_draft else (18 if _complexity >= 0.60 else 15)
     chunks = retriever.search(
         query=refined_q,
@@ -984,7 +1249,7 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         advanced_queries=advanced_queries,
         domain_paths=domain_paths,
         is_draft=_is_draft,
-        skip_rerank=True,
+        skip_rerank=False,
     )
 
     citation_block = build_context(chunks, is_draft=_is_draft)
@@ -998,9 +1263,7 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     )
 
     # Draft/advisory queries: Haiku + 4000 tokens (~23-27s) — fits API Gateway's 29s limit.
-    # Non-draft Q&A: Sonnet (responses are 1000-2500 tokens, ~15-25s) — fits and gives full quality.
-    import time
-    t_gen_start = time.monotonic()
+    # Non-draft Q&A: Sonnet (6000-12000 tokens — Quick Take + Key Extracts + Detailed Advisory).
     answer = await _asyncio.to_thread(
         lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=_is_draft))
     )
@@ -1068,6 +1331,18 @@ async def _execute_ask_question_with_file(
     question_text: str,
     session_id: Optional[str]
 ):
+    # Same 50s warmup wait as /ask-sync (under ALB 60s idle timeout).
+    if not _warmup_complete:
+        import asyncio as _asyncio_w
+        _wt = 0
+        while not _warmup_complete and _wt < 50:
+            await _asyncio_w.sleep(2)
+            _wt += 2
+        if not _warmup_complete:
+            from starlette.responses import JSONResponse as _jr
+            return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
+
+    question_text = question.strip()
 
     # 1. Read the file
     file_bytes = await file.read()

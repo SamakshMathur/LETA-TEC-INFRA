@@ -52,6 +52,16 @@
   50%       { opacity: 0; }
 }
 
+@keyframes leta-thinking-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.85; }
+  30%            { transform: translateY(-5px); opacity: 1; }
+}
+
+@keyframes leta-status-fade {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 0.9; transform: translateY(0); }
+}
+
 
 /* ── Aurora background animation ────────────────────────────────────────── */
 @keyframes aurora {

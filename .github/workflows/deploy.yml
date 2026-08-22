@@ -71,15 +71,27 @@ jobs:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: false
+          wait-for-service-stability: true
 
       - name: Smoke test deployment
         run: |
-          sleep 15
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://api.letatec.com/api/health" \
-            --max-time 20)
-          echo "Health check status: $HTTP_STATUS"
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "WARNING: health check returned $HTTP_STATUS (may still be warming up)"
-          fi
+          # Poll /api/health until it returns 200 (models fully warmed up).
+          # Gives up to 3 minutes — warmup is ~20-60s after ECS stability.
+          MAX_WAIT=180
+          INTERVAL=15
+          ELAPSED=0
+          echo "Waiting for /api/health to return 200..."
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://api.letatec.com/api/health" \
+              --max-time 20)
+            echo "  [${ELAPSED}s] status=${HTTP_STATUS}"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Health check passed — deployment complete."
+              exit 0
+            fi
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          echo "ERROR: /api/health did not return 200 within ${MAX_WAIT}s"
+          exit 1

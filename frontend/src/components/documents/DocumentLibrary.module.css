@@ -472,6 +472,9 @@
 .colorCirculars { color: #4FB7C5; }
 .accentCirculars { background-color: rgba(79, 183, 197, 0.1); }
 
+.colorNotifications { color: rgba(139, 92, 246, 0.9); } /* violet-500 */
+.accentNotifications { background-color: rgba(139, 92, 246, 0.07); }
+
 .colorAars { color: rgba(251, 113, 133, 0.8); } /* rose-400 */
 .accentAars { background-color: rgba(244, 63, 94, 0.05); }
 
@@ -484,11 +487,17 @@
 .colorForms { color: rgba(96, 165, 250, 0.8); } /* blue-400 */
 .accentForms { background-color: rgba(59, 130, 246, 0.05); }
 
+.colorFaqs { color: rgba(52, 211, 153, 0.8); } /* emerald-400 */
+.accentFaqs { background-color: rgba(16, 185, 129, 0.05); }
+
+.colorIcai { color: rgba(251, 146, 60, 0.8); } /* orange-400 */
+.accentIcai { background-color: rgba(249, 115, 22, 0.05); }
+
 .colorBrochures { color: #4FB7C5; }
 .accentBrochures { background-color: rgba(79, 183, 197, 0.1); }
 
-.colorFlyers { color: #4FB7C5; }
-.accentFlyers { background-color: rgba(79, 183, 197, 0.1); }
+.colorFlyers { color: rgba(251, 113, 133, 0.8); }
+.accentFlyers { background-color: rgba(244, 63, 94, 0.05); }
 
 .colorActs { color: rgba(251, 146, 60, 0.8); } /* orange-400 */
 .accentActs { background-color: rgba(249, 115, 22, 0.05); }

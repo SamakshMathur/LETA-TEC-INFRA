@@ -1,8 +1,97 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Search, Scale } from 'lucide-react';
-import { SimpleSearchLoader } from '../effects';
 import LetaResponse from './LetaResponse';
 import { BASE_URL } from '../../config/api';
+
+// Step-by-step thinking display for /ask-sync (simulated timing, realistic steps)
+const THINKING_STEPS = [
+  { msg: 'Initializing Statutory Analyzer...', duration: 1500 },
+  { msg: 'Scanning Semantic Cache...', duration: 800 },
+  { msg: 'Searching 49,845 Legal Documents...', duration: 3000 },
+  { msg: 'Expanding Query for Precision Retrieval...', duration: 2500 },
+  { msg: 'Reranking by Legal Authority Weight...', duration: 2000 },
+  { msg: 'Synthesizing Sovereign Legal Position...', duration: 99999 }, // stays until done
+];
+
+const LetaThinkingLoader = ({ isActive }) => {
+  const [stepIdx, setStepIdx] = useState(0);
+
+  useEffect(() => {
+    if (!isActive) { setStepIdx(0); return; }
+    let idx = 0;
+    const advance = () => {
+      idx = Math.min(idx + 1, THINKING_STEPS.length - 1);
+      setStepIdx(idx);
+      if (idx < THINKING_STEPS.length - 1) {
+        t = setTimeout(advance, THINKING_STEPS[idx].duration);
+      }
+    };
+    let t = setTimeout(advance, THINKING_STEPS[0].duration);
+    return () => clearTimeout(t);
+  }, [isActive]);
+
+  if (!isActive) return null;
+  const step = THINKING_STEPS[stepIdx];
+
+  return (
+    <div className="flex flex-col items-center justify-center py-10 px-6 gap-5">
+      {/* Dots + status text */}
+      <div className="flex items-center gap-3">
+        <div className="flex gap-1.5">
+          {[0, 150, 300].map(d => (
+            <span key={d} style={{
+              display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%',
+              background: '#67E8F9',
+              animation: `leta-thinking-bounce 1.1s ease-in-out ${d}ms infinite`,
+            }} />
+          ))}
+        </div>
+        <span key={step.msg} style={{
+          fontFamily: 'monospace', fontSize: '11px', letterSpacing: '0.12em',
+          textTransform: 'uppercase', color: '#67E8F9',
+          animation: 'leta-status-fade 0.35s ease',
+        }}>
+          {step.msg}
+        </span>
+      </div>
+
+      {/* Stage rail */}
+      {(() => {
+        const stages = ['Init', 'Cache', 'Retrieve', 'Rerank', 'Generate'];
+        const active = Math.min(Math.floor(stepIdx * stages.length / THINKING_STEPS.length), stages.length - 1);
+        return (
+          <div className="flex items-center" style={{ maxWidth: '300px', width: '100%' }}>
+            {stages.map((s, i) => (
+              <React.Fragment key={s}>
+                <div className="flex flex-col items-center gap-1" style={{ minWidth: '48px' }}>
+                  <div style={{
+                    width: '7px', height: '7px', borderRadius: '50%',
+                    background: i <= active ? '#67E8F9' : 'rgba(255,255,255,0.08)',
+                    boxShadow: i === active ? '0 0 8px rgba(103,232,249,0.6)' : 'none',
+                    transition: 'all 0.35s ease',
+                  }} />
+                  <span style={{
+                    fontFamily: 'monospace', fontSize: '8px', letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: i <= active ? '#67E8F9' : 'rgba(255,255,255,0.15)',
+                    transition: 'color 0.35s ease',
+                  }}>{s}</span>
+                </div>
+                {i < stages.length - 1 && (
+                  <div style={{
+                    flex: 1, height: '1px', marginBottom: '14px',
+                    background: i < active ? '#67E8F9' : 'rgba(255,255,255,0.08)',
+                    transition: 'background 0.35s ease',
+                  }} />
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+        );
+      })()}
+    </div>
+  );
+};
 
 const SAMPLE_PROMPTS = [
   'Is ITC available on works contract for factory construction?',
@@ -165,7 +254,7 @@ const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
 
         {isLoading && (
           <div className="min-h-[220px] flex items-center justify-center">
-            <SimpleSearchLoader />
+            <LetaThinkingLoader isActive={isLoading} />
           </div>
         )}
 

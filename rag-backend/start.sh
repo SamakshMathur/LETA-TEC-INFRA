@@ -54,16 +54,20 @@ PYEOF
 
 echo "[START] DATA SYNC COMPLETE — starting gunicorn"
 
-# Worker count: default 2 (each worker loads ~600 MB of models).
-# Increase WORKERS if your instance has ≥ 4 GB free RAM per extra worker.
-WORKERS=${WORKERS:-2}
+# Worker count: default 1. Each gunicorn worker independently loads the
+# embedding model (~1.3 GB) + FAISS index (~230 MB) + FlashRank (~22 MB)
+# = ~1.85 GB baseline per worker. FastAPI/uvicorn handles concurrent requests
+# async within a single worker, so 1 worker per task is correct.
+# 4 ECS tasks × 1 worker = 4 independent async servers, sufficient for production.
+# Override via WORKERS env var in the ECS task definition only if needed.
+WORKERS=${WORKERS:-1}
 
 exec gunicorn main:app \
   --worker-class uvicorn.workers.UvicornWorker \
   --workers "${WORKERS}" \
   --bind "0.0.0.0:${PORT:-8080}" \
   --timeout 180 \
-  --graceful-timeout 30 \
+  --graceful-timeout 180 \
   --keep-alive 5 \
   --max-requests 1000 \
   --max-requests-jitter 100 \

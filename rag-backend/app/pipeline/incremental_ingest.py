@@ -139,7 +139,7 @@ def _embed_and_append(chunks: List[Dict]) -> int:
         index = faiss.read_index(str(INDEX_FILE))
     else:
         from app.config import VECTOR_DIM
-        index = faiss.IndexFlatL2(VECTOR_DIM)
+        index = faiss.IndexFlatIP(VECTOR_DIM)  # must match retriever's inner-product search
 
     # Load existing metadata
     existing_meta: list = []

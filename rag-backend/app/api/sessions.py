@@ -218,157 +218,38 @@ def get_session(
 
     return session
 
-
-# =============================================================================
-# ADD MESSAGE
-# =============================================================================
-
-@router.post(
-    "/{session_id}/message",
-    status_code=status.HTTP_201_CREATED
-)
-def add_message(
-    session_id: str,
-    data: MessageInput,
-    current_user: dict = Depends(get_current_user)
-):
-
-    collection = get_session_collection()
-
-    if collection is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Database connection failed"
-        )
-
-    session = collection.find_one({
-        "session_id": session_id,
-        "user_id": current_user["username"],
-    })
-
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail="Session not found"
-        )
-
-    current_message_count = session.get("message_count", 0)
-
-    if current_message_count >= MAX_MESSAGES_PER_SESSION:
-        raise HTTPException(
-            status_code=400,
-            detail="Session message limit reached"
-        )
-
-    now = utc_now()
-
-    message = {
-        "message_id": str(uuid.uuid4()),
-        "role": data.role,
-        "content": data.content,
-        "metadata": data.metadata or {},
-        "citations": data.citations or [],
-        "timestamp": now,
-    }
-
-    result = collection.update_one(
-        {
-            "session_id": session_id,
-            "user_id": current_user["username"],
-        },
-        {
-            "$push": {
-                "messages": message
-            },
-            "$set": {
-                "updated_at": now
-            },
-            "$inc": {
-                "message_count": 1
-            }
-        }
-    )
-
-    if result.modified_count == 0:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to save message"
-        )
-
-    logger.info(
-        f"Message added | user={current_user['username']} "
-        f"| session={session_id} "
-        f"| role={data.role}"
-    )
-
-    return {
-        "status": "success",
-        "message": message,
-        "session_id": session_id,
-    }
-
-
-# =============================================================================
-# UPDATE SESSION TITLE
-# =============================================================================
-
-class UpdateSessionTitle(BaseModel):
+class SessionRename(BaseModel):
     title: str
 
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, v):
-        v = v.strip()
-
-        if not v:
-            raise ValueError("Title cannot be empty")
-
-        return v[:120]
-
-
-@router.patch("/{session_id}/title")
-def update_session_title(
-    session_id: str,
-    data: UpdateSessionTitle,
-    current_user: dict = Depends(get_current_user)
-):
-
+@router.patch("/{session_id}/rename")
+def rename_session(session_id: str, data: SessionRename, current_user: dict = Depends(get_current_user)):
     collection = get_session_collection()
-
     if collection is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Database connection failed"
-        )
-
+        return {"session_id": session_id, "title": data.title}
+    user_id = current_user["username"]
     result = collection.update_one(
-        {
-            "session_id": session_id,
-            "user_id": current_user["username"],
-        },
-        {
-            "$set": {
-                "title": data.title,
-                "updated_at": utc_now(),
-            }
-        }
+        {"session_id": session_id, "user_id": user_id},
+        {"$set": {"title": data.title, "updated_at": datetime.now()}}
     )
-
     if result.matched_count == 0:
-        raise HTTPException(
-            status_code=404,
-            detail="Session not found"
-        )
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": session_id, "title": data.title}
 
-    return {
-        "status": "success",
-        "title": data.title,
-    }
-
-
-# =============================================================================
-# DELETE SESSION
-# =============================================================================
+@router.get("/search", response_model=List[Session])
+def search_sessions(q: str, current_user: dict = Depends(get_current_user)):
+    collection = get_session_collection()
+    if collection is None:
+        return []
+    user_id = current_user["username"]
+    regex = {"$regex": q, "$options": "i"}
+    sessions_cursor = collection.find(
+        {"user_id": user_id, "$or": [
+            {"title": regex},
+            {"messages.content": regex},
+        ]},
+        {"_id": 0, "messages": 0}
+    ).sort("updated_at", -1).limit(20)
+    return list(sessions_cursor)
 
 @router.delete("/{session_id}")
 def delete_session(
