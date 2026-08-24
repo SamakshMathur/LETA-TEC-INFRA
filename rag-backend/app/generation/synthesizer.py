@@ -117,9 +117,13 @@ if LLM_PROVIDER == "anthropic":
     import anthropic as _anthropic
     if not ANTHROPIC_API_KEY:
         logger.warning("ANTHROPIC_API_KEY not found — answer generation will fail")
+    import httpx as _httpx
     _claude_client = _anthropic.Anthropic(
         api_key=ANTHROPIC_API_KEY,
-        timeout=_anthropic.Timeout(180.0, connect=10.0),
+        # NO read timeout — streaming keeps the ALB connection alive, so there is
+        # no wall-clock reason to abort a running generation. Only connect timeout
+        # is set to catch DNS / network failures fast.
+        timeout=_httpx.Timeout(timeout=None, connect=10.0),
     )
     logger.info(f"LLM Provider: Anthropic Claude ({CLAUDE_MAIN_MODEL}) with extended thinking")
 

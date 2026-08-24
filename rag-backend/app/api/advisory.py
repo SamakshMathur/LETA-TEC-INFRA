@@ -142,9 +142,10 @@ async def create_advisory_stream(
             system_prompt = ADVISORY_SYSTEM_PROMPT.format(rules_context=rules_text)
             user_message  = _build_user_message(req.query, context_to_use)
 
+            import httpx as _httpx
             client = _anthropic.Anthropic(
                 api_key=ANTHROPIC_API_KEY,
-                timeout=_anthropic.Timeout(180.0, connect=10.0),
+                timeout=_httpx.Timeout(timeout=None, connect=10.0),  # no read timeout
             )
 
             full_text = ""
