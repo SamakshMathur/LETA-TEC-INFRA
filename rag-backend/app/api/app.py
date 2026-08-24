@@ -384,7 +384,7 @@ async def health_check():
 
     return health_status
 
-async def stream_and_save(generator, session_id, user_query, chunks=None, context="", truth_rules_text="", query_vec=None, is_draft_session: bool = False):
+async def stream_and_save(generator, session_id, user_query, chunks=None, context="", truth_rules_text="", query_vec=None, is_draft_session: bool = False, marker_map=None):
     """
     Wrapper that streams the LLM response AND runs post-generation
     accuracy layers before saving to DB.
@@ -535,19 +535,56 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                             run_citation_validator(),
                             run_hallucination_guard(),
                             run_authority_verifier(),
+                            run_answer_verifier(),
                         ),
-                        timeout=4.0,
+                        timeout=12.0,  # extended: answer_verifier makes an LLM call
                     )
                 except asyncio.TimeoutError:
                     _logger.warning("Post-generation validators timed out — skipping")
-                    results = (full_answer, "", None)
+                    results = (full_answer, "", None, None)
 
-                _, hallu_warn, _ = results
+                _, hallu_warn, _, verifier_warn = results
 
-                # Log internally — validator output is NEVER streamed to the user.
-                # Citation validator already logs its own warnings.
+                # Hallucination guard — log only (number issues are low-signal noise)
                 if hallu_warn:
                     _logger.warning(f"Hallucination guard: {hallu_warn[:300]}")
+
+                # Answer verifier — stream visible warning to user when a contradiction
+                # is detected (e.g., cites Section 17(5) but concludes ITC is available)
+                if verifier_warn:
+                    _logger.warning(f"Answer verifier flagged: {verifier_warn[:200]}")
+                    yield verifier_warn
+
+                # ── Phase 2: emit resolved [Sn] citations as a structured block ──
+                # The frontend replaces [S1] inline markers with real document links
+                # using this map — no guessing, no regex scoring.
+                if marker_map:
+                    try:
+                        from app.generation.context_builder import parse_markers
+                        citation_result = parse_markers(full_answer, marker_map)
+                        if citation_result["citations"] or citation_result["unresolved"]:
+                            citations_payload = {
+                                "type": "citations",
+                                "citations": citation_result["citations"],
+                                "unresolved": citation_result["unresolved"],
+                            }
+                            yield f"__CITATIONS__:{json.dumps(citations_payload)}__END_CITATIONS__"
+                    except Exception as _ce:
+                        _logger.debug(f"Citation parser error (non-fatal): {_ce}")
+
+                # ── Safety guards: compute confidence and append caveat if needed ──
+                try:
+                    from app.generation.confidence import estimate_confidence
+                    from app.generation.safety import apply_safety_guards
+                    _confidence = estimate_confidence(context, chunks or [])
+                    _logger.debug(f"Confidence (context-based): {_confidence:.3f}")
+                    _safe_answer = apply_safety_guards(full_answer, _confidence, "")
+                    # If safety guard appended a caveat, stream it now
+                    if _safe_answer != full_answer:
+                        caveat = _safe_answer[len(full_answer):]
+                        yield caveat
+                except Exception as _sg_exc:
+                    _logger.debug(f"Safety guard error (non-fatal): {_sg_exc}")
 
                 # template_block intentionally not streamed — surfaced via /api/templates instead
 
@@ -582,9 +619,11 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             try:
                 from app.cache import cache_store
                 from app.generation.confidence import estimate_confidence
-                confidence = await asyncio.to_thread(estimate_confidence, full_answer, chunks or [])
+                # Pass the RETRIEVED CONTEXT string (not the generated answer) so
+                # confidence reflects evidence volume, not answer verbosity.
+                confidence = await asyncio.to_thread(estimate_confidence, context, chunks or [])
                 await asyncio.to_thread(cache_store, user_query, query_vec, full_answer, confidence, unique_sources if chunks else [])
-                _logger.debug(f"Cache store attempt | confidence={confidence:.2f}")
+                _logger.debug(f"Cache store attempt | confidence={confidence:.3f}")
             except Exception as ce:
                 _logger.warning(f"Cache store error (non-fatal): {ce}")
 
@@ -972,6 +1011,10 @@ async def ask_question(request: Request, req: QuestionRequest):
         citation_block   = build_context(chunks, is_draft=_is_draft)
         compressed_block = compress_context(chunks, question, is_draft=_is_draft)
 
+        # Build the [S1]→chunk mapping for server-side citation resolution (Phase 2)
+        from app.generation.context_builder import build_marker_map
+        _marker_map = build_marker_map(chunks) if chunks else []
+
         # Detect if this is a follow-up / correction so the model gets a strong
         # continuation signal and doesn't restart from first principles.
         _FOLLOWUP_KW = [
@@ -1051,6 +1094,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                 response_stream, session_id, question,
                 chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
                 query_vec=query_vec, is_draft_session=_is_draft,
+                marker_map=_marker_map,
             ):
                 yield chunk
         except Exception as _synth_exc:

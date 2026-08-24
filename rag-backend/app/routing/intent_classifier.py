@@ -1,112 +1,106 @@
+"""
+Intent classifier — routes queries to the right document-type filter.
+
+Strategy: LLM-first (Claude Haiku, cached) with keyword fallback on any error.
+The LLM classification is better for multi-signal queries (e.g., a rate question
+that also mentions an AAR ruling) that stumble the keyword path.
+"""
 import re
+import json
 import logging
+import functools
 
 logger = logging.getLogger(__name__)
 
+# ── Valid intents ─────────────────────────────────────────────────────────────
+_VALID_INTENTS = {
+    "form_lookup", "rate_comparison", "rate_lookup", "aar_lookup",
+    "jobwork_rate", "act_section_lookup", "procedure", "general",
+}
 
-def _keyword_classify(q: str) -> dict:
-    """
-    Fast keyword-based fallback classifier.
-    Uses phrase-level matching with disambiguation to avoid false positives.
-    """
-    # 1. RATE / CLASSIFICATION — require rate-specific phrases, not bare "rate"
-    rate_phrases = [
-        "gst rate", "tax rate", "rate of gst", "rate of tax", "rate applicable",
-        "hsn code", "hsn ", "sac code", "sac ", "applicable gst",
-        "tax on ", "taxable at", "what percent", "how much gst", "how much tax",
-    ]
-    if any(phrase in q for phrase in rate_phrases):
-        return {"intent": "rate_classification", "confidence": 0.85}
-    # Bare "%" only if near gst/tax context
-    if "%" in q and any(w in q for w in ["gst", "tax", "rate", "cess"]):
-        return {"intent": "rate_classification", "confidence": 0.8}
+# ── Keyword fallback (always available, zero latency) ────────────────────────
 
-    # 2. COMPARISON — require comparison-specific phrases
-    comparison_phrases = [
-        "difference between", "distinguish between", "compare ",
-        " vs ", " versus ", "comparison of", "differentiate between",
-    ]
-    if any(phrase in q for phrase in comparison_phrases):
-        return {"intent": "comparison", "confidence": 0.9}
+def _keyword_classify(question: str) -> dict:
+    q = question.lower()
 
-    # 3. DEFINITION / CONCEPT
-    definition_phrases = [
-        "what is ", "what are ", "define ", "meaning of ",
-        "explain ", "concept of ", "what does ",
-    ]
-    if any(phrase in q for phrase in definition_phrases):
-        # Disambiguate: "what is the rate" -> rate_classification
-        if any(w in q for w in ["rate", "hsn", "sac", "percent"]):
-            return {"intent": "rate_classification", "confidence": 0.8}
-        return {"intent": "definition", "confidence": 0.9}
+    if "cheque bounce" in q or "cheque dishonour" in q:
+        return {"intent": "aar_lookup", "confidence": 0.95}
 
-    # 4. SECTION-BASED LEGAL ADVISORY — require legal-specific terms
-    advisory_phrases = [
-        "section ", "sec ", "penalty for", "late fee", "time limit",
-        "eligibility for", "blocked credit", "blocked itc",
-        "input tax credit", " itc ", "refund of", "refund claim",
-        "rule ", "notification no", "circular no",
-    ]
-    if any(phrase in q for phrase in advisory_phrases):
-        return {"intent": "section_advisory", "confidence": 0.85}
+    if "job work" in q and ("rate" in q or "%" in q):
+        return {"intent": "jobwork_rate", "confidence": 0.9}
 
-    # 5. Short question-word queries default to definition
-    if len(q.split()) < 6 and any(q.startswith(w) for w in ["what", "who", "which", "how"]):
-        return {"intent": "definition", "confidence": 0.6}
+    if re.search(r"\b(form|apl-\d+|gst apl)\b", q):
+        return {"intent": "form_lookup", "confidence": 0.95}
 
-    # Fallback — general advisory
-    return {"intent": "section_advisory", "confidence": 0.4}
+    if any(word in q for word in ["difference", "compare", "vs", "versus"]):
+        if "%" in q or "percent" in q or re.search(r"\b\d{1,2}%\b", q):
+            return {"intent": "rate_comparison", "confidence": 0.9}
+
+    if any(word in q for word in ["rate", "gst rate", "%", "percent"]):
+        return {"intent": "rate_lookup", "confidence": 0.85}
+
+    if any(word in q for word in ["aar", "advance ruling"]):
+        return {"intent": "aar_lookup", "confidence": 0.9}
+
+    if re.search(r"\bsection\s+\d+", q):
+        return {"intent": "act_section_lookup", "confidence": 0.9}
+
+    if any(word in q for word in ["how to", "procedure", "process", "steps"]):
+        return {"intent": "procedure", "confidence": 0.8}
+
+    return {"intent": "general", "confidence": 0.5}
+
+
+# ── LLM classification (Haiku — fast, ~100ms) ────────────────────────────────
+
+_SYSTEM = """You classify Indian GST legal queries into one of these intent categories:
+- form_lookup: user needs a specific GST form (GSTR, REG, DRC, APL forms)
+- rate_comparison: comparing rates across goods/services
+- rate_lookup: finding the GST rate for a specific good/service
+- aar_lookup: advance rulings or case-based queries
+- jobwork_rate: job work GST rate queries
+- act_section_lookup: queries about a specific section/rule of CGST/IGST/GST Rules
+- procedure: how-to compliance queries (registration, filing, refund steps)
+- general: anything else (ITC eligibility, penalty, demand, circular interpretation, etc.)
+
+Respond with ONLY a JSON object: {"intent": "<one of the above>", "confidence": <0.0-1.0>}"""
 
 
 def _llm_classify(question: str) -> dict:
-    """
-    Uses the cheap utility LLM model for accurate intent classification.
-    Falls back to keyword classifier on failure.
-    """
-    try:
-        from app.retrieval.query_refiner import _call_llm_json
-        system = """You are a GST Query Intent Classifier.
-Classify the user's query into exactly ONE intent.
-
-Intents:
-- "rate_classification": Questions about GST rates, HSN/SAC codes, percentages, cess.
-- "comparison": Questions comparing two or more concepts, provisions, or tax treatments.
-- "definition": Questions asking what something is, meaning, explanation of a concept.
-- "section_advisory": Legal advisory questions about sections, rules, penalties, ITC, refunds, compliance.
-
-Respond with ONLY a JSON object: {"intent": "INTENT_NAME", "confidence": 0.95}"""
-
-        raw = _call_llm_json(system, question, temperature=0.0)
-
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0].strip()
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0].strip()
-
-        import json
-        result = json.loads(raw)
-        intent = result.get("intent", "")
-        valid_intents = {"rate_classification", "comparison", "definition", "section_advisory"}
-        if intent in valid_intents:
-            return {"intent": intent, "confidence": float(result.get("confidence", 0.9))}
-    except Exception as e:
-        logger.warning(f"LLM intent classification failed, using keyword fallback: {e}")
-
-    return None
+    """Call Haiku for intent classification. Raises on any failure."""
+    from app.config import ANTHROPIC_API_KEY, CLAUDE_UTILITY_MODEL
+    import anthropic
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    msg = client.messages.create(
+        model=CLAUDE_UTILITY_MODEL,
+        max_tokens=64,
+        temperature=0.0,
+        system=_SYSTEM,
+        messages=[{"role": "user", "content": f"Query: {question[:500]}"}],
+    )
+    raw = msg.content[0].text.strip()
+    if "```" in raw:
+        raw = raw.split("```")[1].split("```")[0].strip()
+        if raw.startswith("json"):
+            raw = raw[4:].strip()
+    result = json.loads(raw)
+    intent = result.get("intent", "general")
+    if intent not in _VALID_INTENTS:
+        intent = "general"
+    return {"intent": intent, "confidence": float(result.get("confidence", 0.7))}
 
 
 def classify_intent(question: str) -> dict:
     """
-    Two-stage intent classifier:
-      1. Try LLM-based classification (accurate, handles ambiguity)
-      2. Fall back to keyword heuristics if LLM fails
+    LLM-first intent classification with keyword fallback.
+    Falls back to keyword matching on any LLM error (network, auth, parse).
     """
-    q = question.lower().strip()
-
-    # Stage 1: LLM classification
-    llm_result = _llm_classify(question)
-    if llm_result:
-        return llm_result
-
-    # Stage 2: Keyword fallback
-    return _keyword_classify(q)
+    try:
+        result = _llm_classify(question)
+        logger.debug(f"[intent:llm] {result['intent']} ({result['confidence']:.2f})")
+        return result
+    except Exception as e:
+        logger.debug(f"[intent:llm-err] {e!r} — falling back to keyword classifier")
+        result = _keyword_classify(question)
+        logger.debug(f"[intent:keyword] {result['intent']} ({result['confidence']:.2f})")
+        return result
