@@ -440,6 +440,19 @@ def synthesize_answer_stream(
     truth_rules_text = rules_engine.get_all_rules_as_text()
     system_prompt = prompt_template.format(context=context, truth_rules=truth_rules_text)
 
+    model_name = "unknown"
+    if LLM_PROVIDER == "anthropic":
+        model_name = CLAUDE_UTILITY_MODEL if use_haiku else CLAUDE_MAIN_MODEL
+    else:
+        model_name = LLM_MODEL
+
+    from app.ai_logger import update_ai_log
+    update_ai_log(
+        model_used=model_name,
+        draft_type="draft" if is_draft else None,
+        estimated_prompt_tokens=(len(system_prompt) + len(question)) // 4
+    )
+
     if LLM_PROVIDER == "anthropic":
         logger.info(
             f"Routing to Claude: complexity={complexity:.2f} | draft={is_draft} | "

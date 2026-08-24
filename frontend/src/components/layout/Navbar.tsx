@@ -1,9 +1,10 @@
-﻿import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FileText, Landmark, Globe, Briefcase, ChevronDown, Settings, LogOut, LayoutGrid } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../hooks/useAuth';
 import { ROUTES } from '../../constants/routes';
+import { hasRole, getActiveRole } from '../../lib/permissions';
 import SessionClock from './SessionClock';
 
 const MODULES = [
@@ -28,13 +29,15 @@ const getInitials = (name: string) => {
 const Navbar = () => {
   const location  = useLocation();
   const navigate  = useNavigate();
-  const { user, isLoggedIn, logout } = useAuth();
+  const { user, isLoggedIn, logout, session } = useAuth();
 
   const [scrolled,     setScrolled]     = useState(false);
   const [modulesOpen,  setModulesOpen]  = useState(false);
+  const [adminOpen,    setAdminOpen]    = useState(false);
   const [userOpen,     setUserOpen]     = useState(false);
 
   const modulesRef = useRef<HTMLDivElement>(null);
+  const adminRef   = useRef<HTMLDivElement>(null);
   const userRef    = useRef<HTMLDivElement>(null);
 
   const isActive = (path: string) =>
@@ -50,6 +53,8 @@ const Navbar = () => {
     const handler = (e: MouseEvent) => {
       if (modulesRef.current && !modulesRef.current.contains(e.target as Node))
         setModulesOpen(false);
+      if (adminRef.current && !adminRef.current.contains(e.target as Node))
+        setAdminOpen(false);
       if (userRef.current && !userRef.current.contains(e.target as Node))
         setUserOpen(false);
     };
@@ -197,6 +202,60 @@ const Navbar = () => {
               )}
             </Link>
           ))}
+          {hasRole(session, 'knowledge_manager') && (
+            <div className="relative" ref={adminRef}>
+              <button
+                onClick={() => setAdminOpen(v => !v)}
+                className="flex items-center gap-1.5 text-[14px] font-medium tracking-wider transition-colors duration-200"
+                style={{ color: '#A7B3C2' }}
+                onMouseEnter={e => e.currentTarget.style.color = '#F4F7FA'}
+                onMouseLeave={e => { if (!adminOpen) e.currentTarget.style.color = '#A7B3C2' }}
+              >
+                Admin
+                <ChevronDown
+                  size={13}
+                  className={`transition-transform duration-200 ${adminOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+
+              {adminOpen && (
+                <div
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-48 rounded-2xl py-2 z-50"
+                  style={{
+                    background: '#0F1722',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    backdropFilter: 'blur(24px)',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.55)',
+                  }}
+                >
+                  <Link
+                    to="/admin/upload"
+                    onClick={() => setAdminOpen(false)}
+                    className="block px-4 py-2.5 text-[13px] font-medium transition-colors text-left w-full"
+                    style={{
+                      color: isActive('/admin/upload') ? '#4FB7C5' : '#A7B3C2',
+                    }}
+                    onMouseEnter={e => { if (!isActive('/admin/upload')) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = '#F4F7FA'; } }}
+                    onMouseLeave={e => { if (!isActive('/admin/upload')) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#A7B3C2'; } }}
+                  >
+                    Dashboard & KB
+                  </Link>
+                  <Link
+                    to="/admin/templates"
+                    onClick={() => setAdminOpen(false)}
+                    className="block px-4 py-2.5 text-[13px] font-medium transition-colors text-left w-full"
+                    style={{
+                      color: isActive('/admin/templates') ? '#4FB7C5' : '#A7B3C2',
+                    }}
+                    onMouseEnter={e => { if (!isActive('/admin/templates')) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = '#F4F7FA'; } }}
+                    onMouseLeave={e => { if (!isActive('/admin/templates')) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#A7B3C2'; } }}
+                  >
+                    Templates
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Right Side ───────────────────────────────────────────────────── */}
@@ -243,12 +302,12 @@ const Navbar = () => {
                   <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                     <p className="text-[13px] font-bold truncate" style={{ color: '#F4F7FA' }}>{displayName}</p>
                     {subLabel && <p className="text-xs truncate mt-0.5" style={{ color: '#6C7A99' }}>{subLabel}</p>}
-                    {user?.role === 'admin' && (
+                    {hasRole(session, 'user') && (
                       <span
-                        className="inline-block mt-1.5 px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider"
+                        className="inline-block mt-1.5 px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider font-mono"
                         style={{ background: 'rgba(79,183,197,0.15)', color: '#4FB7C5' }}
                       >
-                        Admin
+                        {getActiveRole(session).replace('_', ' ')}
                       </span>
                     )}
                   </div>

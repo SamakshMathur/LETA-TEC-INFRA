@@ -4,23 +4,28 @@ import { useAuth } from '../../../hooks/useAuth';
 import { sendOtpApi, verifyOtpApi } from '../../../services/auth';
 import { ROUTES } from '../../../constants/routes';
 
+type Method = 'phone' | 'email';
 type Step = 'contact' | 'otp';
 
 const LoginPage: React.FC = () => {
-  const [contact,   setContact]   = useState('');
-  const [step,      setStep]      = useState<Step>('contact');
-  const [otp,       setOtp]       = useState(['', '', '', '', '', '']);
+  const [method, setMethod] = useState<Method>('phone');
+  const [contact, setContact] = useState('');
+  const [step, setStep] = useState<Step>('contact');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [countdown, setCountdown] = useState(0);
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { login } = useAuth();
-  const navigate  = useNavigate();
-  const location  = useLocation();
-  const from = (location.state as any)?.from?.pathname || '/';
-
+  const navigate = useNavigate();
+  const location = useLocation();
+  const fromLocation = (location.state as any)?.from;
+  const from = fromLocation
+    ? `${fromLocation.pathname || '/dashboard'}${fromLocation.search || ''}${fromLocation.hash || ''}`
+    : '/dashboard';
   const sessionExpired = new URLSearchParams(location.search).get('reason') === 'session_expired';
+  const switchMethod = (m: Method) => { setMethod(m); setContact(''); setError(null); };
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -36,7 +41,7 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      const data = await sendOtpApi(contact.trim(), 'phone');
+      const data = await sendOtpApi(contact.trim(), method);
       if (data?.otp_preview) {
         const session = await verifyOtpApi(contact.trim(), data.otp_preview);
         login(session, false);
@@ -58,7 +63,7 @@ const LoginPage: React.FC = () => {
     if (countdown > 0) return;
     setLoading(true); setError(null);
     try {
-      await sendOtpApi(contact.trim(), 'phone');
+      await sendOtpApi(contact.trim(), method);
       setOtp(['', '', '', '', '', '']); setCountdown(30);
     } catch (err: any) {
       const d = err.response?.data?.detail;
@@ -94,8 +99,6 @@ const LoginPage: React.FC = () => {
     next[i] = val.slice(-1);
     setOtp(next);
     if (val && i < 5) inputRefs.current[i + 1]?.focus();
-    if (val && i === 5 && next.join('').length === 6)
-      setTimeout(() => document.getElementById('verify-btn')?.click(), 50);
   };
 
   const handleOtpKeyDown = (i: number, e: React.KeyboardEvent) => {
@@ -120,7 +123,7 @@ const LoginPage: React.FC = () => {
 
           <div className="mb-8 text-center">
             <h1 className="font-display font-bold text-3xl text-leta-gray-900 mb-2 uppercase tracking-tight">
-              LETA <span className="text-leta-primary">TEC</span>
+              LETA<span className="text-leta-primary">TEC AI</span>
             </h1>
             <p className="text-xs font-mono text-leta-gray-500 uppercase tracking-widest">
               {step === 'contact' ? 'Sovereign Access Portal' : 'Verify Identity'}
@@ -142,17 +145,30 @@ const LoginPage: React.FC = () => {
           {/* ── Step 1: Phone number entry ── */}
           {step === 'contact' && (
             <form onSubmit={handleSendOtp} className="space-y-6">
+              {/* Method toggle */}
+              <div className="flex rounded-leta border border-leta-gray-200 overflow-hidden">
+                {(['phone', 'email'] as Method[]).map(m => (
+                  <button key={m} type="button" onClick={() => switchMethod(m)}
+                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${method === m ? 'bg-leta-primary text-surface' : 'text-leta-gray-500 hover:text-leta-gray-900/70'
+                      }`}>
+                    {m === 'phone' ? 'Mobile' : 'Email'}
+                  </button>
+                ))}
+              </div>
+
               <div className="space-y-2">
-                <label htmlFor="contact" className="label-auth">Mobile Number</label>
+                <label htmlFor="contact" className="label-auth">
+                  {method === 'phone' ? 'Mobile Number' : 'Email Address'}
+                </label>
                 <input
                   id="contact"
-                  type="tel"
+                  type={method === 'phone' ? 'tel' : 'email'}
                   value={contact}
                   onChange={e => setContact(e.target.value)}
                   required
                   className="input-auth"
-                  placeholder="10-digit mobile number"
-                  maxLength={15}
+                  placeholder={method === 'phone' ? '10-digit mobile number' : 'you@example.com'}
+                  maxLength={method === 'phone' ? 15 : undefined}
                   autoFocus
                 />
               </div>
@@ -214,7 +230,7 @@ const LoginPage: React.FC = () => {
         </div>
 
         <p className="mt-8 text-center text-[10px] font-mono text-leta-gray-900/20 uppercase tracking-[0.1em]">
-          &copy; 2026 LETA / Sovereign Compliance Systems
+          &copy; 2026 LETATEC AI / Sovereign Compliance Systems
         </p>
       </div>
     </div>

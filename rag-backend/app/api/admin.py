@@ -20,7 +20,7 @@ from typing import List
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
-from app.security import get_current_admin
+from app.security import get_current_admin, require_roles, ROLE_SUPER_ADMIN, ROLE_ADMIN
 from app.api.documents import BASE_DIR, CATEGORY_MAP
 from app.database import get_user_collection
 from app.feed_store import make_event, publish_event
@@ -224,8 +224,11 @@ async def list_users(current_admin: dict = Depends(get_current_admin)):
 
 
 @router.post("/users/{contact}/toggle-admin")
-async def toggle_admin_role(contact: str, current_admin: dict = Depends(get_current_admin)):
-    """Flip a user between role='user' and role='admin'."""
+async def toggle_admin_role(
+    contact: str,
+    current_admin: dict = Depends(require_roles(ROLE_SUPER_ADMIN))
+):
+    """Flip a user between role='user' and role='admin', controlled by super_admin."""
     users_col = get_user_collection()
     if users_col is None:
         raise HTTPException(status_code=500, detail="Database not connected")
@@ -236,9 +239,32 @@ async def toggle_admin_role(contact: str, current_admin: dict = Depends(get_curr
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    new_role = "user" if user.get("role") == "admin" else "admin"
+    # Prevent altering self
+    if user.get("username") == current_admin.get("username"):
+        logger.warning(f"Self role modification attempt blocked | user={current_admin.get('username')}")
+        raise HTTPException(
+            status_code=400,
+            detail="Self-promotion or self-demotion is prohibited"
+        )
+
+    # Protect super_admin accounts
+    if user.get("role") == ROLE_SUPER_ADMIN:
+        logger.warning(
+            f"Super Admin demotion attempt blocked | actor={current_admin.get('username')} "
+            f"target={user.get('username')}"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Role of a super_admin cannot be demoted or modified"
+        )
+
+    new_role = "user" if user.get("role") == ROLE_ADMIN else "admin"
     users_col.update_one(
-        {"$or": [{"email": contact}, {"phone": contact}, {"username": contact}]},
+        {"_id": user["_id"]},
         {"$set": {"role": new_role}}
+    )
+    logger.info(
+        f"User role toggled | actor={current_admin.get('username')} target={user.get('username')} "
+        f"new_role={new_role}"
     )
     return {"username": user.get("username"), "new_role": new_role}
