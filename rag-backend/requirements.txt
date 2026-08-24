@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+gunicorn
 pydantic
 python-dotenv
 openai
@@ -27,3 +28,4 @@ gradio
 av
 boto3
 langchain
+langchain-text-splitters

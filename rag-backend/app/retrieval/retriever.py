@@ -1140,11 +1140,14 @@ class Retriever:
         # _rerank_score unset and making all chunks score identically.
         logger.info("Loading CrossEncoder reranker (cross-encoder/ms-marco-MiniLM-L-6-v2)...")
         try:
+            import torch as _torch
+            _ce_device = "cuda" if _torch.cuda.is_available() else "cpu"
+            logger.info(f"  CrossEncoder device: {_ce_device}")
             from sentence_transformers import CrossEncoder
             self.cross_encoder = CrossEncoder(
                 "cross-encoder/ms-marco-MiniLM-L-6-v2",
                 max_length=512,
-                device="cpu",
+                device=_ce_device,
             )
             logger.info("  CrossEncoder loaded: cross-encoder/ms-marco-MiniLM-L-6-v2")
         except Exception as e:
