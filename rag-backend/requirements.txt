@@ -29,3 +29,13 @@ av
 boto3
 langchain
 langchain-text-splitters
+# ── Runtime deps used by app code ────────────────────────────────────────────
+anthropic
+httpx
+slowapi
+diskcache
+pymongo
+psutil
+PyJWT
+passlib[bcrypt]
+razorpay
