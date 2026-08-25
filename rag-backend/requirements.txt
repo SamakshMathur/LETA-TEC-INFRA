@@ -39,3 +39,9 @@ psutil
 PyJWT
 passlib[bcrypt]
 razorpay
+reportlab
+markdown2
+rank_bm25
+ftfy
+fuzzywuzzy
+python-Levenshtein
