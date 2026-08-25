@@ -1008,12 +1008,25 @@ async def ask_question(request: Request, req: QuestionRequest):
                 return
 
         # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
-        citation_block   = build_context(chunks, is_draft=_is_draft)
-        compressed_block = compress_context(chunks, question, is_draft=_is_draft)
+        try:
+            citation_block   = build_context(chunks, is_draft=_is_draft)
+            compressed_block = compress_context(chunks, question, is_draft=_is_draft)
 
-        # Build the [S1]→chunk mapping for server-side citation resolution (Phase 2)
-        from app.generation.context_builder import build_marker_map
-        _marker_map = build_marker_map(chunks) if chunks else []
+            # Build the [S1]→chunk mapping for server-side citation resolution (Phase 2)
+            from app.generation.context_builder import build_marker_map
+            _marker_map = build_marker_map(chunks) if chunks else []
+        except Exception as _ctx_exc:
+            import traceback as _tb
+            logger.error(
+                f"[CRASH] Stage 6 context assembly failed | query_id={query_id} | "
+                f"{_ctx_exc!r}\n{_tb.format_exc()}"
+            )
+            yield (
+                f"\n\n⚠ **LETA encountered a context assembly error.** "
+                f"(`{type(_ctx_exc).__name__}: {str(_ctx_exc)[:120]}`)\n\n"
+                "This is unexpected — please retry. If it persists, contact support."
+            )
+            return
 
         # Detect if this is a follow-up / correction so the model gets a strong
         # continuation signal and doesn't restart from first principles.
@@ -1046,8 +1059,12 @@ async def ask_question(request: Request, req: QuestionRequest):
             + compressed_block
         )
 
-        from app.generation.rules_engine import rules_engine
-        truth_rules_text = rules_engine.get_all_rules_as_text()
+        try:
+            from app.generation.rules_engine import rules_engine
+            truth_rules_text = rules_engine.get_all_rules_as_text()
+        except Exception as _re_exc:
+            logger.warning(f"Rules engine failed (using empty truth rules): {_re_exc}")
+            truth_rules_text = ""
 
         # ── Stage 7: Streaming LLM synthesis ──────────────────────────────────────
         if _is_draft:
@@ -1089,6 +1106,7 @@ async def ask_question(request: Request, req: QuestionRequest):
         except Exception as _te:
             logger.debug(f"Trace logging failed (non-fatal): {_te}")
 
+        _synthesis_yielded_text = False
         try:
             async for chunk in stream_and_save(
                 response_stream, session_id, question,
@@ -1097,6 +1115,11 @@ async def ask_question(request: Request, req: QuestionRequest):
                 marker_map=_marker_map,
             ):
                 yield chunk
+                # Track whether any non-control text was produced.
+                # Control tokens (__STATUS__:, __METADATA__:, __CITATIONS__:) are
+                # not "real" answer text; we check for at least one plain text chunk.
+                if chunk and not chunk.startswith("__") and not chunk.startswith("\n\n⚠"):
+                    _synthesis_yielded_text = True
         except Exception as _synth_exc:
             import traceback as _tb
             logger.error(
@@ -1104,6 +1127,22 @@ async def ask_question(request: Request, req: QuestionRequest):
                 f"query_id={query_id} | {_synth_exc!r}\n{_tb.format_exc()}"
             )
             yield "\n\n⚠ **LETA encountered an error while generating the response.** The statutory sources were retrieved successfully but the synthesis step failed. Please try asking again — your question is valid and the answer exists in our database."
+            _synthesis_yielded_text = True  # don't double-emit
+
+        # Safety net: if the entire synthesis pipeline completed without yielding
+        # any answer text, emit a visible diagnostic instead of a silent blank response.
+        if not _synthesis_yielded_text:
+            logger.error(
+                f"[EMPTY_SYNTHESIS] Model stream produced zero text content | "
+                f"query_id={query_id} | complexity={_complexity:.2f} | draft={_is_draft}"
+            )
+            yield (
+                "\n\n⚠ **LETA's language model returned an empty response.**\n\n"
+                "This is an infrastructure issue — not your query. Possible causes: "
+                "model rate-limit, API timeout, or extended-thinking budget exhausted. "
+                "**Please retry in a few seconds.** If this happens repeatedly, "
+                "contact support with query ID `" + query_id + "`."
+            )
 
     async def log_wrapper(generator):
         success = False
@@ -1114,10 +1153,23 @@ async def ask_question(request: Request, req: QuestionRequest):
                 yield chunk
             success = True
         except Exception as e:
+            import traceback as _tb
             success = False
             error_msg = str(e)
             status_code = 500
-            raise e
+            # Log the full crash with traceback so CloudWatch shows the real cause.
+            logger.error(
+                f"[CRASH] rag_pipeline unhandled exception | {e!r}\n{_tb.format_exc()}"
+            )
+            # Yield a visible error message so the user sees something instead of blank.
+            # The raw `raise e` here caused StreamingResponse to abort silently — the
+            # frontend received only status tokens and displayed "unable to generate".
+            yield (
+                f"\n\n⚠ **LETA encountered an unexpected error.**\n\n"
+                f"**Debug info (for support):** `{type(e).__name__}: {str(e)[:200]}`\n\n"
+                "Please screenshot this message and retry. If the issue persists, "
+                "try rephrasing your question."
+            )
         finally:
             try:
                 from app.ai_logger import commit_ai_log
