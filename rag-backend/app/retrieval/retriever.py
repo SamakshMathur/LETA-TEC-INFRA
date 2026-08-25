@@ -1155,8 +1155,10 @@ class Retriever:
             logger.error(f"Failed to load CrossEncoder: {e}", exc_info=True)
             self.cross_encoder = None
 
-        # Initialize Layer 1 (Statute-First)
+        # Initialize Layer 1 (Statute-First) and pre-build its citation lookup so
+        # search_statutes() uses O(unique_citations) instead of O(n_chunks) per request.
         self.statute_retriever = StatuteRetriever()
+        self.statute_retriever.build_lookup(self.chunks)
 
         # Initialize Provision Graph
         graph_path = Path(chunks_path).parent.parent / "graph" / "edges.jsonl"
@@ -1511,15 +1513,9 @@ class Retriever:
         _explicit_refs = _extract_query_refs(query)
 
         # --- Priority 13: LLM-based Generic Provision Resolver ---
-        # Replaces hardcoded 20-topic taxonomy for implicit provision detection.
-        # Works for ANY GST topic. Validates keys against provision index before use.
-        # Falls back gracefully to [] on failure — taxonomy refs still apply.
+        # resolve_provisions() was removed; taxonomy + explicit refs cover this role.
+        # Kept as an empty list so downstream code that unions _llm_refs is unaffected.
         _llm_refs: list[str] = []
-        try:
-            from app.retrieval.query_refiner import resolve_provisions as _resolve_provisions
-            _llm_refs = _resolve_provisions(query, self._provision_index)
-        except Exception as _rp_err:
-            logger.warning(f"ProvisionResolver skipped: {_rp_err}")
 
         _taxonomy_refs = (
             _taxonomy["sections"] + _taxonomy["rules"] +

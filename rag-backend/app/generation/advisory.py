@@ -42,11 +42,11 @@ def _get_client():
         return _client
     import anthropic
     import httpx
-    # NO read timeout — advisory generation can take 2-30+ min for complex queries.
-    # Only the connect timeout is set to prevent hanging on DNS/network failure.
+    # 15-minute read timeout — generous ceiling for complex advisory generation
+    # without leaving a stalled call hung forever (no ALB in this deployment).
     _client = anthropic.Anthropic(
         api_key=ANTHROPIC_API_KEY,
-        timeout=httpx.Timeout(timeout=None, connect=10.0),
+        timeout=httpx.Timeout(timeout=900.0, connect=10.0),
     )
     return _client
 

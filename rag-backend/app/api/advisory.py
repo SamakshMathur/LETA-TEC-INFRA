@@ -145,7 +145,7 @@ async def create_advisory_stream(
             import httpx as _httpx
             client = _anthropic.Anthropic(
                 api_key=ANTHROPIC_API_KEY,
-                timeout=_httpx.Timeout(timeout=None, connect=10.0),  # no read timeout
+                timeout=_httpx.Timeout(timeout=900.0, connect=10.0),  # 15-min ceiling; no ALB in this deployment
             )
 
             full_text = ""

@@ -120,10 +120,11 @@ if LLM_PROVIDER == "anthropic":
     import httpx as _httpx
     _claude_client = _anthropic.Anthropic(
         api_key=ANTHROPIC_API_KEY,
-        # NO read timeout — streaming keeps the ALB connection alive, so there is
-        # no wall-clock reason to abort a running generation. Only connect timeout
-        # is set to catch DNS / network failures fast.
-        timeout=_httpx.Timeout(timeout=None, connect=10.0),
+        # 15-minute read timeout — generous ceiling for the longest drafts/extended
+        # thinking, but prevents a stalled (not crashed) generation from hanging
+        # forever.  No ALB is in front of the ECS task, so there is no external
+        # idle-timeout to rely on.  Connect timeout catches DNS/network failures fast.
+        timeout=_httpx.Timeout(timeout=900.0, connect=10.0),
     )
     logger.info(f"LLM Provider: Anthropic Claude ({CLAUDE_MAIN_MODEL}) with extended thinking")
 
