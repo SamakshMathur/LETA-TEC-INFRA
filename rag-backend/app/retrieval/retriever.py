@@ -720,6 +720,7 @@ class Retriever:
         self.metadata = []
         self.index = None
         self.bm25 = None
+        self.inactive_paths: set = set()   # paths filtered from search results (empty = all active)
 
         if not index_path.exists():
             logger.error(f"FAISS index not found at {index_path} — search will return empty results")
