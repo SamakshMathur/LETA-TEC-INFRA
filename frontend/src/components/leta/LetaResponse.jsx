@@ -47,6 +47,38 @@ function findBestSrc(text, sources, ...categoryKws) {
 }
 
 /**
+ * Replace inline (Sn) citation markers with real document links.
+ * Uses the resolved marker map from the backend __CITATIONS__ block —
+ * deterministic, no regex guessing. Runs before linkifyLegalRefs so
+ * that already-resolved markers are never double-processed.
+ *
+ * @param {string} text - Raw answer text (may contain (S1), (S2) …)
+ * @param {Array}  citationMap - [{marker, title, url, page, …}] from __CITATIONS__
+ */
+function applyCitationMarkers(text, citationMap) {
+  if (!citationMap || citationMap.length === 0 || !text) return text;
+
+  // Build lookup: "1" → entry, "2" → entry, … (marker field is "S1", "S2", …)
+  const lookup = {};
+  for (const entry of citationMap) {
+    const num = String(entry.marker || '').replace(/[^0-9]/g, '');
+    if (num) lookup[num] = entry;
+  }
+
+  // Replace (S1), (S2), etc. with [📄 Title](url) markdown links
+  return text.replace(/\(S(\d+)\)/g, (match, num) => {
+    const entry = lookup[num];
+    if (!entry || !entry.url) return match;   // unknown marker — leave as-is
+    const label = (entry.title || 'Source')
+      .replace(/%20/g, ' ')
+      .replace(/\.[a-z]{2,5}$/i, '')
+      .trim();
+    const pageAnchor = entry.page ? `#page=${entry.page}` : '';
+    return `[📄 ${label}](${entry.url}${pageAnchor})`;
+  });
+}
+
+/**
  * Turn legal references in the markdown text into clickable links
  * pointing to the most relevant consulted source.
  */
@@ -230,12 +262,17 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
   // Skip heavy linkification during streaming — only process once complete
   const processedContent = React.useMemo(() => {
     if (isStreaming) return data?.answer || '';
-    return linkifyLegalRefs(data?.answer || '', sources)
+    // 1. Resolve (Sn) markers using the deterministic citation map from the backend.
+    //    This replaces e.g. (S1) → [📄 CGST Act](url) before linkifyLegalRefs runs,
+    //    so those markers are never double-processed or left as orphan text.
+    const withMarkers = applyCitationMarkers(data?.answer || '', data?.citationMap);
+    // 2. Regex-based linkification for any remaining legal refs not covered by markers.
+    return linkifyLegalRefs(withMarkers, sources)
       // Remove orphaned (/api/...) URLs not part of a markdown link
       .replace(/(?<!\])\(\/api\/[^()\s)]+\)/g, '')
       // Remove naked [text] brackets left when their URL was stripped
       .replace(/\[([^\]\x00]{1,300})\](?!\()/g, '$1');
-  }, [data?.answer, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data?.answer, data?.citationMap, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <motion.div

@@ -44,11 +44,21 @@ interface Session {
   updated_at: string;
 }
 
+interface CitationEntry {
+  marker: string;    // e.g. "S1"
+  chunk_id: string;
+  title: string;
+  rel_path?: string;
+  page?: number;
+  url?: string;
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   confidence?: number;
   citations?: string[];
+  citationMap?: CitationEntry[];  // resolved from __CITATIONS__ block
   consulted_sources?: any[];
   current_status?: string;
   isHistory?: boolean;
@@ -844,7 +854,37 @@ const LetaWorkspace: React.FC = () => {
               }
             }
 
-            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__'];
+            if (buffer.includes('__CITATIONS__:')) {
+              const si = buffer.indexOf('__CITATIONS__:');
+              const ei = buffer.indexOf('__END_CITATIONS__', si);
+              if (ei !== -1) {
+                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
+                try {
+                  const citData = JSON.parse(buffer.substring(si + '__CITATIONS__:'.length, ei));
+                  const map: CitationEntry[] = (citData.citations || []).map((c: any) => ({
+                    marker: c.marker || '',
+                    chunk_id: c.chunk_id || '',
+                    title: c.title || '',
+                    rel_path: c.rel_path,
+                    page: c.page,
+                    url: c.url,
+                  }));
+                  setMessages(prev => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last.role === 'assistant') {
+                      next[next.length - 1] = { ...last, citationMap: map };
+                    }
+                    return next;
+                  });
+                } catch {}
+                buffer = buffer.substring(ei + '__END_CITATIONS__'.length);
+                processed = true;
+                continue;
+              }
+            }
+
+            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__CITATIONS__:', '__END_CITATIONS__', '__'];
             let safePoint = buffer.length;
             const fsi = buffer.indexOf('__STATUS__:');
             const fmi = buffer.indexOf('__METADATA__:');
@@ -978,7 +1018,37 @@ const LetaWorkspace: React.FC = () => {
               }
             }
 
-            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__'];
+            if (buffer.includes('__CITATIONS__:')) {
+              const si = buffer.indexOf('__CITATIONS__:');
+              const ei = buffer.indexOf('__END_CITATIONS__', si);
+              if (ei !== -1) {
+                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
+                try {
+                  const citData = JSON.parse(buffer.substring(si + '__CITATIONS__:'.length, ei));
+                  const map: CitationEntry[] = (citData.citations || []).map((c: any) => ({
+                    marker: c.marker || '',
+                    chunk_id: c.chunk_id || '',
+                    title: c.title || '',
+                    rel_path: c.rel_path,
+                    page: c.page,
+                    url: c.url,
+                  }));
+                  setMessages(prev => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last.role === 'assistant') {
+                      next[next.length - 1] = { ...last, citationMap: map };
+                    }
+                    return next;
+                  });
+                } catch {}
+                buffer = buffer.substring(ei + '__END_CITATIONS__'.length);
+                processed = true;
+                continue;
+              }
+            }
+
+            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__CITATIONS__:', '__END_CITATIONS__', '__'];
             let safePoint = buffer.length;
             const fsi = buffer.indexOf('__STATUS__:');
             const fmi = buffer.indexOf('__METADATA__:');
@@ -1618,6 +1688,7 @@ const LetaWorkspace: React.FC = () => {
                                 query: messages[idx - 1]?.content || '',
                                 answer: msg.content,
                                 citations: msg.citations || [],
+                                citationMap: msg.citationMap,
                                 consulted_sources: msg.consulted_sources || [],
                                 confidence: msg.confidence || 0.95,
                                 status: msg.current_status,
