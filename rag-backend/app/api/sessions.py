@@ -85,10 +85,13 @@ class Session(BaseModel):
 
 class SessionSummary(BaseModel):
     session_id: str
-    title: str
-    created_at: datetime
-    updated_at: datetime
-    message_count: int
+    # Allow legacy documents that pre-date a field to coerce cleanly instead of
+    # throwing a ValidationError that collapses the whole list endpoint with a
+    # generic 21-byte "Internal Server Error".
+    title: str = "Untitled"
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    message_count: int = 0
 
 # =============================================================================
 # HELPERS
@@ -157,26 +160,50 @@ def create_session(
 def list_sessions(
     current_user: dict = Depends(get_current_user)
 ):
+    try:
+        collection = get_session_collection()
 
-    collection = get_session_collection()
+        if collection is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Database connection failed"
+            )
 
-    if collection is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Database connection failed"
-        )
+        sessions_cursor = collection.find(
+            {"user_id": current_user["username"]},
+            {"_id": 0, "messages": 0},
+        ).sort("updated_at", -1)
 
-    sessions_cursor = collection.find(
-        {
-            "user_id": current_user["username"]
-        },
-        {
-            "_id": 0,
-            "messages": 0,
-        }
-    ).sort("updated_at", -1)
+        # Coerce each document into SessionSummary defensively.  Legacy sessions
+        # created before a field existed (e.g. message_count, title) would cause
+        # FastAPI's response-model validation to throw an unhandled exception that
+        # surfaces as a generic 21-byte "Internal Server Error" (Content-Length: 21).
+        # Building the model manually lets us supply per-field defaults and log any
+        # document that can't be coerced without taking down the entire list.
+        results: List[SessionSummary] = []
+        for doc in sessions_cursor:
+            try:
+                results.append(SessionSummary(
+                    session_id=doc.get("session_id", ""),
+                    title=doc.get("title") or "Untitled",
+                    created_at=doc.get("created_at"),
+                    updated_at=doc.get("updated_at"),
+                    message_count=doc.get("message_count") or len(doc.get("messages", [])),
+                ))
+            except Exception as doc_exc:
+                logger.warning(
+                    f"list_sessions: skipping malformed session doc "
+                    f"sid={doc.get('session_id', '?')} | {doc_exc}"
+                )
+                continue
 
-    return list(sessions_cursor)
+        return results
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"list_sessions: unexpected error for user={current_user.get('username')}: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to list sessions: {str(exc)}")
 
 
 # =============================================================================
