@@ -1298,6 +1298,11 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
 
     citation_block = build_context(chunks, is_draft=_is_draft)
     compressed_block = compress_context(chunks, question, is_draft=_is_draft)
+
+    # Build the (S1)→chunk mapping for server-side citation resolution (Phase 2)
+    from app.generation.context_builder import build_marker_map, parse_markers as _parse_markers
+    _marker_map_sync = build_marker_map(chunks) if chunks else []
+
     full_rag_context = (
         (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
         + citation_block
@@ -1312,6 +1317,9 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=_is_draft))
     )
     t_gen_end = time.monotonic()
+
+    # Resolve (S1), (S2), … markers in the generated answer → structured citation list
+    _citation_result_sync = _parse_markers(answer, _marker_map_sync)
 
     unique_sources: list = []
     seen_src: set = set()
@@ -1366,7 +1374,12 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     except Exception as cle:
         logger.warning(f"AI logger commit error (non-fatal): {cle}")
 
-    return _JSONResponse({"answer": answer, "sources": unique_sources})
+    return _JSONResponse({
+        "answer":              answer,
+        "sources":             unique_sources,
+        "citations":           _citation_result_sync["citations"],
+        "unresolved_citations": _citation_result_sync["unresolved"],
+    })
 
 
 async def _execute_ask_question_with_file(

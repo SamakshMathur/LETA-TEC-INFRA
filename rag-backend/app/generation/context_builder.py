@@ -1,11 +1,15 @@
 """
 Context builder — assembles retrieved chunks into the LLM context block.
 
-Phase 2 citation binding: every source gets a short [S1], [S2], ... marker.
-The system prompt instructs the model to tag each claim inline with the
-marker of the chunk it's drawn from, e.g. "ITC is blocked [S3]".
-Server-side post-processing (parse_markers) then resolves markers to real
-document links deterministically — no guessing, no regex scoring.
+Phase 2 citation binding: every source is labelled SOURCE [S1], [S2], …
+in the context block so the model knows which chunk is which.
+The CITATION BINDING RULE in the system prompt instructs the model to tag
+each claim inline with *parenthesised* markers: (S1), (S2), …  (not [S1]).
+Server-side post-processing (parse_markers) scans for those parenthesised
+markers and resolves each to real document metadata — no guessing, no regex
+scoring.  The context-block labels use square brackets; the inline output
+markers use parentheses — this is intentional: it lets parse_markers
+unambiguously distinguish output citations from the label headers.
 """
 from __future__ import annotations
 
@@ -71,21 +75,27 @@ def build_marker_map(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def parse_markers(answer: str, marker_map: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Extract every [Sn] marker actually present in the model's answer and map
+    Extract every (Sn) marker actually present in the model's answer and map
     each to the corresponding chunk metadata via a direct index lookup.
+
+    The CITATION BINDING RULE instructs the model to write parenthesised
+    markers — (S1), (S2), etc. — NOT square-bracket [S1] form.  This regex
+    deliberately matches only the parenthesised form so that the SOURCE [S1]
+    context-block headers are never confused with real inline citations.
 
     Returns a dict with:
       "citations": list of resolved entries (in order of first appearance)
       "unresolved": list of marker strings the model used but that have no
                     corresponding chunk (should be flagged, not silently guessed)
     """
-    found_markers = list(dict.fromkeys(re.findall(r'\[S(\d+)\]', answer)))  # ordered, deduped
+    # Match (S1), (S2), … — the parenthesised form the model is told to write
+    found_markers = list(dict.fromkeys(re.findall(r'\(S(\d+)\)', answer)))  # ordered, deduped
     index_by_n   = {str(i + 1): entry for i, entry in enumerate(marker_map)}
 
     citations  = []
     unresolved = []
     for n in found_markers:
-        marker_str = f"[S{n}]"
+        marker_str = f"(S{n})"
         if n in index_by_n:
             citations.append(index_by_n[n])
         else:
