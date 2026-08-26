@@ -114,10 +114,9 @@ _default_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
-    "https://gst-rag-95li.vercel.app",
-    "https://main.d1q7i80dk455hq.amplifyapp.com",
     "https://letatec.com",
     "https://www.letatec.com",
+    "https://main.d1q7i80dk455hq.amplifyapp.com",
 ]
 _env_origins = [
     origin.strip()
@@ -129,7 +128,7 @@ ALLOWED_ORIGINS = list(dict.fromkeys([*_default_origins, *_env_origins]))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"^https://([a-z0-9-]+\.)?(vercel\.app|amplifyapp\.com)$",
+    allow_origin_regex=r"^https://[a-z0-9-]+\.amplifyapp\.com$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
