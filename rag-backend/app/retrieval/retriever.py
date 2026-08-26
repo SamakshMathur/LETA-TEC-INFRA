@@ -1992,6 +1992,8 @@ class Retriever:
         reranker_input = combined_results[:RERANK_MAX]
 
         t_retrieval_end = time.monotonic()
+        # Log retrieval timing so ai_logger shows real retrieval_ms (not always 0).
+        update_ai_log(retrieval_time_ms=round((t_retrieval_end - t_start) * 1000, 2))
         t_rerank_start = time.monotonic()
 
         # --- Semantic Reranking (FlashRank) ---

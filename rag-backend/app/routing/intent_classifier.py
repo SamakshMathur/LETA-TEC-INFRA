@@ -70,7 +70,15 @@ def _llm_classify(question: str) -> dict:
     """Call Haiku for intent classification. Raises on any failure."""
     from app.config import ANTHROPIC_API_KEY, CLAUDE_UTILITY_MODEL
     import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    import httpx as _httpx
+    # Hard 5-second ceiling — intent classification must be instant.
+    # Without this the default 600-second SDK timeout blocks the entire
+    # pipeline on any transient Anthropic API slowness, making every query
+    # appear stuck at RETRIEVE for up to 10 minutes before the fallback fires.
+    client = anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY,
+        timeout=_httpx.Timeout(timeout=5.0, connect=2.0),
+    )
     msg = client.messages.create(
         model=CLAUDE_UTILITY_MODEL,
         max_tokens=64,
