@@ -17,13 +17,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
 from app.security import get_current_admin, require_roles, ROLE_SUPER_ADMIN, ROLE_ADMIN
 from app.api.documents import BASE_DIR, CATEGORY_MAP
 from app.database import get_user_collection
 from app.feed_store import make_event, publish_event
+from app.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,7 +38,8 @@ ALLOWED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".xls", ".txt"}
 # ── Status ─────────────────────────────────────────────────────────────────────
 
 @router.get("/status")
-async def admin_status(current_admin: dict = Depends(get_current_admin)):
+@limiter.limit("30/minute")
+async def admin_status(request: Request, current_admin: dict = Depends(get_current_admin)):
     """Returns FAISS index stats and per-category document counts."""
     import faiss
     from app.config import VECTOR_DB_PATH, CHUNKS_PATH
@@ -79,7 +81,9 @@ async def admin_status(current_admin: dict = Depends(get_current_admin)):
 # ── Upload ─────────────────────────────────────────────────────────────────────
 
 @router.post("/upload")
+@limiter.limit("5/minute")
 async def upload_documents(
+    request: Request,
     category: str = Form(..., description="Target category key e.g. 'acts', 'circulars'"),
     files: List[UploadFile] = File(..., description="One or more files to upload"),
     current_admin: dict = Depends(get_current_admin),
@@ -215,7 +219,8 @@ async def list_jobs(current_admin: dict = Depends(get_current_admin)):
 # ── User Management ────────────────────────────────────────────────────────────
 
 @router.get("/users")
-async def list_users(current_admin: dict = Depends(get_current_admin)):
+@limiter.limit("20/minute")
+async def list_users(request: Request, current_admin: dict = Depends(get_current_admin)):
     """Returns all registered users."""
     users_col = get_user_collection()
     if users_col is None:
@@ -224,9 +229,11 @@ async def list_users(current_admin: dict = Depends(get_current_admin)):
 
 
 @router.post("/users/{contact}/toggle-admin")
+@limiter.limit("10/minute")
 async def toggle_admin_role(
+    request: Request,
     contact: str,
-    current_admin: dict = Depends(require_roles(ROLE_SUPER_ADMIN))
+    current_admin: dict = Depends(require_roles(ROLE_SUPER_ADMIN)),
 ):
     """Flip a user between role='user' and role='admin', controlled by super_admin."""
     users_col = get_user_collection()
