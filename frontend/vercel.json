@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api_proxy/:match*",
-      "destination": "http://13.200.236.52:8080/:match*"
+      "destination": "http://gst-rag-alb-1944770716.ap-south-1.elb.amazonaws.com/:match*"
     },
     {
       "source": "/((?!api_proxy).*)",
