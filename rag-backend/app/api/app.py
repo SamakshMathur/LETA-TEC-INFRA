@@ -131,7 +131,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_origin_regex=r"^https://([a-z0-9-]+\.)?(vercel\.app|amplifyapp\.com)$",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     expose_headers=["X-Request-ID"],
     max_age=600,
@@ -598,17 +598,21 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             collection = get_session_collection()
             if collection is not None:
                 try:
+                    from datetime import timezone as _tz
+                    _now = datetime.now(_tz.utc)
                     await asyncio.to_thread(
                         collection.update_one,
                         {"session_id": session_id},
                         {
                             "$push": {"messages": {
+                                "message_id": str(uuid.uuid4()),
                                 "role": "assistant",
                                 "content": full_answer,
                                 "sources": unique_sources,
-                                "timestamp": datetime.now(),
+                                "timestamp": _now,
                             }},
-                            "$set": {"updated_at": datetime.now()},
+                            "$set": {"updated_at": _now},
+                            "$inc": {"message_count": 1},
                         },
                     )
                 except Exception as dbe:
@@ -666,9 +670,18 @@ async def ask_question(request: Request, req: QuestionRequest):
     if session_id and _warmup_complete:
         collection = get_session_collection()
         if collection is not None:
-             collection.update_one(
+            from datetime import timezone as _tz
+            collection.update_one(
                 {"session_id": session_id},
-                {"$push": {"messages": {"role": "user", "content": question, "timestamp": datetime.now()}}}
+                {
+                    "$push": {"messages": {
+                        "message_id": str(uuid.uuid4()),
+                        "role": "user",
+                        "content": question,
+                        "timestamp": datetime.now(_tz.utc),
+                    }},
+                    "$inc": {"message_count": 1},
+                }
             )
 
     async def rag_pipeline_orchestrator():

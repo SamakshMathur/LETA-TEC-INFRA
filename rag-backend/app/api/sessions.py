@@ -106,6 +106,56 @@ def sanitize_session(session: dict) -> dict:
     return session
 
 
+def _coerce_message(raw: dict) -> Optional[Message]:
+    """
+    Coerce a raw MongoDB message document into a Message, supplying defaults
+    for any field that was added after the document was written (e.g. message_id
+    was not present in messages saved before this field was introduced).
+    Returns None if the document is so malformed it cannot be coerced at all.
+    """
+    try:
+        return Message(
+            message_id=raw.get("message_id") or str(uuid.uuid4()),
+            role=raw.get("role", "assistant"),
+            content=raw.get("content", ""),
+            metadata=raw.get("metadata"),
+            citations=raw.get("citations"),
+            timestamp=raw.get("timestamp") or utc_now(),
+        )
+    except Exception as exc:
+        logger.warning(f"_coerce_message: could not coerce message — {exc!r}")
+        return None
+
+
+def _coerce_session_doc(doc: dict) -> dict:
+    """
+    Build a clean session dict from a raw MongoDB document, coercing every
+    message so the FastAPI response-model validator never sees legacy
+    documents that are missing required fields (e.g. message_id).
+    """
+    raw_messages = doc.get("messages", [])
+    coerced_messages = []
+    for raw_msg in raw_messages:
+        m = _coerce_message(raw_msg)
+        if m is not None:
+            coerced_messages.append(m.model_dump())
+
+    # message_count: prefer the stored counter but fall back to the actual
+    # number of messages so the field is never stale by more than one request.
+    stored_count = doc.get("message_count")
+    effective_count = stored_count if stored_count is not None else len(coerced_messages)
+
+    return {
+        "session_id": doc.get("session_id", ""),
+        "user_id": doc.get("user_id", ""),
+        "title": doc.get("title") or "Untitled",
+        "created_at": doc.get("created_at") or utc_now(),
+        "updated_at": doc.get("updated_at") or utc_now(),
+        "message_count": effective_count,
+        "messages": coerced_messages,
+    }
+
+
 # =============================================================================
 # CREATE SESSION
 # =============================================================================
@@ -207,62 +257,13 @@ def list_sessions(
 
 
 # =============================================================================
-# GET SINGLE SESSION
+# SEARCH SESSIONS
+# NOTE: This route MUST be defined before /{session_id} — FastAPI matches
+# routes in registration order, so the literal "/search" path would otherwise
+# be swallowed by the parameterised "/{session_id}" handler first.
 # =============================================================================
 
-@router.get(
-    "/{session_id}",
-    response_model=Session
-)
-def get_session(
-    session_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-
-    collection = get_session_collection()
-
-    if collection is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Database connection failed"
-        )
-
-    session = collection.find_one(
-        {
-            "session_id": session_id,
-            "user_id": current_user["username"],
-        },
-        {
-            "_id": 0,
-        }
-    )
-
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail="Session not found"
-        )
-
-    return session
-
-class SessionRename(BaseModel):
-    title: str
-
-@router.patch("/{session_id}/rename")
-def rename_session(session_id: str, data: SessionRename, current_user: dict = Depends(get_current_user)):
-    collection = get_session_collection()
-    if collection is None:
-        return {"session_id": session_id, "title": data.title}
-    user_id = current_user["username"]
-    result = collection.update_one(
-        {"session_id": session_id, "user_id": user_id},
-        {"$set": {"title": data.title, "updated_at": datetime.now()}}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return {"session_id": session_id, "title": data.title}
-
-@router.get("/search", response_model=List[Session])
+@router.get("/search", response_model=List[SessionSummary])
 def search_sessions(q: str, current_user: dict = Depends(get_current_user)):
     collection = get_session_collection()
     if collection is None:
@@ -276,14 +277,103 @@ def search_sessions(q: str, current_user: dict = Depends(get_current_user)):
         ]},
         {"_id": 0, "messages": 0}
     ).sort("updated_at", -1).limit(20)
-    return list(sessions_cursor)
+
+    results: List[SessionSummary] = []
+    for doc in sessions_cursor:
+        try:
+            results.append(SessionSummary(
+                session_id=doc.get("session_id", ""),
+                title=doc.get("title") or "Untitled",
+                created_at=doc.get("created_at"),
+                updated_at=doc.get("updated_at"),
+                message_count=doc.get("message_count", 0),
+            ))
+        except Exception:
+            continue
+    return results
+
+
+# =============================================================================
+# GET SINGLE SESSION
+# NOTE: Keep this AFTER all literal sub-routes (e.g. /list, /search, /health/*)
+# so the path parameter does not shadow them.
+# =============================================================================
+
+@router.get(
+    "/{session_id}",
+    response_model=Session
+)
+def get_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    collection = get_session_collection()
+
+    if collection is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Database connection failed"
+        )
+
+    doc = collection.find_one(
+        {
+            "session_id": session_id,
+            "user_id": current_user["username"],
+        },
+        {
+            "_id": 0,
+        }
+    )
+
+    if not doc:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found"
+        )
+
+    # Coerce every message so the response model validator never sees legacy
+    # documents that are missing required fields (e.g. message_id was absent
+    # before the field was introduced, causing ResponseValidationError 500s).
+    try:
+        return _coerce_session_doc(doc)
+    except Exception as exc:
+        logger.exception(
+            f"get_session: coercion failed for session={session_id} | {exc}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to load session")
+
+
+# =============================================================================
+# RENAME SESSION
+# =============================================================================
+
+class SessionRename(BaseModel):
+    title: str
+
+@router.patch("/{session_id}/rename")
+def rename_session(session_id: str, data: SessionRename, current_user: dict = Depends(get_current_user)):
+    collection = get_session_collection()
+    if collection is None:
+        return {"session_id": session_id, "title": data.title}
+    user_id = current_user["username"]
+    result = collection.update_one(
+        {"session_id": session_id, "user_id": user_id},
+        {"$set": {"title": data.title, "updated_at": utc_now()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": session_id, "title": data.title}
+
+
+# =============================================================================
+# DELETE SESSION
+# =============================================================================
 
 @router.delete("/{session_id}")
 def delete_session(
     session_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-
     collection = get_session_collection()
 
     if collection is None:
@@ -323,7 +413,6 @@ def clear_session_messages(
     session_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-
     collection = get_session_collection()
 
     if collection is None:
