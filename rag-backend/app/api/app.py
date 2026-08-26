@@ -711,8 +711,11 @@ async def ask_question(request: Request, req: QuestionRequest):
         # ── RetrievalTrace — created once per query, threaded through entire pipeline ──
         _trace = RetrievalTrace(query_id=query_id, query=question)
 
-        # ── Stage 1: Instant intent classification (pure keyword, ~1ms) ──────────
-        route = route_query(question)
+        # ── Stage 1: Intent classification (LLM-first via classify_intent, 5s cap) ──
+        # route_query() calls classify_intent() which makes a real blocking Haiku
+        # round-trip (capped at 5s; keyword fallback on any error).  Offload it to a
+        # thread so the blocking call doesn't stall the event loop under concurrency.
+        route = await _asyncio.to_thread(route_query, question)
         domain_paths = route.get("domain_paths", [])
         _complexity = _estimate_complexity(question)
         _q = question.lower()
@@ -1271,12 +1274,23 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     if session_id:
         collection = get_session_collection()
         if collection is not None:
+            from datetime import timezone as _tz
             collection.update_one(
                 {"session_id": session_id},
-                {"$push": {"messages": {"role": "user", "content": question, "timestamp": datetime.now()}}}
+                {
+                    "$push": {"messages": {
+                        "message_id": str(uuid.uuid4()),
+                        "role": "user",
+                        "content": question,
+                        "timestamp": datetime.now(_tz.utc),
+                    }},
+                    "$inc": {"message_count": 1},
+                }
             )
 
-    route = _route_query(question)
+    # Offload to thread: _route_query calls classify_intent() which makes a
+    # blocking Haiku network call (5s cap).  Must not run on the event loop.
+    route = await _asyncio.to_thread(_route_query, question)
     domain_paths = route.get("domain_paths", [])
     _q = question.lower()
     _complexity = _estimate_complexity(question)
@@ -1418,11 +1432,19 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     if session_id and answer.strip():
         collection = get_session_collection()
         if collection is not None:
+            from datetime import timezone as _tz
+            _now = datetime.now(_tz.utc)
             collection.update_one(
                 {"session_id": session_id},
                 {
-                    "$push": {"messages": {"role": "assistant", "content": answer, "timestamp": datetime.now()}},
-                    "$set": {"updated_at": datetime.now()},
+                    "$push": {"messages": {
+                        "message_id": str(uuid.uuid4()),
+                        "role": "assistant",
+                        "content": answer,
+                        "timestamp": _now,
+                    }},
+                    "$set": {"updated_at": _now},
+                    "$inc": {"message_count": 1},
                 }
             )
 
@@ -1514,9 +1536,18 @@ async def _execute_ask_question_with_file(
     if session_id:
         collection = get_session_collection()
         if collection is not None:
-             collection.update_one(
+            from datetime import timezone as _tz
+            collection.update_one(
                 {"session_id": session_id},
-                {"$push": {"messages": {"role": "user", "content": question_text, "timestamp": datetime.now()}}}
+                {
+                    "$push": {"messages": {
+                        "message_id": str(uuid.uuid4()),
+                        "role": "user",
+                        "content": question_text,
+                        "timestamp": datetime.now(_tz.utc),
+                    }},
+                    "$inc": {"message_count": 1},
+                }
             )
 
     # Fetch history
@@ -1529,9 +1560,11 @@ async def _execute_ask_question_with_file(
                 recent = session["messages"][:-1][-6:]
                 for msg in recent:
                     history_context += f"{msg['role'].upper()}: {msg['content']}\n"
-    
-    # Route + optional query expansion (blocked Haiku call — skip for simple queries)
-    route = route_query(question_text)
+
+    # Offload to thread: route_query calls classify_intent() which makes a
+    # blocking Haiku network call (5s cap).  Must not run on the event loop.
+    import asyncio as _asyncio_route
+    route = await _asyncio_route.to_thread(route_query, question_text)
     from app.generation.synthesizer import _estimate_complexity
     _file_complexity = _estimate_complexity(question_text)
     if _file_complexity >= 0.80:
