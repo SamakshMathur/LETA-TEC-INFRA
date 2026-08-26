@@ -1,5 +1,5 @@
 import re
-from app.routing.intent_classifier import _keyword_classify
+from app.routing.intent_classifier import classify_intent
 
 _HC_SC = ["High Court Case Laws", "Supreme Court Case Laws", "AAR"]
 
@@ -88,10 +88,11 @@ def _detect_domain_paths(question: str) -> list[str]:
 
 def route_query(question: str) -> dict:
     """
-    Fast keyword-only routing — no LLM call needed.
+    Intent classification via classify_intent() (LLM-first, keyword fallback).
+    Also runs domain-path detection for folder-level source filtering.
     Returns use_sources (file extensions), mode, and domain_paths.
     """
-    intent_info = _keyword_classify(question.lower().strip())
+    intent_info = classify_intent(question.lower().strip())
     intent = intent_info["intent"]
     domain_paths = _detect_domain_paths(question)
 
