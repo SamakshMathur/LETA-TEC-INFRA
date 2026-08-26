@@ -110,6 +110,21 @@ def _ensure_indexes(db) -> None:
         db["knowledge_audit_logs"].create_index([("action", ASCENDING)])
         db["knowledge_audit_logs"].create_index([("user_id", ASCENDING)])
 
+        # payment_ledger: idempotency — unique constraint on payment_id prevents
+        # the same Razorpay payment from being applied more than once even if the
+        # frontend retries /verify or a webhook fires multiple times.
+        db["payment_ledger"].create_index(
+            [("payment_id", ASCENDING)], unique=True, name="payment_id_unique"
+        )
+        db["payment_ledger"].create_index([("created_at", DESCENDING)])
+        db["payment_ledger"].create_index([("user_id", ASCENDING)])
+
+        # payment_orders: maps Razorpay order_id → user context so the webhook
+        # can find which user to credit without needing a JWT in the callback.
+        db["payment_orders"].create_index(
+            [("order_id", ASCENDING)], unique=True, name="order_id_unique"
+        )
+
         logger.info("MongoDB indexes ensured")
     except OperationFailure as e:
         # Non-fatal: Atlas free tier may restrict index creation
@@ -170,6 +185,14 @@ def get_otp_collection():
 
 def get_activity_log_collection():
     return db.get_collection("activity_logs")
+
+def get_payment_ledger_collection():
+    """Idempotency log — one doc per payment_id (unique index prevents duplicates)."""
+    return db.get_collection("payment_ledger")
+
+def get_payment_orders_collection():
+    """Maps Razorpay order_id → user context for server-side webhook processing."""
+    return db.get_collection("payment_orders")
 
 def get_db():
     if not db.client:

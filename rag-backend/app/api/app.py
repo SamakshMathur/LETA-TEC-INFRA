@@ -215,49 +215,48 @@ async def log_requests(request: Request, call_next):
     response.headers["X-Request-ID"] = query_id
     return response
 
-# Rate limiting — user-ID keyed, Redis-backed when available
-import base64 as _b64
-import json as _json_ratelimit
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+# Rate limiting — shared singleton so router modules (payments, etc.) can
+# import the same Limiter without creating a circular import through app.py.
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from app.rate_limiter import limiter
 
-
-def _rate_limit_key(request: Request) -> str:
-    """Prefer JWT user-ID over IP so limits survive proxy/CDN hops."""
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        try:
-            parts = auth.split(".")
-            if len(parts) == 3:
-                padded = parts[1] + "=" * (-len(parts[1]) % 4)
-                payload = _json_ratelimit.loads(_b64.b64decode(padded))
-                if "sub" in payload:
-                    return f"user:{payload['sub']}"
-        except Exception:
-            pass
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return get_remote_address(request)
-
-
-def _build_limiter() -> Limiter:
-    _redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    try:
-        import redis as _r
-        _r.from_url(_redis_url, socket_connect_timeout=1).ping()
-        lim = Limiter(key_func=_rate_limit_key, storage_uri=_redis_url)
-        logger.info("Rate limiter: Redis-backed (distributed)")
-        return lim
-    except Exception as _e:
-        logger.warning(f"Rate limiter: in-memory fallback (Redis unavailable: {_e})")
-        return Limiter(key_func=_rate_limit_key)
-
-
-limiter = _build_limiter()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── Global exception handler ──────────────────────────────────────────────────
+# Catches any unhandled exception that escapes a route handler and returns
+# structured JSON with the request_id instead of the default 22-byte plain-text
+# "Internal Server Error".  Logs the full traceback so CloudWatch Logs Insights
+# can correlate failures via filter request_id = "LETA-...".
+#
+# HTTPException and RequestValidationError are explicitly delegated back to
+# FastAPI's built-in handlers so they keep their correct status codes and bodies.
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    from starlette.exceptions import HTTPException as _HTTP
+    from fastapi.exceptions import RequestValidationError as _ValErr
+    from fastapi.exception_handlers import (
+        http_exception_handler as _http_h,
+        request_validation_exception_handler as _val_h,
+    )
+    if isinstance(exc, _HTTP):
+        return await _http_h(request, exc)
+    if isinstance(exc, _ValErr):
+        return await _val_h(request, exc)
+
+    import traceback as _tb
+    query_id = getattr(request.state, "query_id", "no-id")
+    logger.error(
+        f"Unhandled exception | request_id={query_id} "
+        f"| path={request.url.path} "
+        f"| {type(exc).__name__}: {exc!r}\n{_tb.format_exc()}"
+    )
+    from starlette.responses import JSONResponse as _J
+    return _J(
+        status_code=500,
+        content={"detail": "An unexpected error occurred.", "request_id": query_id},
+    )
 
 def _get_user_info_from_req(request: Request) -> tuple:
     user_id = "anonymous"
@@ -515,7 +514,18 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                 async def run_hallucination_guard():
                     try:
                         from app.generation.hallucination_guard import check_hallucinated_numbers
-                        return check_hallucinated_numbers(full_answer, context, truth_rules_text, chunks)
+                        # Build marker → chunk-text map so the guard can verify each
+                        # numeric claim against the SPECIFIC chunk it was cited from,
+                        # not just whether the number appears anywhere in the context blob.
+                        # e.g. answer says "18% (S3)" but S3's text says "5%" → flagged.
+                        _sn_map = {
+                            f"S{i+1}": (chunks[i].get("text") or "")
+                            for i in range(len(chunks))
+                        } if chunks else None
+                        return check_hallucinated_numbers(
+                            full_answer, context, truth_rules_text, chunks,
+                            sn_text_map=_sn_map,
+                        )
                     except Exception as e:
                         _logger.warning(f"Hallucination guard error: {e}")
                         return ""
@@ -1698,7 +1708,8 @@ class PDFRequest(BaseModel):
     content: str
 
 @app.post("/generate-pdf")
-def create_pdf(req: PDFRequest):
+@limiter.limit("10/minute")
+def create_pdf(request: Request, req: PDFRequest):
     # Use the class to generate PDF
     # We construct a filename
     import hashlib
