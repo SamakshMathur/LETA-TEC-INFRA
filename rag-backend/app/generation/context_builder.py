@@ -18,6 +18,8 @@ import re
 import urllib.parse
 from typing import List, Dict, Any
 
+from app.retrieval.evidence_resolver import build_resolution_summary
+
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
@@ -31,7 +33,7 @@ def build_context(chunks: List[Dict[str, Any]], is_draft: bool = False) -> str:
     """
     if not chunks:
         return ""
-    parts = []
+    parts = [build_resolution_summary(chunks)]
     for i, c in enumerate(chunks):
         marker  = f"[S{i + 1}]"
         rel     = _rel(c)
@@ -39,8 +41,11 @@ def build_context(chunks: List[Dict[str, Any]], is_draft: bool = False) -> str:
         page    = c.get("page")
         page_str = f", page {page}" if page else ""
         text    = c.get("text") or c.get("embed_text") or ""
+        authority = c.get("_evidence_authority", "Unclassified source")
+        resolution_note = c.get("_evidence_resolution_note", "")
         parts.append(
-            f"SOURCE {marker} — {doc}{page_str}\n{text}"
+            f"SOURCE {marker} — {doc}{page_str} | AUTHORITY: {authority}\n"
+            f"{resolution_note}\n{text}"
         )
     return "\n\n".join(parts)
 

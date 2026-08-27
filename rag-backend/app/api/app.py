@@ -1034,6 +1034,8 @@ async def ask_question(request: Request, req: QuestionRequest):
 
         # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
         try:
+            from app.retrieval.evidence_resolver import resolve_evidence
+            chunks = resolve_evidence(chunks, question)
             citation_block   = build_context(chunks, is_draft=_is_draft)
             compressed_block = compress_context(chunks, question, is_draft=_is_draft)
 
