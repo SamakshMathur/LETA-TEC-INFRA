@@ -85,6 +85,8 @@ def _llm_classify(question: str) -> dict:
         system=_SYSTEM,
         messages=[{"role": "user", "content": f"Query: {question[:500]}"}],
     )
+    if not msg.content:
+        return "general"
     raw = msg.content[0].text.strip()
     if "```" in raw:
         raw = raw.split("```")[1].split("```")[0].strip()

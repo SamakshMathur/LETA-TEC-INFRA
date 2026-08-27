@@ -24,6 +24,8 @@ def _call_haiku(system: str, user: str) -> str:
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    if not msg.content:
+        raise RuntimeError("Anthropic returned empty content list")
     return msg.content[0].text.strip()
 
 

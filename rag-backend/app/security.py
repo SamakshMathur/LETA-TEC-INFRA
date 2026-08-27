@@ -140,13 +140,17 @@ async def get_current_user(
             }
         return {"username": username, "role": "user", "verified": True}
 
-    user = users_col.find_one(
-        {"username": username},
-        {
-            "_id": 0,
-            "password": 0,
-        }
-    )
+    try:
+        user = users_col.find_one(
+            {"username": username},
+            {
+                "_id": 0,
+                "password": 0,
+            }
+        )
+    except Exception as db_err:
+        logger.error(f"get_current_user: MongoDB error: {db_err}")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable")
 
     if not user and username == "admin" and ADMIN_MASTER_SECRET:
         return {
@@ -241,7 +245,11 @@ async def get_jwt_user(token: str = Depends(oauth2_scheme)) -> dict:
     from app.database import get_user_collection
     users_col = get_user_collection()
     if users_col is not None:
-        user = users_col.find_one({"username": username}, {"_id": 0, "password": 0})
+        try:
+            user = users_col.find_one({"username": username}, {"_id": 0, "password": 0})
+        except Exception as db_err:
+            logger.error(f"get_jwt_user: MongoDB error: {db_err}")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable")
         if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
         return user

@@ -42,12 +42,12 @@ def _call_llm(system: str, user: str, temperature: float = 0.0) -> str:
     """
     try:
         if LLM_PROVIDER == "anthropic":
+            # Claude 4 models do not accept a temperature parameter
             resp = _claude.messages.create(
                 model=CLAUDE_UTILITY_MODEL,
                 max_tokens=512,
                 system=system,
                 messages=[{"role": "user", "content": user}],
-                temperature=temperature,
             )
             return resp.content[0].text.strip()
         else:
@@ -73,13 +73,13 @@ def _call_llm_json(system: str, user: str, temperature: float = 0.0) -> str:
     """
     try:
         if LLM_PROVIDER == "anthropic":
-            # Claude follows JSON instructions reliably without a special mode
+            # Claude follows JSON instructions reliably without a special mode.
+            # Claude 4 models do not accept a temperature parameter — omit it.
             resp = _claude.messages.create(
                 model=CLAUDE_UTILITY_MODEL,
                 max_tokens=1024,
                 system=system + "\n\nYou MUST respond with ONLY a valid JSON object. No prose, no markdown fences.",
                 messages=[{"role": "user", "content": user}],
-                temperature=temperature,
             )
             return resp.content[0].text.strip()
         else:
