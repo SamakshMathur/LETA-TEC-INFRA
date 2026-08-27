@@ -21,7 +21,14 @@ _PROVISION_CACHE: dict[str, list[str]] = {}
 
 if LLM_PROVIDER == "anthropic":
     import anthropic as _anthropic
-    _claude = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    import httpx as _httpx_qr
+    # 8-second ceiling on query-expansion calls.  These are fire-and-forget helpers
+    # that must never hold up the retrieval pipeline.  Failures are caught and
+    # fall back to keyword-only expansion (see generate_advanced_queries below).
+    _claude = _anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY,
+        timeout=_httpx_qr.Timeout(timeout=8.0, connect=4.0),
+    )
 else:
     import openai as _openai
     if LLM_PROVIDER == "ollama":

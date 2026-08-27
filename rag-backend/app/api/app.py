@@ -992,10 +992,29 @@ async def ask_question(request: Request, req: QuestionRequest):
                 return generate_advanced_queries(_retrieval_q)
 
             try:
-                fast_chunks, advanced_queries = await _asyncio.gather(
-                    _asyncio.to_thread(_fast_retrieve),
-                    _asyncio.to_thread(_expand),
-                )
+                # ── Parallel: fast keyword retrieve + LLM query expansion ──────────────
+                # generate_advanced_queries makes a Haiku API call (8s SDK timeout).
+                # A 20-second asyncio-level ceiling ensures the pipeline ALWAYS proceeds
+                # even if the SDK timeout is bypassed (e.g. slow connect, thread stall).
+                try:
+                    fast_chunks, advanced_queries = await _asyncio.wait_for(
+                        _asyncio.gather(
+                            _asyncio.to_thread(_fast_retrieve),
+                            _asyncio.to_thread(_expand),
+                        ),
+                        timeout=20.0,
+                    )
+                except _asyncio.TimeoutError:
+                    logger.warning(
+                        f"[EXPAND_TIMEOUT] Query expansion timed out after 20s | "
+                        f"query_id={query_id} — falling back to fast-retrieve only"
+                    )
+                    # Re-run fast retrieve without expansion (it was cancelled by wait_for)
+                    fast_chunks = await _asyncio.to_thread(_fast_retrieve)
+                    advanced_queries = {
+                        "queries": [_retrieval_q],
+                        "hyde_document": "", "topic": "General", "subtopic": None,
+                    }
 
                 # Record preprocessing now that we have expanded queries
                 _adv_qs = advanced_queries or {}
