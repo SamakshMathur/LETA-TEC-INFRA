@@ -235,16 +235,14 @@ def _stream_claude(
     resolved_max_tokens = max_tokens_override if max_tokens_override is not None else (
         4000 if use_haiku else CLAUDE_MAX_TOKENS
     )
-    # Anthropic requires temperature=1 when extended thinking is enabled.
-    # For regular (non-thinking) calls, temperature=0 produces more precise
-    # and consistent legal answers, which is critical for a compliance tool.
+    # Claude 4 models (claude-sonnet-4-6, claude-haiku-4-5) do not accept a
+    # `temperature` parameter — omit it entirely and let the API use its default.
     stream_kwargs = dict(
         model=model,
         max_tokens=resolved_max_tokens,
         system=system_blocks,
         messages=messages,
         stop_sequences=["[TERMINATE]"],
-        temperature=1 if use_thinking else 0,
     )
 
     # Extended thinking: Sonnet only, and only when complexity warrants it
@@ -305,7 +303,7 @@ def _stream_claude(
                 # Retry without thinking — most likely cause is thinking eating all tokens
                 logger.warning("Retrying without extended thinking...")
                 stream_kwargs.pop("thinking", None)
-                stream_kwargs["temperature"] = 0
+                # temperature not accepted by Claude 4 models — leave unset
                 use_thinking = False
                 continue  # retry immediately
 

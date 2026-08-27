@@ -21,7 +21,6 @@ def _call_haiku(system: str, user: str) -> str:
     msg = client.messages.create(
         model=CLAUDE_UTILITY_MODEL,
         max_tokens=512,
-        temperature=0.0,
         system=system,
         messages=[{"role": "user", "content": user}],
     )

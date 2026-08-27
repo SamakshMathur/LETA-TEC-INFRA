@@ -356,7 +356,6 @@ STRICT OPERATIONAL RULES:
                 max_tokens=4096,
                 system=system_msg["content"],
                 messages=chat_messages,
-                temperature=0.4,
             )
             full_response = resp.content[0].text
         else:
@@ -428,7 +427,6 @@ RULES:
                 max_tokens=4096,
                 system=system_msg["content"],
                 messages=chat_messages,
-                temperature=0.3,
             )
             enhanced_draft = resp.content[0].text
         else:

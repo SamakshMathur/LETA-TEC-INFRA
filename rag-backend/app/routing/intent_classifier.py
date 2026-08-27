@@ -82,7 +82,6 @@ def _llm_classify(question: str) -> dict:
     msg = client.messages.create(
         model=CLAUDE_UTILITY_MODEL,
         max_tokens=64,
-        temperature=0.0,
         system=_SYSTEM,
         messages=[{"role": "user", "content": f"Query: {question[:500]}"}],
     )
