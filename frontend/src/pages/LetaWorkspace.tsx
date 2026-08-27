@@ -234,6 +234,8 @@ const LetaWorkspace: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionLoadRequestRef = useRef(0);
+  const sessionMessagesRef = useRef(new Map<string, Message[]>());
+  const streamingSessionsRef = useRef(new Set<string>());
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const pendingRetryRef = useRef<{ query: string; file: File | null } | null>(null);
   const isActiveQueryRef = useRef(false);
@@ -619,32 +621,34 @@ const LetaWorkspace: React.FC = () => {
 
   const handleSelectSession = async (sessionId: string) => {
     const requestId = ++sessionLoadRequestRef.current;
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    isActiveQueryRef.current = false;
-    pendingRetryRef.current = null;
-    setIsStreaming(false);
+    const cachedMessages = sessionMessagesRef.current.get(sessionId);
     setQuery('');
     setSelectedFile(null);
     setOpenDocuments([]);
     setActiveDocId(null);
-    setMessages([]);
+    setMessages(cachedMessages || []);
     setCurrentSessionId(sessionId);
-    setIsLoading(true);
+    setIsLoading(!cachedMessages && !streamingSessionsRef.current.has(sessionId));
+    setIsStreaming(streamingSessionsRef.current.has(sessionId));
 
     try {
       const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`, { headers: getAuthHeaders() });
       if (requestId !== sessionLoadRequestRef.current) return;
 
       const loadedMessages = Array.isArray(res.data?.messages) ? res.data.messages : [];
-      setMessages(loadedMessages.map((msg: any) => ({
+      const nextMessages = loadedMessages.map((msg: any) => ({
         role: msg.role,
         content: msg.content,
         confidence: 1.0,
         citations: [],
         consulted_sources: msg.sources || [],
         isHistory: true,
-      })));
+      }));
+      // Keep a live in-memory stream if this session is currently generating.
+      if (!streamingSessionsRef.current.has(sessionId)) {
+        sessionMessagesRef.current.set(sessionId, nextMessages);
+        setMessages(nextMessages);
+      }
     } catch (err) {
       if (requestId !== sessionLoadRequestRef.current) return;
       console.error('Failed to load session:', err);
@@ -657,10 +661,6 @@ const LetaWorkspace: React.FC = () => {
 
   const handleNewSession = () => {
     ++sessionLoadRequestRef.current;
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    isActiveQueryRef.current = false;
-    pendingRetryRef.current = null;
     setCurrentSessionId(null);
     setMessages([]);
     setQuery('');
@@ -734,8 +734,24 @@ const LetaWorkspace: React.FC = () => {
 
     const userMsg: Message = { role: 'user', content: activeQuery || (selectedFile ? `[Attached: ${selectedFile.name}]` : '') };
 
-    // Only add user message now; assistant message is added when first chunk arrives
-    setMessages(prev => [...prev, userMsg]);
+    // Keep stream state keyed to its session so navigating away does not stop it.
+    let streamSessionKey = currentSessionId || `pending-${Date.now()}`;
+    const updateStreamMessages = (updater: (prev: Message[]) => Message[]) => {
+      const previous = sessionMessagesRef.current.get(streamSessionKey) || [];
+      const next = updater(previous);
+      sessionMessagesRef.current.set(streamSessionKey, next);
+      if (currentSessionId === streamSessionKey) setMessages(next);
+    };
+    const setStreamLoading = (value: boolean) => {
+      if (currentSessionId === streamSessionKey) setIsLoading(value);
+    };
+    const setStreamStreaming = (value: boolean) => {
+      if (currentSessionId === streamSessionKey) setIsStreaming(value);
+    };
+
+    // Only add user message now; assistant message is added when first chunk arrives.
+    updateStreamMessages(prev => [...prev, userMsg]);
+    if (!currentSessionId) setMessages(sessionMessagesRef.current.get(streamSessionKey) || []);
     setQuery('');
     setIsLoading(true);
     setIsStreaming(false);
@@ -778,6 +794,10 @@ const LetaWorkspace: React.FC = () => {
         try {
           const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title }, { headers: getAuthHeaders() });
           activeSessionId = sessionRes.data.session_id;
+          const pendingMessages = sessionMessagesRef.current.get(streamSessionKey) || [];
+          sessionMessagesRef.current.delete(streamSessionKey);
+          streamSessionKey = activeSessionId;
+          sessionMessagesRef.current.set(streamSessionKey, pendingMessages);
           setCurrentSessionId(activeSessionId);
         } catch {
           // Session creation failed (CORS or backend unreachable) — proceed without session tracking
@@ -791,7 +811,8 @@ const LetaWorkspace: React.FC = () => {
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
         // Add placeholder assistant bubble so showRetryStatus has a target
-        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        updateStreamMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        streamingSessionsRef.current.add(streamSessionKey);
         const fileRes = await fetchWithRetry(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
         if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
@@ -802,7 +823,7 @@ const LetaWorkspace: React.FC = () => {
         if (!reader) throw new Error('Response stream unavailable');
 
         // Assistant bubble already added before fetchWithRetry
-        setIsStreaming(true);
+        setStreamStreaming(true);
         // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
 
         let buffer = '';
@@ -810,9 +831,9 @@ const LetaWorkspace: React.FC = () => {
         const appendChunk = (text: string) => {
           if (firstTextChunk && text) {
             firstTextChunk = false;
-            setIsLoading(false);
+            setStreamLoading(false);
           }
-          setMessages(prev => {
+          updateStreamMessages(prev => {
             const next = [...prev];
             const last = next[next.length - 1];
             if (last.role === 'assistant') {
@@ -841,7 +862,7 @@ const LetaWorkspace: React.FC = () => {
                 if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
                 try {
                   const d = JSON.parse(buffer.substring(si + '__STATUS__:'.length, ei));
-                  setMessages(prev => {
+                  updateStreamMessages(prev => {
                     const next = [...prev];
                     const last = next[next.length - 1];
                     if (last.role === 'assistant') {
@@ -863,7 +884,7 @@ const LetaWorkspace: React.FC = () => {
                 if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
                 try {
                   const meta = JSON.parse(buffer.substring(si + '__METADATA__:'.length, ei));
-                  setMessages(prev => {
+                  updateStreamMessages(prev => {
                     const next = [...prev];
                     const last = next[next.length - 1];
                     if (last.role === 'assistant') {
@@ -893,7 +914,7 @@ const LetaWorkspace: React.FC = () => {
                     page: c.page,
                     url: c.url,
                   }));
-                  setMessages(prev => {
+                  updateStreamMessages(prev => {
                     const next = [...prev];
                     const last = next[next.length - 1];
                     if (last.role === 'assistant') {
@@ -927,9 +948,10 @@ const LetaWorkspace: React.FC = () => {
           }
         }
 
-        setIsLoading(false);
-        setIsStreaming(false);
-        setMessages(prev => {
+        setStreamLoading(false);
+        setStreamStreaming(false);
+        streamingSessionsRef.current.delete(streamSessionKey);
+        updateStreamMessages(prev => {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last?.role === 'assistant') {
@@ -950,7 +972,8 @@ const LetaWorkspace: React.FC = () => {
       } else {
         // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
         // Add placeholder assistant bubble before fetch so showRetryStatus has a target during 503 retries
-        setMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        updateStreamMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        streamingSessionsRef.current.add(streamSessionKey);
         const streamRes = await fetchWithRetry(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -966,7 +989,7 @@ const LetaWorkspace: React.FC = () => {
         if (!reader) throw new Error('Response stream unavailable');
 
         // Assistant bubble already added before fetchWithRetry
-        setIsStreaming(true);
+        setStreamStreaming(true);
         // isLoading stays true until first text chunk arrives (keeps spinner visible during "thinking" phase)
 
         let buffer = '';
@@ -974,9 +997,9 @@ const LetaWorkspace: React.FC = () => {
         const appendChunk = (text: string) => {
           if (firstTextChunk && text) {
             firstTextChunk = false;
-            setIsLoading(false);
+            setStreamLoading(false);
           }
-          setMessages(prev => {
+          updateStreamMessages(prev => {
             const next = [...prev];
             const last = next[next.length - 1];
             if (last.role === 'assistant') {
@@ -1005,7 +1028,7 @@ const LetaWorkspace: React.FC = () => {
                 if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
                 try {
                   const d = JSON.parse(buffer.substring(si + '__STATUS__:'.length, ei));
-                  setMessages(prev => {
+                  updateStreamMessages(prev => {
                     const next = [...prev];
                     const last = next[next.length - 1];
                     if (last.role === 'assistant') {
@@ -1027,7 +1050,7 @@ const LetaWorkspace: React.FC = () => {
                 if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
                 try {
                   const meta = JSON.parse(buffer.substring(si + '__METADATA__:'.length, ei));
-                  setMessages(prev => {
+                  updateStreamMessages(prev => {
                     const next = [...prev];
                     const last = next[next.length - 1];
                     if (last.role === 'assistant') {
@@ -1057,7 +1080,7 @@ const LetaWorkspace: React.FC = () => {
                     page: c.page,
                     url: c.url,
                   }));
-                  setMessages(prev => {
+                  updateStreamMessages(prev => {
                     const next = [...prev];
                     const last = next[next.length - 1];
                     if (last.role === 'assistant') {
@@ -1091,11 +1114,12 @@ const LetaWorkspace: React.FC = () => {
           }
         }
 
-        setIsLoading(false);
-        setIsStreaming(false);
+        setStreamLoading(false);
+        setStreamStreaming(false);
+        streamingSessionsRef.current.delete(streamSessionKey);
         // Clear status label; if the response ended up empty (silent backend crash),
         // surface a visible error so the user isn't left staring at a blank screen.
-        setMessages(prev => {
+        updateStreamMessages(prev => {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last?.role === 'assistant') {
@@ -1154,8 +1178,8 @@ const LetaWorkspace: React.FC = () => {
         }
         return next;
       });
-      setIsLoading(false);
-      setIsStreaming(false);
+      setStreamLoading(false);
+      setStreamStreaming(false);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
