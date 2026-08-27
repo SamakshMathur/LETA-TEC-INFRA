@@ -57,6 +57,47 @@ jobs:
             --query taskDefinition \
             > infra/task-def-current.json
 
+      - name: Sync non-secret env vars from template into live task definition
+        # Ensures values like SONNET_THINKING_THRESHOLD are always in sync with
+        # the checked-in template without touching secret placeholders.
+        run: |
+          python3 - << 'EOF'
+          import json
+
+          TEMPLATE_PATH  = "rag-backend/.aws/task-definition.json"
+          LIVE_PATH      = "infra/task-def-current.json"
+          # Secrets that should never be overwritten from the template
+          SECRET_KEYS = {
+              "ANTHROPIC_API_KEY", "MONGODB_URI", "SECRET_KEY",
+              "ADMIN_MASTER_SECRET", "REDIS_URL", "FAST2SMS_API_KEY",
+              "RESEND_API_KEY", "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET",
+              "RAZORPAY_WEBHOOK_SECRET",
+          }
+
+          with open(TEMPLATE_PATH) as f:
+              template = json.load(f)
+          with open(LIVE_PATH) as f:
+              live = json.load(f)
+
+          # Build lookup of template env vars (first containerDefinition only)
+          tmpl_env = {e["name"]: e["value"]
+                      for e in template["containerDefinitions"][0].get("environment", [])}
+
+          for cd in live["containerDefinitions"]:
+              # Build a mutable map of the current live env
+              live_env_map = {e["name"]: e["value"] for e in cd.get("environment", [])}
+              # Apply non-secret template values
+              for k, v in tmpl_env.items():
+                  if k not in SECRET_KEYS:
+                      live_env_map[k] = v
+              # Rewrite as list
+              cd["environment"] = [{"name": k, "value": v} for k, v in live_env_map.items()]
+
+          with open(LIVE_PATH, "w") as f:
+              json.dump(live, f, indent=2)
+          print("Env vars synced from template into live task definition.")
+          EOF
+
       - name: Update image in task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1

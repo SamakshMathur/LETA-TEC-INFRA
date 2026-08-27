@@ -288,7 +288,29 @@ def _stream_claude(
                 f"Claude stream complete | model={'haiku' if use_haiku else 'sonnet'} "
                 f"| thinking={use_thinking} | attempt={attempt + 1} | chars={len(full_content)}"
             )
-            return  # success — exit generator
+            if full_content:
+                return  # success — exit generator
+
+            # Stream completed but produced 0 text tokens. This happens when extended
+            # thinking consumes the full context window before emitting visible text,
+            # or when the API silently rejects the thinking parameter on this model.
+            # Retry without thinking (next attempt or immediate Haiku fallback).
+            logger.error(
+                f"[EMPTY_STREAM] Anthropic stream returned 0 text tokens | "
+                f"model={'haiku' if use_haiku else 'sonnet'} | thinking={use_thinking} | "
+                f"attempt={attempt + 1} | max_tokens={stream_kwargs.get('max_tokens')} | "
+                f"thinking_budget={stream_kwargs.get('thinking', {}).get('budget_tokens', 0)}"
+            )
+            if use_thinking and attempt < max_attempts - 1:
+                # Retry without thinking — most likely cause is thinking eating all tokens
+                logger.warning("Retrying without extended thinking...")
+                stream_kwargs.pop("thinking", None)
+                stream_kwargs["temperature"] = 0
+                use_thinking = False
+                continue  # retry immediately
+
+            # All attempts exhausted or not a thinking issue — fall through to Haiku
+            raise RuntimeError("Empty stream: 0 text tokens after all attempts")
 
         except Exception as e:
             if attempt < max_attempts - 1 and _is_retryable(e):
@@ -384,6 +406,10 @@ def synthesize_answer_stream(
     force_haiku: force Haiku model regardless of complexity (used by /ask-sync
     to stay within API Gateway's 29-second integration timeout).
     """
+    logger.info(
+        f"synthesize_answer_stream: starting | q_len={len(question)} | "
+        f"ctx_len={len(context)} | draft={session_is_draft}"
+    )
     complexity = _estimate_complexity(question)
     # Keywords that route through DRAFTING_PROMPT (notices, drafts, and advisory opinions)
     _DRAFT_KW = [
