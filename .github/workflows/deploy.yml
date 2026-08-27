@@ -86,9 +86,11 @@ jobs:
           for cd in live["containerDefinitions"]:
               # Build a mutable map of the current live env
               live_env_map = {e["name"]: e["value"] for e in cd.get("environment", [])}
-              # Apply non-secret template values
+              # Keys already managed as ECS secrets — must NOT also appear in environment
+              ecs_secret_names = {s["name"] for s in cd.get("secrets", [])}
+              # Apply non-secret template values (skip anything already wired as an ECS secret)
               for k, v in tmpl_env.items():
-                  if k not in SECRET_KEYS:
+                  if k not in SECRET_KEYS and k not in ecs_secret_names:
                       live_env_map[k] = v
               # Rewrite as list
               cd["environment"] = [{"name": k, "value": v} for k, v in live_env_map.items()]
