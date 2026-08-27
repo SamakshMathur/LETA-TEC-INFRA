@@ -3,7 +3,7 @@ uvicorn
 gunicorn
 pydantic
 python-dotenv
-openai
+openai>=1.0.0,<2.0.0
 pymupdf
 pdf2image
 pytesseract
@@ -30,8 +30,8 @@ boto3
 langchain
 langchain-text-splitters
 # ── Runtime deps used by app code ────────────────────────────────────────────
-anthropic
-httpx
+anthropic>=0.40.0,<1.0.0
+httpx>=0.23.0,<0.29.0
 slowapi
 diskcache
 pymongo
