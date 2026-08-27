@@ -233,6 +233,7 @@ const LetaWorkspace: React.FC = () => {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionLoadRequestRef = useRef(0);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const pendingRetryRef = useRef<{ query: string; file: File | null } | null>(null);
   const isActiveQueryRef = useRef(false);
@@ -617,11 +618,26 @@ const LetaWorkspace: React.FC = () => {
   };
 
   const handleSelectSession = async (sessionId: string) => {
+    const requestId = ++sessionLoadRequestRef.current;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    isActiveQueryRef.current = false;
+    pendingRetryRef.current = null;
+    setIsStreaming(false);
+    setQuery('');
+    setSelectedFile(null);
+    setOpenDocuments([]);
+    setActiveDocId(null);
+    setMessages([]);
+    setCurrentSessionId(sessionId);
+    setIsLoading(true);
+
     try {
-      setIsLoading(true);
-      setCurrentSessionId(sessionId);
       const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`, { headers: getAuthHeaders() });
-      setMessages(res.data.messages.map((msg: any) => ({
+      if (requestId !== sessionLoadRequestRef.current) return;
+
+      const loadedMessages = Array.isArray(res.data?.messages) ? res.data.messages : [];
+      setMessages(loadedMessages.map((msg: any) => ({
         role: msg.role,
         content: msg.content,
         confidence: 1.0,
@@ -629,14 +645,22 @@ const LetaWorkspace: React.FC = () => {
         consulted_sources: msg.sources || [],
         isHistory: true,
       })));
-      setIsLoading(false);
     } catch (err) {
+      if (requestId !== sessionLoadRequestRef.current) return;
       console.error('Failed to load session:', err);
-      setIsLoading(false);
+      setCurrentSessionId(null);
+      setMessages([{ role: 'assistant', content: 'Unable to load this consultation. Please try again.', confidence: 0, citations: [] }]);
+    } finally {
+      if (requestId === sessionLoadRequestRef.current) setIsLoading(false);
     }
   };
 
   const handleNewSession = () => {
+    ++sessionLoadRequestRef.current;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    isActiveQueryRef.current = false;
+    pendingRetryRef.current = null;
     setCurrentSessionId(null);
     setMessages([]);
     setQuery('');
