@@ -1,0 +1,46 @@
+# CI requirements — enough to import-check and test the app.
+#
+# Heavy ML deps that are lazy-loaded at runtime are excluded here:
+#   torch, torchvision, sentence-transformers, faiss-cpu, opencv-python-headless,
+#   pdf2image, pytesseract, huggingface_hub, sentencepiece, spaces, av, gradio,
+#   matplotlib, hf_xet
+#
+# These are only used inside functions (never at module import time after §6
+# lazy-load fix), so the import check and test suite work without them.
+
+fastapi
+uvicorn
+gunicorn
+pydantic
+python-dotenv
+pandas
+openpyxl
+numpy
+python-docx
+requests
+pillow
+boto3
+langchain
+langchain-text-splitters
+anthropic>=0.40.0,<1.0.0
+httpx>=0.23.0,<0.29.0
+slowapi
+diskcache
+pymongo
+psutil
+PyJWT
+passlib[bcrypt]
+razorpay
+reportlab
+markdown2
+rank_bm25
+ftfy
+fuzzywuzzy
+python-Levenshtein
+openai>=1.0.0,<2.0.0
+markdown
+
+# Test and lint tooling
+pytest
+pytest-asyncio
+ruff
