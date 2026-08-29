@@ -156,10 +156,22 @@ def _is_cuda_error(exc: Exception) -> bool:
     )
 
 
+# Instruction prefix for asymmetric embedding — bge-large-en-v1.5 is trained to
+# produce query vectors aligned to passage vectors when this prefix is added to
+# queries only.  Passages (chunks) are indexed WITHOUT a prefix; adding the prefix
+# to queries improves recall on the existing index with zero re-ingestion required.
+# Reference: BAAI/bge-large-en-v1.5 model card.
+_QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
+
+
 def embed_query(text: str):
     """
     Embeds a single query string (normalized for cosine similarity with IndexFlatIP).
-    Results are cached in Redis by SHA-256(text) — saves 200-400ms per cache hit.
+    Results are cached in Redis — saves 200-400ms per cache hit.
+
+    The instruction prefix is applied before encoding (asymmetric embedding for
+    bge-large-en-v1.5).  The prefixed form is used as the cache key so a stale
+    un-prefixed vector is never returned after this change is deployed.
 
     Automatically recovers from CUDA errors caused by sleep/wake GPU context loss:
     the model is reloaded on CPU and the encode is retried once.
@@ -168,10 +180,13 @@ def embed_query(text: str):
         logger.warning("embed_query called with empty text")
         return None
 
+    # Apply instruction prefix — cache and encode with the same prefixed text
+    _prefixed = _QUERY_INSTRUCTION + text.strip()
+
     # L0: embedding cache (Redis)
     try:
         from app.cache import get_cached_embedding, set_cached_embedding
-        cached = get_cached_embedding(text)
+        cached = get_cached_embedding(_prefixed)
         if cached is not None:
             return cached
     except Exception:
@@ -179,7 +194,7 @@ def embed_query(text: str):
 
     model = get_model()
     try:
-        vec = model.encode(text, normalize_embeddings=True)
+        vec = model.encode(_prefixed, normalize_embeddings=True)
     except Exception as exc:
         if _is_cuda_error(exc):
             # GPU context lost (sleep/wake cycle) — reload on CPU and retry once
@@ -187,13 +202,13 @@ def embed_query(text: str):
                 f"CUDA error during embed_query — reloading model on CPU and retrying: {exc}"
             )
             model = get_model(force_cpu=True)
-            vec = model.encode(text, normalize_embeddings=True)
+            vec = model.encode(_prefixed, normalize_embeddings=True)
         else:
             raise
 
     # Store for next time
     try:
-        set_cached_embedding(text, vec)
+        set_cached_embedding(_prefixed, vec)
     except Exception:
         pass
 
@@ -749,9 +764,14 @@ class Retriever:
             except Exception as e:
                 logger.warning(f"Sidecar merge failed (non-fatal): {e}")
 
-        # Validate dimension
+        # Validate dimension — hard failure: serving wrong-dimension vectors is
+        # worse than not starting at all (silent garbage retrieval).
         if self.index.d != VECTOR_DIM:
-            logger.error(f"FAISS dimension mismatch: index has {self.index.d}, config expects {VECTOR_DIM}")
+            raise RuntimeError(
+                f"FAISS dimension mismatch: index has {self.index.d} dims, "
+                f"config VECTOR_DIM={VECTOR_DIM}. The index was built with a "
+                "different embedding model. Re-run ingestion or correct VECTOR_DIM."
+            )
 
         # Load Chunks and Metadata
         logger.info("Loading chunks & building BM25 index...")

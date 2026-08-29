@@ -18,23 +18,19 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
-import anthropic
-
-from app.config import ANTHROPIC_API_KEY, CLAUDE_UTILITY_MODEL
+from app.config import CLAUDE_UTILITY_MODEL
+from app.utils.anthropic_client import get_anthropic_client, TIMEOUT_INGESTION
 
 logger = logging.getLogger(__name__)
 
-# ── Singleton Haiku client ────────────────────────────────────────────────────
-_client: Optional[anthropic.Anthropic] = None
+# ── Singleton Haiku client (shared factory, 30s timeout for batch ingestion) ─
+_client = None
 
 
-def _get_client() -> anthropic.Anthropic:
+def _get_client():
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(
-            api_key=ANTHROPIC_API_KEY,
-            timeout=anthropic.Timeout(60.0, connect=10.0),
-        )
+        _client = get_anthropic_client(timeout=TIMEOUT_INGESTION, connect=10.0)
     return _client
 
 

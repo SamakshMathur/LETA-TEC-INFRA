@@ -329,76 +329,73 @@ def _rule_based_context(rel_path: str, document_type: str) -> str:
 
 
 def ingest_pdf(pdf_path: Path, document_type: str, category_key: str,
-               doc_contexts: dict | None = None) -> list:
-    import fitz
-    import hashlib
+               doc_contexts: dict | None = None,
+               use_per_chunk_enrichment: bool = False) -> list:
+    """
+    Extract, chunk, and optionally enrich one PDF for the FAISS index.
 
+    Chunking now uses the same legal-aware pipeline as the admin-upload path
+    (incremental_ingest._extract_pages + _chunk_pages) so both ingestion doors
+    produce structurally identical chunks with consistent metadata.
+
+    Contextual enrichment (--rebuild mode):
+      use_per_chunk_enrichment=True  → Haiku per-chunk context (best quality)
+      use_per_chunk_enrichment=False → rule-based doc-level prefix (zero cost, fast)
+    """
     rel_path = str(pdf_path.relative_to(DB_ROOT)).replace("\\", "/")
     year     = _extract_year(pdf_path)
 
-    try:
-        doc = fitz.open(str(pdf_path))
-    except Exception as e:
-        log.warning(f"  Cannot open {pdf_path.name}: {e}")
-        return []
-
-    pages_text = [page.get_text().strip() for page in doc if page.get_text().strip()]
-    doc.close()
-
-    if not pages_text:
+    # ── Extract + chunk via the canonical live-ingestion pipeline ─────────────
+    # Replaces the old fitz + RecursiveCharacterTextSplitter path that produced
+    # structurally different chunks than the admin-upload path.
+    from app.pipeline.incremental_ingest import _extract_pages, _chunk_pages
+    pages = _extract_pages(pdf_path, rel_path)
+    if not pages:
         log.warning(f"  No text: {pdf_path.name}")
         return []
 
-    full_text = "\n\n".join(pages_text)
+    chunks = _chunk_pages(pages)
+    if not chunks:
+        return []
 
-    # ── Contextual Retrieval: generate a document-level context prefix ────────
-    # The context is cached in doc_contexts dict (persisted to doc_contexts.json)
-    # so a resumed ingestion never re-calls the API.
-    ctx_prefix = ""
-    if doc_contexts is not None:
-        ctx_key = rel_path.lower()
-        if ctx_key not in doc_contexts:
-            ctx_prefix = _generate_doc_context(rel_path, document_type, pages_text[0])
-            doc_contexts[ctx_key] = ctx_prefix
-        else:
-            ctx_prefix = doc_contexts[ctx_key]
+    # Add year from path into metadata (incremental_ingest doesn't extract year)
+    if year:
+        for c in chunks:
+            c["metadata"]["year"] = year
 
-    # ── Chunking: RecursiveCharacterTextSplitter ──────────────────────────────
-    # Replaces the old blind 1500-char sliding window.
-    # Splits in priority order: paragraph breaks → sentence ends → words → chars.
-    # Covers 100% of the document text (old window silently dropped last 200 chars).
-    # chunk_size=1200 keeps chunks within bge-large-en-v1.5's 512-token sweet spot.
-    # chunk_overlap=150 ensures a section heading at the end of one chunk
-    # also appears at the start of the next, preserving cross-boundary context.
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-    _splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1200,
-        chunk_overlap=150,
-        separators=["\n\n\n", "\n\n", "\n", ". ", "? ", "! ", "; ", " ", ""],
-        length_function=len,
-    )
-    raw_texts = _splitter.split_text(full_text)
+    # ── Contextual enrichment ─────────────────────────────────────────────────
+    full_text = "\n\n".join(p.get("text", "") for p in pages)
 
-    chunks = []
-    for i, text in enumerate(raw_texts):
-        text = text.strip()
-        if len(text) < 80:          # skip near-empty fragments (page headers, footers)
-            continue
-        chunk_id = hashlib.md5(f"{rel_path}_{i}".encode()).hexdigest()[:16]
-        meta = {
-            "source": str(pdf_path), "rel_path": rel_path,
-            "document_type": document_type, "category": category_key,
-            "filename": pdf_path.name, "chunk_id": chunk_id,
-        }
-        if year:
-            meta["year"] = year
-        # embed_text = context prefix (Ollama/rule-based) + chunk text.
-        # text stays as-is for display; embed_text is what gets encoded into the vector.
-        embed_text = f"{ctx_prefix}\n\n{text}" if ctx_prefix else text
-        chunks.append({
-            "chunk_id": chunk_id, "text": text, "embed_text": embed_text,
-            "source": str(pdf_path), "rel_path": rel_path, "metadata": meta,
-        })
+    if use_per_chunk_enrichment:
+        # --rebuild mode: per-chunk Haiku context (replaces document-level Ollama blurb).
+        # Each chunk gets a distinct 1-2 sentence context, not the same generic blurb.
+        try:
+            from app.chunking.contextual_enricher import enrich_document_chunks
+            chunks = enrich_document_chunks(chunks, full_text, rel_path)
+            for c in chunks:
+                c["embed_text"] = c.get("text_with_context") or c["text"]
+        except Exception as exc:
+            log.warning(f"  Per-chunk enrichment failed for {pdf_path.name}: {exc} — using raw text")
+            for c in chunks:
+                c["embed_text"] = c["text"]
+    else:
+        # Incremental mode: rule-based document-level prefix (free, instant).
+        # Still better than no context at all — tells the embedding model what
+        # document type this chunk belongs to.
+        ctx_prefix = ""
+        if doc_contexts is not None:
+            ctx_key = rel_path.lower()
+            if ctx_key not in doc_contexts:
+                # Use first page text from extracted pages (clean, not raw fitz)
+                first_text = pages[0].get("text", "")[:800] if pages else ""
+                ctx_prefix = _generate_doc_context(rel_path, document_type, first_text)
+                doc_contexts[ctx_key] = ctx_prefix
+            else:
+                ctx_prefix = doc_contexts[ctx_key]
+
+        for c in chunks:
+            c["embed_text"] = (f"{ctx_prefix}\n\n{c['text']}" if ctx_prefix else c["text"])
+
     return chunks
 
 
@@ -632,37 +629,18 @@ def main():
             for pdf in pdfs:
                 grand_idx += 1
                 rel_path = str(pdf.relative_to(DB_ROOT)).replace("\\", "/")
-                if grand_idx % 100 == 1:
-                    log.info(f"  Extracting [{grand_idx}/{total_to_process}] {rel_path}")
-                chunks_no_ctx = ingest_pdf(pdf, doc_type, cat_key, doc_contexts=None)
-                if chunks_no_ctx:
-                    # Grab first-page text for context generation
-                    try:
-                        import fitz
-                        d = fitz.open(str(pdf))
-                        first_page = d[0].get_text().strip()[:800] if d.page_count else ""
-                        d.close()
-                    except Exception:
-                        first_page = chunks_no_ctx[0]["text"][:800]
-                    all_pdfs_flat.append((pdf, doc_type, cat_key, first_page))
-                    raw_chunks_by_doc[rel_path] = chunks_no_ctx
-        log.info(f"  Extracted {sum(len(v) for v in raw_chunks_by_doc.values())} chunks "
-                 f"from {len(raw_chunks_by_doc)} documents")
-
-        # ── Step: generate contexts in parallel ───────────────────────────────
-        log.info(f"\n[4/5] Generating contextual embeddings via Ollama (qwen2.5:7b)...")
-        log.info("      (2 sentences per document, 20 parallel workers, cached after first run)")
-        doc_contexts = _load_doc_contexts()
-        doc_contexts = _generate_all_contexts_parallel(all_pdfs_flat, doc_contexts, workers=20)
-        log.info(f"  Context cache now covers {len(doc_contexts)} documents")
-
-        # ── Step: apply contexts to chunks ────────────────────────────────────
-        log.info("\n  Applying context prefixes to chunks...")
-        for rel_path, chunks in raw_chunks_by_doc.items():
-            ctx_prefix = doc_contexts.get(rel_path.lower(), "")
-            for c in chunks:
-                c["embed_text"] = f"{ctx_prefix}\n\n{c['text']}" if ctx_prefix else c["text"]
-            all_new_chunks.extend(chunks)
+                if grand_idx % 50 == 1:
+                    log.info(f"  Extracting + enriching [{grand_idx}/{total_to_process}] {rel_path}")
+                # Per-chunk Haiku enrichment replaces the old document-level Ollama blurb.
+                # Each chunk gets a distinct 1-2 sentence context that describes THAT chunk,
+                # not a single generic description prepended to every chunk from the document.
+                chunks = ingest_pdf(
+                    pdf, doc_type, cat_key,
+                    doc_contexts=None,             # unused in per-chunk mode
+                    use_per_chunk_enrichment=True,
+                )
+                if chunks:
+                    all_new_chunks.extend(chunks)
 
         log.info(f"  Total chunks ready for embedding: {len(all_new_chunks)}")
 

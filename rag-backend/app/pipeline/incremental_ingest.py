@@ -20,9 +20,16 @@ from app.ingestion.legal_parser import LegalParser
 from app.ingestion.pdf_text import extract_text_from_pdf
 from app.ingestion.docx_reader import extract_text_from_docx
 from app.ingestion.excel_reader import extract_text_from_excel
+from app.ingestion.clean_text import clean_text
 
 _S3_BUCKET = os.getenv("S3_DATA_BUCKET", "")
 _S3_REGION = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+
+# Set ENABLE_CONTEXTUAL_ENRICHMENT=true in ECS task definition to enable
+# per-chunk Haiku context enrichment on admin-upload ingestion.
+# Off by default — each chunk costs one Haiku API call (~$0.0003) and adds
+# ~2-5s per chunk; appropriate for nightly batch jobs, not real-time uploads.
+_ENRICHMENT_ENABLED = os.getenv("ENABLE_CONTEXTUAL_ENRICHMENT", "false").lower() == "true"
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +59,23 @@ def _extract_pages(file_path: Path, rel_path: str) -> List[Dict]:
             logger.warning(f"Unsupported file type: {ext}")
             return []
 
+        # Clean text before chunking: normalize unicode, strip mojibake, collapse
+        # whitespace.  Also filter out pages that were previously stored as the
+        # "[OCR_EMPTY_PAGE]" sentinel — pdf_scanned.py now omits them at source,
+        # but old files in the pipeline may still carry the sentinel.
+        clean_pages = []
         for p in pages:
+            raw_text = p.get("text", "")
+            if not raw_text or raw_text.strip() == "[OCR_EMPTY_PAGE]":
+                continue
+            p["text"] = clean_text(raw_text)
             p["metadata"] = p.get("metadata", {})
             p["metadata"].update(cls_info)
             p["metadata"]["rel_path"] = rel_path
             p["metadata"]["source"]   = str(file_path)
+            clean_pages.append(p)
 
-        return pages
+        return clean_pages
 
     except Exception as e:
         logger.error(f"Extraction failed for {file_path}: {e}")
@@ -131,7 +148,9 @@ def _embed_and_append(chunks: List[Dict]) -> int:
 
     from app.embeddings.embedder import embed_texts
 
-    texts      = [c["text"] for c in chunks]
+    # Use context-enriched text when available (set by enrich_document_chunks).
+    # Falls back to raw chunk text when enrichment was skipped or failed.
+    texts      = [c.get("text_with_context") or c["text"] for c in chunks]
     embeddings = embed_texts(texts).astype("float32")
 
     # Load existing index (or create fresh if missing)
@@ -208,6 +227,20 @@ def ingest_file(file_path: Path, rel_path: str) -> Dict:
     chunks = _chunk_pages(pages)
     if not chunks:
         return {"chunks_added": 0, "vectors_added": 0, "status": "no_chunks_generated"}
+
+    # Optional per-chunk contextual enrichment (Anthropic Contextual Retrieval).
+    # When enabled, each chunk gets a Haiku-generated 1-2 sentence context that
+    # situates it within its source document.  embed_text (context + raw text) is
+    # what gets encoded into the FAISS vector; text is preserved for display.
+    # ~49% retrieval failure reduction per Anthropic's published benchmark.
+    if _ENRICHMENT_ENABLED:
+        try:
+            from app.chunking.contextual_enricher import enrich_document_chunks
+            full_text = "\n\n".join(p.get("text", "") for p in pages)
+            chunks = enrich_document_chunks(chunks, full_text, rel_path)
+            logger.info(f"Contextual enrichment complete for {rel_path}")
+        except Exception as exc:
+            logger.warning(f"Contextual enrichment failed — continuing without it: {exc}")
 
     _append_to_chunks_file(chunks)
     vectors_added = _embed_and_append(chunks)
