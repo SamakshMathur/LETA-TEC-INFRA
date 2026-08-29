@@ -11,6 +11,7 @@ from pathlib import Path
 from app.routing.router import route_query
 from app.generation.context_builder import build_context
 from app.api.rag_helpers import build_keyword_queries, build_unique_sources
+from app.utils.time import utc_now
 
 # ── Structured JSON logging setup ────────────────────────────────────────────
 # Each log line is a JSON object — queryable in CloudWatch Logs Insights.
@@ -205,7 +206,6 @@ _request_logger = logging.getLogger("leta.request")
 async def log_requests(request: Request, call_next):
     # Full query_id: LETA-YYYYMMDD-HHMMSS-XXXXXXXX (CloudWatch-searchable prefix)
     import datetime as _dt_mw
-from app.utils.time import utc_now
     _ts = _dt_mw.datetime.now().strftime("%Y%m%d-%H%M%S")
     _rand = str(uuid.uuid4()).replace("-", "")[:6].upper()
     query_id = f"LETA-{_ts}-{_rand}"
@@ -463,21 +463,24 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             if vr.citations_block:
                 yield vr.citations_block
 
-                # ── Safety guards: compute confidence and append caveat if needed ──
-                try:
-                    from app.generation.confidence import estimate_confidence
-                    from app.generation.safety import apply_safety_guards
-                    _confidence = estimate_confidence(context, chunks or [])
-                    _logger.debug(f"Confidence (context-based): {_confidence:.3f}")
-                    _safe_answer = apply_safety_guards(full_answer, _confidence, "")
-                    # If safety guard appended a caveat, stream it now
-                    if _safe_answer != full_answer:
-                        caveat = _safe_answer[len(full_answer):]
-                        yield caveat
-                except Exception as _sg_exc:
-                    _logger.debug(f"Safety guard error (non-fatal): {_sg_exc}")
+            # ── Safety guards: compute confidence and append caveat if needed ──
+            # Runs unconditionally — not only when citation markers were resolved.
+            # An answer with no [Sn] markers (drafts, simple queries, marker_map=None)
+            # must still go through the safety/confidence check.
+            try:
+                from app.generation.confidence import estimate_confidence
+                from app.generation.safety import apply_safety_guards
+                _confidence = estimate_confidence(context, chunks or [])
+                _logger.debug(f"Confidence (context-based): {_confidence:.3f}")
+                _safe_answer = apply_safety_guards(full_answer, _confidence, "")
+                # If safety guard appended a caveat, stream it now
+                if _safe_answer != full_answer:
+                    caveat = _safe_answer[len(full_answer):]
+                    yield caveat
+            except Exception as _sg_exc:
+                _logger.debug(f"Safety guard error (non-fatal): {_sg_exc}")
 
-                # template_block intentionally not streamed — surfaced via /api/templates instead
+            # template_block intentionally not streamed — surfaced via /api/templates instead
 
     except Exception as e:
         _logger.error(f"Error in stream_and_save: {e}", exc_info=True)

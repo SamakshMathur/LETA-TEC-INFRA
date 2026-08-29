@@ -7,6 +7,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from app.database import get_db, get_user_collection
 from app.security import get_current_admin, require_roles, ROLE_SUPER_ADMIN, ROLE_ADMIN
+from app.utils.time import utc_now
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -571,7 +572,6 @@ async def query_assistant(payload: dict, current_admin: dict = Depends(get_curre
     active_users = 0
     if db is not None:
         from datetime import timedelta
-from app.utils.time import utc_now
         active_users = len(db["users"].distinct("username", {"last_login": {"$gte": utc_now() - timedelta(days=1)}}))
         if active_users == 0:
             active_users = db["users"].count_documents({})

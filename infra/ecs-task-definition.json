@@ -28,7 +28,7 @@
         { "name": "ENVIRONMENT",              "value": "production" },
         { "name": "VECTOR_SEARCH_TOP_K",      "value": "40" },
         { "name": "BM25_TOP_K",              "value": "35" },
-        { "name": "SONNET_THINKING_THRESHOLD","value": "0.65" },
+        { "name": "SONNET_THINKING_THRESHOLD","value": "1.1"  },
         { "name": "HAIKU_COMPLEXITY_THRESHOLD","value": "0.40" }
       ],
       "secrets": [
