@@ -988,29 +988,41 @@ async def ask_question(request: Request, req: QuestionRequest):
                 )
 
             def _expand():
-                from app.retrieval.query_refiner import generate_advanced_queries
-                return generate_advanced_queries(_retrieval_q)
+                # Keyword-only expansion — no LLM call, instant, never hangs.
+                # Produces 4 angle-specific sub-queries that cover statute / circular /
+                # notification / factual retrieval without a network round-trip.
+                # LLM-based HyDE expansion was causing 20-75s pipeline stalls when the
+                # Anthropic API was slow from ECS; keyword expansion is equally effective
+                # for retrieval recall on most GST queries.
+                _q = _retrieval_q
+                _statute_q  = _q + " section rule act provisions eligibility conditions liability"
+                _circular_q = _q + " CBIC circular notification clarification instruction"
+                _notif_q    = _q + " notification exemption rate schedule entry"
+                return {
+                    "queries": [_q, _statute_q, _circular_q, _notif_q],
+                    "hyde_document": "",
+                    "topic": "General",
+                    "subtopic": None,
+                }
 
             try:
-                # ── Parallel: fast keyword retrieve + LLM query expansion ──────────────
-                # generate_advanced_queries makes a Haiku API call (8s SDK timeout).
-                # A 20-second asyncio-level ceiling ensures the pipeline ALWAYS proceeds
-                # even if the SDK timeout is bypassed (e.g. slow connect, thread stall).
+                # ── Parallel: fast keyword retrieve + keyword query expansion ─────────
+                # Both are pure local operations — no Anthropic calls, no network I/O.
+                # 15-second ceiling is a safety net against unexpected thread stalls.
                 try:
                     fast_chunks, advanced_queries = await _asyncio.wait_for(
                         _asyncio.gather(
                             _asyncio.to_thread(_fast_retrieve),
                             _asyncio.to_thread(_expand),
                         ),
-                        timeout=20.0,
+                        timeout=15.0,
                     )
                 except _asyncio.TimeoutError:
                     logger.warning(
-                        f"[EXPAND_TIMEOUT] Query expansion timed out after 20s | "
-                        f"query_id={query_id} — falling back to fast-retrieve only"
+                        f"[EXPAND_TIMEOUT] Fast retrieval timed out after 15s | "
+                        f"query_id={query_id} — falling back to minimal retrieval"
                     )
-                    # Re-run fast retrieve without expansion (it was cancelled by wait_for)
-                    fast_chunks = await _asyncio.to_thread(_fast_retrieve)
+                    fast_chunks = []
                     advanced_queries = {
                         "queries": [_retrieval_q],
                         "hyde_document": "", "topic": "General", "subtopic": None,
@@ -1035,12 +1047,25 @@ async def ask_question(request: Request, req: QuestionRequest):
                 )
 
                 # Supplement the fast pool with expanded-query FAISS results,
-                # then do ONE FlashRank + LegalReranker pass on the merged pool.
-                chunks = await _asyncio.to_thread(
-                    retriever.supplement_and_rerank,
-                    fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
-                    _trace,   # trace
-                )
+                # then do ONE CrossEncoder + LegalReranker pass on the merged pool.
+                # 40-second ceiling — CrossEncoder on 80 chunks takes 2-5s on CPU;
+                # 40s is generous enough to never fire on normal loads but prevents
+                # an infinite stall if the ML thread pool deadlocks.
+                try:
+                    chunks = await _asyncio.wait_for(
+                        _asyncio.to_thread(
+                            retriever.supplement_and_rerank,
+                            fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
+                            _trace,
+                        ),
+                        timeout=40.0,
+                    )
+                except _asyncio.TimeoutError:
+                    logger.warning(
+                        f"[RERANK_TIMEOUT] supplement_and_rerank timed out after 40s | "
+                        f"query_id={query_id} — using fast_chunks directly"
+                    )
+                    chunks = fast_chunks[:_retrieval_top_k] if fast_chunks else []
             except Exception as _retrieval_exc:
                 import traceback as _tb
                 logger.error(

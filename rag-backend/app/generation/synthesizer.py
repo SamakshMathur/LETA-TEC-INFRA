@@ -120,11 +120,12 @@ if LLM_PROVIDER == "anthropic":
     import httpx as _httpx
     _claude_client = _anthropic.Anthropic(
         api_key=ANTHROPIC_API_KEY,
-        # 15-minute read timeout — generous ceiling for the longest drafts/extended
-        # thinking, but prevents a stalled (not crashed) generation from hanging
-        # forever.  No ALB is in front of the ECS task, so there is no external
-        # idle-timeout to rely on.  Connect timeout catches DNS/network failures fast.
-        timeout=_httpx.Timeout(timeout=900.0, connect=10.0),
+        # 45-second read timeout — covers the longest non-thinking draft answers
+        # (typically 5-15s).  Reduced from 900s which caused invisible 15-minute hangs
+        # when the Anthropic API was slow from ECS; the retry loop (3 attempts with
+        # Haiku fallback) handles transient failures.  Connect timeout catches DNS /
+        # network failures fast.
+        timeout=_httpx.Timeout(timeout=45.0, connect=10.0),
     )
     logger.info(f"LLM Provider: Anthropic Claude ({CLAUDE_MAIN_MODEL}) with extended thinking")
 
