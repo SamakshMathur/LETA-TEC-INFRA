@@ -142,11 +142,8 @@ async def create_advisory_stream(
             system_prompt = ADVISORY_SYSTEM_PROMPT.format(rules_context=rules_text)
             user_message  = _build_user_message(req.query, context_to_use)
 
-            import httpx as _httpx
-            client = _anthropic.Anthropic(
-                api_key=ANTHROPIC_API_KEY,
-                timeout=_httpx.Timeout(timeout=900.0, connect=10.0),  # 15-min ceiling; no ALB in this deployment
-            )
+            from app.utils.anthropic_client import get_anthropic_client, TIMEOUT_SYNTHESIS
+            client = get_anthropic_client(timeout=TIMEOUT_SYNTHESIS, connect=10.0)
 
             full_text = ""
             with client.messages.stream(

@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 def _call_haiku(system: str, user: str) -> str:
     """Call Claude Haiku via the Anthropic client. Raises on failure."""
-    from app.config import ANTHROPIC_API_KEY, CLAUDE_UTILITY_MODEL
-    import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    from app.config import CLAUDE_UTILITY_MODEL
+    from app.utils.anthropic_client import get_anthropic_client, TIMEOUT_UTILITY
+    client = get_anthropic_client(timeout=TIMEOUT_UTILITY)
     msg = client.messages.create(
         model=CLAUDE_UTILITY_MODEL,
         max_tokens=512,

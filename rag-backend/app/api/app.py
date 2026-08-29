@@ -64,6 +64,19 @@ app = FastAPI(
 # Prevents live traffic from hitting a task that isn't ready to serve yet.
 _warmup_complete: bool = False
 
+# ── Canonical draft-detection keyword list ────────────────────────────────────
+# Shared by /ask (streaming) and /ask-sync so both endpoints classify draft
+# intent identically.  Add keywords here ONLY — never in one endpoint alone.
+_DRAFT_KW_CANONICAL = [
+    "draft", "notice", "reply", "appeal", "submission", "advisory", "scn", "show cause",
+    "drc-01", "drc 01", "asmt-10", "asmt 10", "drc-07", "drc 07", "drc-03", "drc 03",
+    "write a letter", "write letter", "prepare reply", "representation",
+    "response to notice", "respond to", "our understanding", "gst implications",
+    "gst implication", "provide opinion", "provide advisory", "our comments",
+    "tax position", "gst treatment of", "advise on", "legal opinion",
+    "our client is", "we are engaged in", "facts of the case",
+]
+
 @app.on_event("startup")
 async def _startup_tasks():
     """Seed feed store and pre-warm AI models in background."""
@@ -729,15 +742,7 @@ async def ask_question(request: Request, req: QuestionRequest):
         _complexity = _estimate_complexity(question)
         _q = question.lower()
 
-        _DRAFT_KW = [
-            "draft","notice","reply","appeal","submission","advisory","scn","show cause",
-            "drc-01","drc 01","asmt-10","asmt 10","drc-07","drc 07","drc-03","drc 03",
-            "write a letter","write letter","prepare reply","representation",
-            "response to notice","respond to","our understanding","gst implications",
-            "gst implication","provide opinion","provide advisory","our comments",
-            "tax position","gst treatment of","advise on","legal opinion",
-            "our client is","we are engaged in","facts of the case",
-        ]
+        _DRAFT_KW = _DRAFT_KW_CANONICAL
         # Definition/explanation queries must NEVER route to DRAFTING_PROMPT regardless
         # of session history. A plain knowledge query ("define X", "what is X",
         # "provide definition of X") has no missing facts and should never trigger
@@ -1383,12 +1388,7 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     calc_result = detect_and_calculate(question)
     calc_block = format_for_context(calc_result) if calc_result else ""
 
-    _DRAFT_KW = [
-        "draft", "notice", "reply", "appeal", "submission", "advisory", "scn", "show cause",
-        "drc-01", "drc 01", "asmt-10", "our understanding", "gst implications",
-        "provide opinion", "our comments", "tax position", "advise on",
-    ]
-    _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW)
+    _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW_CANONICAL)
 
     # Sync mode: use rule-based 4-angle multi-query (avoids extra LLM latency on the sync path).
     # Covers statutory, circular, notification, and factual angles — same structure as the

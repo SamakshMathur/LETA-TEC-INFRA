@@ -40,14 +40,8 @@ def _get_client():
     global _client
     if _client is not None:
         return _client
-    import anthropic
-    import httpx
-    # 15-minute read timeout — generous ceiling for complex advisory generation
-    # without leaving a stalled call hung forever (no ALB in this deployment).
-    _client = anthropic.Anthropic(
-        api_key=ANTHROPIC_API_KEY,
-        timeout=httpx.Timeout(timeout=900.0, connect=10.0),
-    )
+    from app.utils.anthropic_client import get_anthropic_client, TIMEOUT_SYNTHESIS
+    _client = get_anthropic_client(timeout=TIMEOUT_SYNTHESIS, connect=10.0)
     return _client
 
 

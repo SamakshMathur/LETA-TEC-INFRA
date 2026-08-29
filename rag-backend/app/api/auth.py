@@ -196,10 +196,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
 class AdminSeedRequest(BaseModel):
     master_secret: str
     contact: str

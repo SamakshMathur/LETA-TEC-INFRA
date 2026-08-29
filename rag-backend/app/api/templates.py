@@ -23,8 +23,8 @@ router = APIRouter()
 # ── LLM Client (uses configured provider) ────────────────────────────
 def get_ai_client():
     if LLM_PROVIDER == "anthropic":
-        import anthropic as _anthropic
-        return _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        from app.utils.anthropic_client import get_anthropic_client, TIMEOUT_UTILITY
+        return get_anthropic_client(timeout=TIMEOUT_UTILITY)
     else:
         import openai as _openai
         return _openai.OpenAI(api_key=OPENAI_API_KEY)

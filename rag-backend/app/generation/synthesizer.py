@@ -114,19 +114,14 @@ _claude_client = None
 _oai_client = None
 
 if LLM_PROVIDER == "anthropic":
-    import anthropic as _anthropic
     if not ANTHROPIC_API_KEY:
         logger.warning("ANTHROPIC_API_KEY not found — answer generation will fail")
-    import httpx as _httpx
-    _claude_client = _anthropic.Anthropic(
-        api_key=ANTHROPIC_API_KEY,
-        # 45-second read timeout — covers the longest non-thinking draft answers
-        # (typically 5-15s).  Reduced from 900s which caused invisible 15-minute hangs
-        # when the Anthropic API was slow from ECS; the retry loop (3 attempts with
-        # Haiku fallback) handles transient failures.  Connect timeout catches DNS /
-        # network failures fast.
-        timeout=_httpx.Timeout(timeout=45.0, connect=10.0),
-    )
+    from app.utils.anthropic_client import get_anthropic_client, TIMEOUT_SYNTHESIS
+    # 45-second read timeout — covers the longest non-thinking draft answers
+    # (typically 5-15s).  Reduced from 900s which caused invisible 15-minute hangs
+    # when the Anthropic API was slow from ECS; the retry loop (3 attempts with
+    # Haiku fallback) handles transient failures.
+    _claude_client = get_anthropic_client(timeout=TIMEOUT_SYNTHESIS, connect=10.0)
     logger.info(f"LLM Provider: Anthropic Claude ({CLAUDE_MAIN_MODEL}) with extended thinking")
 
 elif LLM_PROVIDER == "ollama":
