@@ -133,7 +133,7 @@ async def get_health(request: Request, current_admin: dict = Depends(get_current
     if mongodb_ok:
         try:
             db["telemetry_history"].insert_one({
-                "timestamp": datetime.utcnow(),
+                "timestamp": utc_now(),
                 "cpu_percent": cpu_val,
                 "ram_percent": ram_val
             })
@@ -179,7 +179,7 @@ async def get_health(request: Request, current_admin: dict = Depends(get_current
     return {
         "meta": {
             "api_version": "v1.5",
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": utc_now().isoformat(),
             "response_time_ms": duration_ms,
             "request_id": f"req_{uuid.uuid4().hex[:12]}"
         },
@@ -237,7 +237,7 @@ async def get_health(request: Request, current_admin: dict = Depends(get_current
             "environment": "development"
         },
         "startup_checks": startup_checks,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": utc_now().isoformat()
     }
 
 # ── Analytics ────────────────────────────────────────────────────────────────
@@ -284,14 +284,14 @@ async def get_analytics(current_admin: dict = Depends(get_current_admin)):
             total_tokens = prompt_tokens + completion_tokens
             
             # Active Users today
-            active_users = len(col.distinct("user_id", {"timestamp": {"$gte": datetime.utcnow() - timedelta(days=1)}}))
+            active_users = len(col.distinct("user_id", {"timestamp": {"$gte": utc_now() - timedelta(days=1)}}))
             if active_users == 0:
                 active_users = 1
                 
             # Daily queries list (last 7 days counts)
             daily_queries = []
             for i in range(6, -1, -1):
-                start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=i)
+                start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=i)
                 end = start + timedelta(days=1)
                 daily_queries.append(col.count_documents({"timestamp": {"$gte": start, "$lt": end}}))
                 
@@ -382,7 +382,7 @@ async def invite_member(payload: dict, current_admin: dict = Depends(get_current
         "phone": payload.get("phone", ""),
         "role": role,
         "status": "pending",
-        "sent_at": datetime.utcnow().isoformat()
+        "sent_at": utc_now().isoformat()
     }
     _invitations.append(inv)
     return {"status": "success", "invitation": inv}
@@ -478,8 +478,8 @@ async def create_key(payload: dict, current_admin: dict = Depends(get_current_ad
         "name": name,
         "prefix": f"let_live_{uuid.uuid4().hex[:6]}...",
         "role": role,
-        "created_at": datetime.utcnow().isoformat(),
-        "expires_at": (datetime.utcnow().replace(year=datetime.utcnow().year + 1)).isoformat(),
+        "created_at": utc_now().isoformat(),
+        "expires_at": (utc_now().replace(year=utc_now().year + 1)).isoformat(),
         "status": "active"
     }
     _api_keys.append(new_key)
@@ -509,7 +509,7 @@ async def create_webhook(payload: dict, current_admin: dict = Depends(get_curren
         "url": url,
         "events": payload.get("events", ["*"]),
         "status": "active",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": utc_now().isoformat()
     }
     _webhooks.append(new_wh)
     return new_wh
@@ -571,14 +571,15 @@ async def query_assistant(payload: dict, current_admin: dict = Depends(get_curre
     active_users = 0
     if db is not None:
         from datetime import timedelta
-        active_users = len(db["users"].distinct("username", {"last_login": {"$gte": datetime.utcnow() - timedelta(days=1)}}))
+from app.utils.time import utc_now
+        active_users = len(db["users"].distinct("username", {"last_login": {"$gte": utc_now() - timedelta(days=1)}}))
         if active_users == 0:
             active_users = db["users"].count_documents({})
 
     # 4. Circulars added today
     circulars_today = 0
     if db is not None:
-        start_of_day = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        start_of_day = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
         circulars_today = db["knowledge_base"].count_documents({
             "category": "circulars",
             "uploaded_at": {"$gte": start_of_day}

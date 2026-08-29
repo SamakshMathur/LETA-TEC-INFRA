@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.routing.router import route_query
 from app.generation.context_builder import build_context
+from app.api.rag_helpers import build_keyword_queries, build_unique_sources
 
 # ── Structured JSON logging setup ────────────────────────────────────────────
 # Each log line is a JSON object — queryable in CloudWatch Logs Insights.
@@ -204,6 +205,7 @@ _request_logger = logging.getLogger("leta.request")
 async def log_requests(request: Request, call_next):
     # Full query_id: LETA-YYYYMMDD-HHMMSS-XXXXXXXX (CloudWatch-searchable prefix)
     import datetime as _dt_mw
+from app.utils.time import utc_now
     _ts = _dt_mw.datetime.now().strftime("%Y%m%d-%H%M%S")
     _rand = str(uuid.uuid4()).replace("-", "")[:6].upper()
     query_id = f"LETA-{_ts}-{_rand}"
@@ -356,7 +358,7 @@ async def health_check():
             status_code=503,
             content={
                 "status": "warming_up",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": utc_now().isoformat(),
                 "message": "Model warmup in progress — retry in 30s",
             },
             headers={"Retry-After": "30"},
@@ -364,7 +366,7 @@ async def health_check():
 
     health_status = {
         "status": "active",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": utc_now().isoformat(),
         "systems": {
             "api": "ok",
             "database": "unknown",
@@ -416,44 +418,7 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
     # 1. Immediately emit metadata about retrieved sources (Perplexity-style transparency)
     if chunks:
         try:
-            unique_sources = []
-            seen_src = set()
-            import urllib.parse as _urlparse
-            for c in chunks:
-                _dedup_rel = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "") or c.get("source", "")
-                src_key = (_dedup_rel, c.get("page", 0))
-                if src_key not in seen_src:
-                    seen_src.add(src_key)
-                    _raw_src = c.get("source", "") or c.get("metadata", {}).get("source", "")
-                    _rel_path = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "")
-                    # Use rel_path for display name — it holds the real filename.
-                    _basename = os.path.basename(_rel_path) if _rel_path else os.path.basename(_raw_src)
-                    _enc_path = _urlparse.quote(_rel_path.replace("\\", "/"), safe="") if _rel_path else ""
-                    _enc_name = _urlparse.quote(_basename, safe="")
-                    _url = (
-                        f"/api/documents/view_by_path?path={_enc_path}"
-                        if _enc_path else
-                        f"/api/documents/view?category=all&filename={_enc_name}"
-                    )
-                    _snippet = (c.get("text") or "").strip()
-                    unique_sources.append({
-                        "title": _basename or "Document",
-                        "page": c.get("page", 1),
-                        "url": _url,
-                        "rel_path": _rel_path,
-                        "score": float(c.get("_rerank_score", 0)),
-                        "snippet": _snippet[:800] if _snippet else "",
-                    })
-                if len(unique_sources) >= 20:  # collect more, then sort + cap
-                    break
-
-            # Sort by relevance score — the reranker already encodes legal
-            # authority (30% weight) + semantic similarity (50%) + topic (20%).
-            # Most relevant doc wins regardless of type; linkifyLegalRefs no
-            # longer uses sources[0] as a fallback so AAR-as-first-link is gone.
-            unique_sources.sort(key=lambda s: s.get("score", 0), reverse=True)
-            unique_sources = unique_sources[:8]
-
+            unique_sources = build_unique_sources(chunks, max_sources=8)
             metadata_payload = {
                 "type": "metadata",
                 "sources": unique_sources
@@ -472,127 +437,31 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
         if chunks and full_answer.strip():
             # Use the session-level draft flag passed in — do not re-detect from
             # user_query alone, which breaks on follow-up/correction messages.
-            is_draft = is_draft_session or any(kw in user_query.lower() for kw in [
-                "draft","notice","reply","appeal","submission","advisory","scn",
-                "show cause","drc-01","drc 01","asmt-10","our understanding",
-                "gst implications","provide opinion","our comments","tax position",
-                "advise on","legal opinion","our client is","we are engaged in",
-            ])
-            
-            if not is_draft:
-                # --- Parallel Accuracy Pipeline ---
-                async def run_citation_validator():
-                    try:
-                        from app.generation.citation_validator import CitationValidator
-                        return CitationValidator.validate_citations(full_answer, chunks)
-                    except Exception as e:
-                        _logger.warning(f"Citation validator error: {e}")
-                        return full_answer
+            # Uses _DRAFT_KW_CANONICAL so detection matches the /ask routing logic.
+            is_draft = is_draft_session or any(kw in user_query.lower() for kw in _DRAFT_KW_CANONICAL)
 
-                async def run_answer_verifier():
-                    try:
-                        from app.generation.answer_verifier import verify_answer
-                        return await asyncio.to_thread(verify_answer, user_query, full_answer, chunks)
-                    except Exception as e:
-                        _logger.warning(f"Answer verifier error: {e}")
-                        return None
+            # ── Post-generation verification pipeline ─────────────────────────
+            # Runs citation validation, hallucination guard, authority verifier,
+            # and answer verifier in parallel.  All checks are non-fatal —
+            # errors in individual checks are logged and skipped.
+            from app.generation.verification_pipeline import run_verification_pipeline
+            vr = await run_verification_pipeline(
+                answer=full_answer,
+                query=user_query,
+                chunks=chunks,
+                context=context,
+                truth_rules_text=truth_rules_text,
+                marker_map=marker_map,
+                is_draft=is_draft,
+            )
 
-                async def run_authority_verifier():
-                    """Priority 10: Answer Verification Agent.
-                    Checks if the LLM answer cited every mandatory governing authority
-                    predicted by the authority taxonomy. Runs in ~1ms (string matching,
-                    no LLM call). Logs gaps for monitoring and future regression tracking."""
-                    try:
-                        from app.dependencies import get_retriever
-                        from app.retrieval.query_refiner import verify_answer_authority_coverage
-                        _ret = get_retriever()
-                        _tax = getattr(_ret, "_last_taxonomy", {})
-                        _cov = getattr(_ret, "_last_coverage", {})
-                        if _tax.get("confidence", 0) > 0 and (_tax.get("sections") or _tax.get("circulars")):
-                            _av = verify_answer_authority_coverage(user_query, full_answer, _tax, _cov)
-                            if _av["verdict"] != "pass":
-                                _logger.warning(
-                                    f"[AUTHORITY_VERIFY] verdict={_av['verdict']} | "
-                                    f"topics={_tax.get('topics')} | "
-                                    f"cited={_av['cited']} | "
-                                    f"missing={_av['missing']} | "
-                                    f"note={_av['note']}"
-                                )
-                        return None
-                    except Exception as e:
-                        _logger.warning(f"Authority verifier error: {e}")
-                        return None
+            # Stream verifier warning to user if a logical contradiction was found
+            if vr.verifier_warning:
+                yield vr.verifier_warning
 
-                async def run_hallucination_guard():
-                    try:
-                        from app.generation.hallucination_guard import check_hallucinated_numbers
-                        # Build marker → chunk-text map so the guard can verify each
-                        # numeric claim against the SPECIFIC chunk it was cited from,
-                        # not just whether the number appears anywhere in the context blob.
-                        # e.g. answer says "18% (S3)" but S3's text says "5%" → flagged.
-                        _sn_map = {
-                            f"S{i+1}": (chunks[i].get("text") or "")
-                            for i in range(len(chunks))
-                        } if chunks else None
-                        return check_hallucinated_numbers(
-                            full_answer, context, truth_rules_text, chunks,
-                            sn_text_map=_sn_map,
-                        )
-                    except Exception as e:
-                        _logger.warning(f"Hallucination guard error: {e}")
-                        return ""
-
-                async def run_template_matcher():
-                    try:
-                        from app.retrieval.template_matcher import search_templates, format_template_suggestions
-                        matched = await asyncio.to_thread(search_templates, user_query, top_k=3)
-                        return format_template_suggestions(matched)
-                    except Exception as e:
-                        _logger.warning(f"Template matcher error: {e}")
-                        return ""
-
-                try:
-                    results = await asyncio.wait_for(
-                        asyncio.gather(
-                            run_citation_validator(),
-                            run_hallucination_guard(),
-                            run_authority_verifier(),
-                            run_answer_verifier(),
-                        ),
-                        timeout=12.0,  # extended: answer_verifier makes an LLM call
-                    )
-                except asyncio.TimeoutError:
-                    _logger.warning("Post-generation validators timed out — skipping")
-                    results = (full_answer, "", None, None)
-
-                _, hallu_warn, _, verifier_warn = results
-
-                # Hallucination guard — log only (number issues are low-signal noise)
-                if hallu_warn:
-                    _logger.warning(f"Hallucination guard: {hallu_warn[:300]}")
-
-                # Answer verifier — stream visible warning to user when a contradiction
-                # is detected (e.g., cites Section 17(5) but concludes ITC is available)
-                if verifier_warn:
-                    _logger.warning(f"Answer verifier flagged: {verifier_warn[:200]}")
-                    yield verifier_warn
-
-                # ── Phase 2: emit resolved [Sn] citations as a structured block ──
-                # The frontend replaces [S1] inline markers with real document links
-                # using this map — no guessing, no regex scoring.
-                if marker_map:
-                    try:
-                        from app.generation.context_builder import parse_markers
-                        citation_result = parse_markers(full_answer, marker_map)
-                        if citation_result["citations"] or citation_result["unresolved"]:
-                            citations_payload = {
-                                "type": "citations",
-                                "citations": citation_result["citations"],
-                                "unresolved": citation_result["unresolved"],
-                            }
-                            yield f"__CITATIONS__:{json.dumps(citations_payload)}__END_CITATIONS__"
-                    except Exception as _ce:
-                        _logger.debug(f"Citation parser error (non-fatal): {_ce}")
+            # Emit resolved [Sn] citation block for frontend link resolution
+            if vr.citations_block:
+                yield vr.citations_block
 
                 # ── Safety guards: compute confidence and append caveat if needed ──
                 try:
@@ -621,7 +490,7 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             if collection is not None:
                 try:
                     from datetime import timezone as _tz
-                    _now = datetime.now(_tz.utc)
+                    _now = utc_now()
                     await asyncio.to_thread(
                         collection.update_one,
                         {"session_id": session_id},
@@ -700,7 +569,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                         "message_id": str(uuid.uuid4()),
                         "role": "user",
                         "content": question,
-                        "timestamp": datetime.now(_tz.utc),
+                        "timestamp": utc_now(),
                     }},
                     "$inc": {"message_count": 1},
                 }
@@ -956,18 +825,12 @@ async def ask_question(request: Request, req: QuestionRequest):
         yield f"__STATUS__:{json.dumps({'msg': f'Searching Statutory Database ({domain_label})...'})}__END_STATUS__"
 
         if _is_draft:
-            # Draft: rule-based sub-queries, no LLM expansion call needed
-            _statute_q  = _retrieval_q + " section rule act provisions conditions eligibility liability"
-            _caselaw_q  = _retrieval_q + " high court supreme court judgment held ruling decision AAR"
-            _circular_q = _retrieval_q + " CBIC circular notification clarification instruction"
-            _adv = {
-                "queries": [_retrieval_q, _statute_q, _caselaw_q, _circular_q],
-                "hyde_document": "", "topic": "General", "subtopic": None,
-            }
+            # Draft: keyword sub-queries via shared helper (no LLM call)
+            _adv = build_keyword_queries(_retrieval_q, is_draft=True)
             # Record preprocessing before handing off to retriever
             _trace.record_preprocessing(
                 original_query=question, refined_query=_retrieval_q,
-                sub_queries=[_statute_q, _caselaw_q, _circular_q],
+                sub_queries=_adv["queries"][1:],
                 topic="General", domain_route=domain_paths,
                 complexity_score=_complexity, response_mode="draft",
             )
@@ -993,22 +856,10 @@ async def ask_question(request: Request, req: QuestionRequest):
                 )
 
             def _expand():
-                # Keyword-only expansion — no LLM call, instant, never hangs.
-                # Produces 4 angle-specific sub-queries that cover statute / circular /
-                # notification / factual retrieval without a network round-trip.
-                # LLM-based HyDE expansion was causing 20-75s pipeline stalls when the
-                # Anthropic API was slow from ECS; keyword expansion is equally effective
-                # for retrieval recall on most GST queries.
-                _q = _retrieval_q
-                _statute_q  = _q + " section rule act provisions eligibility conditions liability"
-                _circular_q = _q + " CBIC circular notification clarification instruction"
-                _notif_q    = _q + " notification exemption rate schedule entry"
-                return {
-                    "queries": [_q, _statute_q, _circular_q, _notif_q],
-                    "hyde_document": "",
-                    "topic": "General",
-                    "subtopic": None,
-                }
+                # Keyword-only expansion via shared helper — no LLM call, instant.
+                # Previously inline here; now in rag_helpers.build_keyword_queries()
+                # so /ask and /ask-sync always produce the same sub-query structure.
+                return build_keyword_queries(_retrieval_q, is_draft=False)
 
             try:
                 # ── Parallel: fast keyword retrieve + keyword query expansion ─────────
@@ -1319,7 +1170,6 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
             return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
 
     import asyncio as _asyncio
-    import urllib.parse as _urlparse
     from fastapi.responses import JSONResponse as _JSONResponse
     from app.routing.router import route_query as _route_query
     from app.generation.synthesizer import _estimate_complexity, synthesize_answer_stream as _synth_stream
@@ -1342,7 +1192,7 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
                         "message_id": str(uuid.uuid4()),
                         "role": "user",
                         "content": question,
-                        "timestamp": datetime.now(_tz.utc),
+                        "timestamp": utc_now(),
                     }},
                     "$inc": {"message_count": 1},
                 }
@@ -1390,30 +1240,11 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
 
     _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW_CANONICAL)
 
-    # Sync mode: use rule-based 4-angle multi-query (avoids extra LLM latency on the sync path).
-    # Covers statutory, circular, notification, and factual angles — same structure as the
-    # LLM expansion but keyword-driven so it completes in microseconds.
+    # Sync mode: keyword 4-angle multi-query via shared helper — no LLM call.
+    # build_keyword_queries() is the single source of truth for sub-query structure;
+    # /ask (streaming) uses the same function so both paths stay in sync.
     refined_q = question
-    if _is_draft:
-        advanced_queries = {
-            "queries": [
-                refined_q,
-                refined_q + " section rule act provisions conditions eligibility liability",
-                refined_q + " high court supreme court judgment held ruling decision AAR",
-                refined_q + " CBIC circular notification clarification instruction",
-            ],
-            "hyde_document": "", "topic": "General", "subtopic": None,
-        }
-    else:
-        advanced_queries = {
-            "queries": [
-                refined_q,
-                refined_q + " section CGST Act rule proviso conditions eligibility",
-                refined_q + " CBIC Circular clarification instruction",
-                refined_q + " GST Notification Central Tax Rate exemption 2017 2018 2019 2020 2021 2022 2023 2024 2025",
-            ],
-            "hyde_document": "", "topic": "General", "subtopic": None,
-        }
+    advanced_queries = build_keyword_queries(refined_q, is_draft=_is_draft)
 
     retriever = get_retriever()
     # CrossEncoder reranking enabled: ms-marco-MiniLM-L-6-v2 runs in ~200-400ms
@@ -1455,40 +1286,13 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     # Resolve (S1), (S2), … markers in the generated answer → structured citation list
     _citation_result_sync = _parse_markers(answer, _marker_map_sync)
 
-    unique_sources: list = []
-    seen_src: set = set()
-    for c in chunks:
-        _dedup_rel = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "") or c.get("source", "")
-        src_key = (_dedup_rel, c.get("page", 0))
-        if src_key not in seen_src:
-            seen_src.add(src_key)
-            _raw_src = c.get("source", "") or c.get("metadata", {}).get("source", "")
-            _rel_path = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "")
-            _basename = os.path.basename(_rel_path) if _rel_path else os.path.basename(_raw_src)
-            _enc_path = _urlparse.quote(_rel_path.replace("\\", "/"), safe="") if _rel_path else ""
-            _enc_name = _urlparse.quote(_basename, safe="")
-            _url = (
-                f"/api/documents/view_by_path?path={_enc_path}"
-                if _enc_path else
-                f"/api/documents/view?category=all&filename={_enc_name}"
-            )
-            _snippet = (c.get("text") or "").strip()
-            unique_sources.append({
-                "title": _basename or "Document",
-                "page": c.get("page", 1),
-                "url": _url,
-                "rel_path": _rel_path,
-                "score": float(c.get("_rerank_score", 0)),
-                "snippet": _snippet[:800] if _snippet else "",
-            })
-        if len(unique_sources) >= 8:
-            break
+    unique_sources = build_unique_sources(chunks, max_sources=8)
 
     if session_id and answer.strip():
         collection = get_session_collection()
         if collection is not None:
             from datetime import timezone as _tz
-            _now = datetime.now(_tz.utc)
+            _now = utc_now()
             collection.update_one(
                 {"session_id": session_id},
                 {
@@ -1599,7 +1403,7 @@ async def _execute_ask_question_with_file(
                         "message_id": str(uuid.uuid4()),
                         "role": "user",
                         "content": question_text,
-                        "timestamp": datetime.now(_tz.utc),
+                        "timestamp": utc_now(),
                     }},
                     "$inc": {"message_count": 1},
                 }
@@ -1732,7 +1536,7 @@ async def submit_feedback(request: Request, req: FeedbackRequest):
                 "rating": req.rating,
                 "comment": req.comment,
                 "user": "anonymous",
-                "timestamp": datetime.now(),
+                "timestamp": utc_now(),
             })
         _fb_logger.info(f"Feedback recorded | rating={req.rating} | q={req.question[:60]}")
         return {"status": "recorded", "rating": req.rating}

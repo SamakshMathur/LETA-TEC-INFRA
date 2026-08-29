@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from app.utils.time import utc_now
 from typing import Any, Optional
 
 from fastapi import Request
@@ -68,7 +69,7 @@ def log_activity(
             "username": _get_user_value(user, "username"),
             "phone": _get_user_value(user, "phone"),
             "email": _get_user_value(user, "email"),
-            "timestamp": datetime.utcnow(),
+            "timestamp": utc_now(),
             "action": action,
             "category": category,
             "metadata": metadata or {},

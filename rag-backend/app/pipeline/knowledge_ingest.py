@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 from datetime import datetime
+from app.utils.time import utc_now
 from typing import List, Dict
 
 import faiss
@@ -92,7 +93,7 @@ def update_status(doc_id: str, status: str, chunk_count: int = 0, error_message:
         if db is not None:
             update_data = {
                 "status": status,
-                "last_modified": datetime.utcnow()
+                "last_modified": utc_now()
             }
             if chunk_count > 0:
                 update_data["chunk_count"] = chunk_count
@@ -106,7 +107,7 @@ def update_status(doc_id: str, status: str, chunk_count: int = 0, error_message:
             
             # Log status updates in audit logs
             db["knowledge_audit_logs"].insert_one({
-                "timestamp": datetime.utcnow(),
+                "timestamp": utc_now(),
                 "user_id": "system",
                 "action": "status_update",
                 "document_id": doc_id,

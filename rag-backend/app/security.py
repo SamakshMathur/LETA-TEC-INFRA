@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from app.utils.time import utc_now
 import os
 import logging
 import jwt
@@ -38,7 +39,7 @@ def create_access_token(
 
     to_encode = data.copy()
 
-    expire = datetime.now(timezone.utc) + (
+    expire = utc_now() + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
@@ -58,7 +59,7 @@ def create_refresh_token(data: dict) -> str:
 
     to_encode = data.copy()
 
-    expire = datetime.now(timezone.utc) + timedelta(
+    expire = utc_now() + timedelta(
         days=REFRESH_TOKEN_EXPIRE_DAYS
     )
 
@@ -173,7 +174,7 @@ async def get_current_user(
             # MongoDB returns naive datetimes; treat as UTC
             if session_end.tzinfo is None:
                 session_end = session_end.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) > session_end:
+            if utc_now() > session_end:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Session expired. Please log in again."

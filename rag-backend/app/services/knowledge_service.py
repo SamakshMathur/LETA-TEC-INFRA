@@ -3,6 +3,7 @@ import uuid
 import logging
 from pathlib import Path
 from datetime import datetime
+from app.utils.time import utc_now
 from typing import List, Dict, Optional, Tuple
 
 from app.database import get_db
@@ -64,8 +65,8 @@ class KnowledgeService:
             "document_type": ext,
             "tags": tags or [],
             "uploader": uploader,
-            "uploaded_at": datetime.utcnow(),
-            "effective_date": effective_date or datetime.utcnow().strftime("%Y-%m-%d"),
+            "uploaded_at": utc_now(),
+            "effective_date": effective_date or utc_now().strftime("%Y-%m-%d"),
             "version": 1,
             "status": "Queued",
             "chunk_count": 0,
@@ -79,7 +80,7 @@ class KnowledgeService:
         if db is not None:
             db["knowledge_base"].insert_one(metadata)
             db["knowledge_audit_logs"].insert_one({
-                "timestamp": datetime.utcnow(),
+                "timestamp": utc_now(),
                 "user_id": uploader,
                 "action": "Upload",
                 "document_id": document_id,
@@ -121,7 +122,7 @@ class KnowledgeService:
         )
 
         db["knowledge_audit_logs"].insert_one({
-            "timestamp": datetime.utcnow(),
+            "timestamp": utc_now(),
             "user_id": uploader,
             "action": "Archive",
             "document_id": doc_id,
@@ -147,7 +148,7 @@ class KnowledgeService:
                 {"$set": {"version": old_doc["version"] + 1}}
             )
             db["knowledge_audit_logs"].insert_one({
-                "timestamp": datetime.utcnow(),
+                "timestamp": utc_now(),
                 "user_id": uploader,
                 "action": "Replace",
                 "document_id": new_doc_id,
@@ -170,7 +171,7 @@ class KnowledgeService:
                 {"$set": {"is_active": False, "status": "Archived"}}
             )
             db["knowledge_audit_logs"].insert_one({
-                "timestamp": datetime.utcnow(),
+                "timestamp": utc_now(),
                 "user_id": user_id,
                 "action": "Archive",
                 "document_id": doc_id,
@@ -192,7 +193,7 @@ class KnowledgeService:
                 return {"status": "error", "message": "Document not found"}
 
             db["knowledge_audit_logs"].insert_one({
-                "timestamp": datetime.utcnow(),
+                "timestamp": utc_now(),
                 "user_id": user_id,
                 "action": "Re-index",
                 "document_id": doc_id,

@@ -6,6 +6,7 @@ import hashlib
 import time
 
 from datetime import datetime, timedelta, timezone
+from app.utils.time import utc_now
 from typing import Literal, Optional
 
 import requests as _requests
@@ -378,7 +379,7 @@ def _build_auth_response(user_info: dict, session_end_ms: Optional[int] = None):
         "sub": user_info["username"]
     })
 
-    now = int(datetime.now(timezone.utc).timestamp() * 1000)
+    now = int(utc_now().timestamp() * 1000)
 
     tokens = {
         "accessToken": access_token,
@@ -511,7 +512,7 @@ async def register_user(request: Request, user: UserRegister):
         "verified": False,
         "role": "user",
         "plan": "basic",
-        "created_at": datetime.utcnow(),
+        "created_at": utc_now(),
         "last_login": None,
     })
 
@@ -586,7 +587,7 @@ async def send_otp(request: Request, req: SendOTPRequest):
             "gender": "Prefer not to say",
             "verified": False,
             "role": "user",
-            "created_at": datetime.utcnow(),
+            "created_at": utc_now(),
             "last_login": None,
         }
 
@@ -621,7 +622,7 @@ async def send_otp(request: Request, req: SendOTPRequest):
             field: req.contact
         })
 
-    now = datetime.utcnow()
+    now = utc_now()
     one_hour_ago = now - timedelta(hours=1)
 
     otp_record = otp_col.find_one({
@@ -747,7 +748,7 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
             detail="No pending OTP found",
         )
 
-    if datetime.utcnow() > otp_record["expires_at"]:
+    if utc_now() > otp_record["expires_at"]:
 
         otp_col.delete_one({
             "contact": req.contact
@@ -832,7 +833,7 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
 
     role    = user.get("role", "user")
     plan    = user.get("plan", "basic")
-    now_utc = datetime.now(timezone.utc)
+    now_utc = utc_now()
     now_ms  = int(now_utc.timestamp() * 1000)
 
     # Session timer is NOT started at login — it only starts after payment (see payments.py).

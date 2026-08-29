@@ -35,6 +35,7 @@ import os
 import threading
 from collections import defaultdict
 from datetime import datetime, timezone
+from app.utils.time import utc_now
 from pathlib import Path
 from typing import Any
 
@@ -82,7 +83,7 @@ class RetrievalLogger:
     ) -> None:
         """Enqueues a log entry (non-blocking)."""
         entry = {
-            "ts":           datetime.now(timezone.utc).isoformat(),
+            "ts":           utc_now().isoformat(),
             "query":        query,
             "topics":       topics,
             "retrieved":    retrieved[:20],  # cap to avoid bloat

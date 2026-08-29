@@ -2,6 +2,7 @@ import logging
 import uuid
 import json
 from datetime import datetime
+from app.utils.time import utc_now
 from app.database import get_db
 from app.config import ai_log_context
 
@@ -19,7 +20,7 @@ def init_ai_log(
     """Initializes the AI log context for the current request context."""
     log_data = {
         "query_id": request_id or str(uuid.uuid4()),
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
         "user_id": user_id,
         "username": username,
         "endpoint": endpoint,
@@ -68,7 +69,7 @@ def commit_ai_log(success: bool = True, http_status: int = 200, error_message: s
     # Calculate total latency
     start_time = log_data.get("timestamp")
     if start_time:
-        delta = datetime.utcnow() - start_time
+        delta = utc_now() - start_time
         log_data["total_latency_ms"] = round(delta.total_seconds() * 1000.0, 2)
 
     # Estimate prompt/completion tokens if not explicitly set

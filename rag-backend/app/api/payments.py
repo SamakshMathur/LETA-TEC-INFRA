@@ -20,6 +20,7 @@ import hmac
 import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
+from app.utils.time import utc_now
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
@@ -70,7 +71,7 @@ def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str)
     """
     plan_cfg       = PLANS.get(plan_id, {})
     duration_hours = plan_cfg.get("duration_hours", 1)
-    now_utc        = datetime.now(timezone.utc)
+    now_utc        = utc_now()
     session_end_dt = now_utc + timedelta(hours=duration_hours)
     session_end_ms = int(session_end_dt.timestamp() * 1000)
     plan_name      = "pro" if duration_hours >= 3 else "basic"
@@ -117,7 +118,7 @@ def _claim_payment_id(payment_id: str, username: str, plan_id: str, order_id: st
             "order_id":   order_id,
             "user_id":    username,
             "plan_id":    plan_id,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": utc_now(),
         })
         return True
     except DuplicateKeyError:
@@ -188,7 +189,7 @@ def create_order(request: Request, req: CreateOrderRequest, current_user: dict =
                 "user_id":    username,
                 "plan_id":    req.plan_id,
                 "module":     req.module,
-                "created_at": datetime.now(timezone.utc),
+                "created_at": utc_now(),
             })
         except DuplicateKeyError:
             pass  # same order somehow submitted twice — already recorded
