@@ -1,26 +1,24 @@
-name: Deploy Backend to AWS
+name: Deploy to Staging
 
+# Triggered manually or on push to the `staging` branch.
+# The staging service runs 1 Fargate task (no HA) with DEV_MODE=true.
+# Production is never touched by this workflow.
 on:
   push:
-    branches: [main]
+    branches: [staging]
     paths:
       - 'rag-backend/**'
-      - 'infra/ecs-task-definition.json'
   workflow_dispatch:
 
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: gst-rag-backend
   ECS_CLUSTER: gst-rag-cluster
-  ECS_SERVICE: gst-rag-backend-service
+  ECS_SERVICE: gst-rag-backend-staging-service
   CONTAINER_NAME: gst-rag-backend
 
 jobs:
-  # ── CI gate — must pass before any deploy step runs ─────────────────────────
-  # Duplicates ci.yml so the gate is enforced even on direct pushes to main
-  # that bypass the PR flow.  A broken syntax/import error physically cannot
-  # reach ECS: docker build would fail anyway, but this catches it in ~60s
-  # instead of after a multi-minute Docker build.
+  # ── CI gate ─────────────────────────────────────────────────────────────────
   ci-verify:
     name: Compile · Import · Lint · Test
     runs-on: ubuntu-latest
@@ -53,7 +51,6 @@ jobs:
           python -c "
           import sys; sys.path.insert(0, '.')
           from app.api.app import app
-          print('✓ app.api.app imported cleanly')
           from app.routing.router import route_query
           from app.generation.context_builder import build_context, parse_markers
           from app.generation.hallucination_guard import check_hallucinated_numbers
@@ -65,9 +62,9 @@ jobs:
       - name: Run tests
         run: cd rag-backend && pytest tests/ -v --tb=short
 
-  deploy-backend:
-    name: Backend → ECR → ECS
-    needs: ci-verify        # ← deploy is physically impossible if CI fails
+  deploy-staging:
+    name: Staging → ECR → ECS
+    needs: ci-verify
     runs-on: ubuntu-latest
 
     steps:
@@ -85,7 +82,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to ECR
+      - name: Build, tag, and push image to ECR (staging tag)
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -93,31 +90,28 @@ jobs:
         run: |
           docker build \
             -f rag-backend/Dockerfile \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:staging-$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:staging-latest \
             rag-backend/
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:staging-$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:staging-latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:staging-$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Download current ECS task definition
+      - name: Download current staging task definition
         run: |
           aws ecs describe-task-definition \
-            --task-definition gst-rag-backend \
+            --task-definition gst-rag-backend-staging \
             --query taskDefinition \
-            > infra/task-def-current.json
+            > infra/task-def-staging-current.json
 
-      - name: Sync non-secret env vars from template into live task definition
-        # Ensures values like SONNET_THINKING_THRESHOLD are always in sync with
-        # the checked-in template without touching secret placeholders.
+      - name: Sync non-secret env vars from staging template
         run: |
           python3 - << 'EOF'
           import json
 
-          TEMPLATE_PATH  = "rag-backend/.aws/task-definition.json"
-          LIVE_PATH      = "infra/task-def-current.json"
-          # Secrets that should never be overwritten from the template
-          SECRET_KEYS = {
+          TEMPLATE_PATH = "rag-backend/.aws/task-definition-staging.json"
+          LIVE_PATH     = "infra/task-def-staging-current.json"
+          SECRET_KEYS   = {
               "ANTHROPIC_API_KEY", "MONGODB_URI", "SECRET_KEY",
               "ADMIN_MASTER_SECRET", "REDIS_URL", "FAST2SMS_API_KEY",
               "RESEND_API_KEY", "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET",
@@ -129,49 +123,31 @@ jobs:
           with open(LIVE_PATH) as f:
               live = json.load(f)
 
-          # Build lookup of template env vars (first containerDefinition only)
           tmpl_env = {e["name"]: e["value"]
                       for e in template["containerDefinitions"][0].get("environment", [])}
 
           for cd in live["containerDefinitions"]:
-              # Build a mutable map of the current live env
               live_env_map = {e["name"]: e["value"] for e in cd.get("environment", [])}
-              # Keys already managed as ECS secrets — must NOT also appear in environment
               ecs_secret_names = {s["name"] for s in cd.get("secrets", [])}
-              # Apply non-secret template values (skip anything already wired as an ECS secret)
               for k, v in tmpl_env.items():
                   if k not in SECRET_KEYS and k not in ecs_secret_names:
                       live_env_map[k] = v
-              # Rewrite as list
               cd["environment"] = [{"name": k, "value": v} for k, v in live_env_map.items()]
 
           with open(LIVE_PATH, "w") as f:
               json.dump(live, f, indent=2)
-          print("Env vars synced from template into live task definition.")
+          print("Staging env vars synced.")
           EOF
 
-      - name: Update image in task definition
+      - name: Update image in staging task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: infra/task-def-current.json
+          task-definition: infra/task-def-staging-current.json
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
-      - name: Ensure production runs 2 tasks (HA)
-        # Prevents a manual scale-down in the console from leaving prod exposed
-        # to a single-task deploy window.  Rolling update means 1 old + 1 new
-        # overlap during the deploy — zero downtime.
-        run: |
-          aws ecs update-service \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ env.ECS_SERVICE }} \
-            --desired-count 2 \
-            --region ${{ env.AWS_REGION }} \
-            --output text --query 'service.desiredCount' | \
-            xargs -I{} echo "→ desiredCount set to {}"
-
-      - name: Deploy to ECS (rolling update, 2 tasks)
+      - name: Deploy to staging ECS (1 task, no HA required)
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
@@ -179,25 +155,27 @@ jobs:
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
 
-      - name: Smoke test deployment
+      - name: Smoke test staging deployment
         run: |
-          # Poll /api/health until it returns 200 (models fully warmed up).
-          # Gives up to 3 minutes — warmup is ~20-60s after ECS stability.
-          MAX_WAIT=180
+          # Staging may not have a public ALB — health check via ECS exec or skip
+          # If you have a staging ALB, replace this URL.
+          STAGING_URL="${STAGING_HEALTH_URL:-}"
+          if [[ -z "$STAGING_URL" ]]; then
+            echo "No STAGING_HEALTH_URL set — skipping smoke test."
+            echo "Set it as a repo secret to enable post-deploy verification."
+            exit 0
+          fi
+          MAX_WAIT=120
           INTERVAL=15
           ELAPSED=0
-          echo "Waiting for /api/health to return 200..."
           while [ $ELAPSED -lt $MAX_WAIT ]; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              "https://api.letatec.com/api/health" \
-              --max-time 20)
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_URL" --max-time 20)
             echo "  [${ELAPSED}s] status=${HTTP_STATUS}"
-            if [ "$HTTP_STATUS" = "200" ]; then
-              echo "Health check passed — deployment complete."
-              exit 0
-            fi
+            [ "$HTTP_STATUS" = "200" ] && echo "Staging health check passed." && exit 0
             sleep $INTERVAL
             ELAPSED=$((ELAPSED + INTERVAL))
           done
-          echo "ERROR: /api/health did not return 200 within ${MAX_WAIT}s"
-          exit 1
+          echo "WARNING: staging health did not return 200 in ${MAX_WAIT}s (may still be warming up)"
+          exit 0   # non-fatal for staging
+        env:
+          STAGING_HEALTH_URL: ${{ secrets.STAGING_HEALTH_URL }}

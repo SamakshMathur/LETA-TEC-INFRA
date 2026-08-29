@@ -158,5 +158,245 @@
     "gold_sources": ["Notification", "notifications", "rules"],
     "gold_answer_concepts": ["HSN", "5 Crore", "invoice"],
     "expected_logic": "For turnover above Rs. 5 Crore, 6-digit HSN code is mandatory on invoices as per the latest notification."
+  },
+  {
+    "id": "GST_021",
+    "category": "ITC Time Limit",
+    "query": "Can I claim ITC on a tax invoice dated April 2022 when filing my GSTR-3B for October 2023?",
+    "gold_sources": ["Section_16", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["Section 16(4)", "time limit", "November", "annual return"],
+    "expected_logic": "ITC on invoices for FY 2021-22 had to be availed by 30th November 2022 or date of filing GSTR-9 for FY 2021-22, whichever is earlier. The claim in October 2023 is time-barred under Section 16(4)."
+  },
+  {
+    "id": "GST_022",
+    "category": "Mixed Supply",
+    "query": "I sell a gift hamper containing chocolates, dry fruits, and a pen. How is GST rate determined?",
+    "gold_sources": ["Section_8", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["mixed supply", "composite supply", "highest rate", "Section 8"],
+    "expected_logic": "A gift hamper with unrelated items at a single price is a mixed supply under Section 8. GST applies at the highest rate among all items in the hamper."
+  },
+  {
+    "id": "GST_023",
+    "category": "ITC Motor Vehicle",
+    "query": "Can I claim ITC on purchase of a car for business purposes?",
+    "gold_sources": ["Section_17", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["Section 17(5)", "motor vehicle", "blocked", "furtherance of business"],
+    "expected_logic": "ITC on motor vehicles for transportation of persons (seating capacity up to 13) is blocked under Section 17(5)(a) unless the vehicle is used for specified purposes like transportation of goods, driving training, etc."
+  },
+  {
+    "id": "GST_024",
+    "category": "Import Goods",
+    "query": "I imported goods worth USD 10,000. On what value is IGST calculated and who pays it?",
+    "gold_sources": ["IGST_Act", "igst", "Section_5"],
+    "gold_answer_concepts": ["IGST", "CIF", "customs duty", "assessable value", "importer"],
+    "expected_logic": "IGST on imports is levied on the transaction value (CIF value + customs duty + other charges) under Section 5 of IGST Act. The importer pays IGST at the time of customs clearance and can later claim it as ITC."
+  },
+  {
+    "id": "GST_025",
+    "category": "E-Commerce Operator",
+    "query": "I sell restaurant food through Swiggy. Who is liable to pay GST — me or Swiggy?",
+    "gold_sources": ["Section_9", "CGST_Act", "notifications", "cgst"],
+    "gold_answer_concepts": ["Section 9(5)", "e-commerce operator", "restaurant", "liable"],
+    "expected_logic": "For restaurant services supplied through ECOs like Swiggy or Zomato, the ECO (Swiggy) is liable to pay GST under Section 9(5) instead of the actual restaurant supplier."
+  },
+  {
+    "id": "GST_026",
+    "category": "Input Service Distributor",
+    "query": "My head office in Delhi receives an invoice for a common service benefiting branches in Mumbai and Bangalore. How is ITC distributed?",
+    "gold_sources": ["Section_20", "Rule_39", "CGST_Act", "cgst", "rules"],
+    "gold_answer_concepts": ["ISD", "Input Service Distributor", "Rule 39", "pro-rata", "turnover"],
+    "expected_logic": "Head office can register as Input Service Distributor (ISD) under Section 20. ITC is distributed to branches in proportion to their turnover in the period as per Rule 39."
+  },
+  {
+    "id": "GST_027",
+    "category": "Works Contract",
+    "query": "I am a contractor building a commercial complex for a private client. What is the GST rate on works contract services?",
+    "gold_sources": ["Notification", "notifications", "Schedule", "rules"],
+    "gold_answer_concepts": ["works contract", "18%", "construction", "commercial"],
+    "expected_logic": "Works contract services for construction of commercial buildings attract GST at 18% (9% CGST + 9% SGST). The rate differs for affordable housing and government works which attract 12% or lower."
+  },
+  {
+    "id": "GST_028",
+    "category": "Export of Services",
+    "query": "I provide IT consulting services to a US company and receive payment in USD. Do I need to pay GST?",
+    "gold_sources": ["IGST_Act", "igst", "Section_16"],
+    "gold_answer_concepts": ["zero-rated", "export of services", "LUT", "IGST refund"],
+    "expected_logic": "Export of services is zero-rated under Section 16 of IGST Act. You can export without payment of tax under LUT (Letter of Undertaking) and claim refund of unutilized ITC, or pay IGST and claim refund."
+  },
+  {
+    "id": "GST_029",
+    "category": "Refund - Inverted Duty",
+    "query": "I manufacture textiles. My input GST rate (12%) is higher than output GST rate (5%). Can I claim refund of accumulated ITC?",
+    "gold_sources": ["Section_54", "Rule_89", "CGST_Act", "cgst", "rules"],
+    "gold_answer_concepts": ["inverted duty structure", "Section 54(3)", "accumulated ITC", "refund"],
+    "expected_logic": "Refund of accumulated ITC due to inverted duty structure is allowed under Section 54(3)(ii). The refund is calculated as per the formula in Rule 89(5) based on turnover of inverted rated supply."
+  },
+  {
+    "id": "GST_030",
+    "category": "Fraud Assessment",
+    "query": "The department alleges I have fraudulently claimed ITC. Under which section will the case proceed and what is the time limit?",
+    "gold_sources": ["Section_74", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["Section 74", "fraud", "5 years", "150%", "penalty"],
+    "expected_logic": "Fraud cases are adjudicated under Section 74. Time limit for issuing SCN is 5 years from the due date of annual return. Penalty can be up to 100% of tax (plus mandatory penalty of 15% for appeal pre-deposit)."
+  },
+  {
+    "id": "GST_031",
+    "category": "Anti-Profiteering",
+    "query": "GST rate on my product was reduced from 18% to 12%. My customer claims I have not passed on the benefit. What law applies?",
+    "gold_sources": ["Section_171", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["Section 171", "anti-profiteering", "NAA", "commensurate reduction"],
+    "expected_logic": "Section 171 requires suppliers to pass on the benefit of GST rate reductions or ITC increase to recipients through commensurate price reduction. Non-compliance leads to anti-profiteering proceedings."
+  },
+  {
+    "id": "GST_032",
+    "category": "SEZ Supply",
+    "query": "I supply goods to a unit in a Special Economic Zone. What is the GST treatment?",
+    "gold_sources": ["IGST_Act", "igst", "Section_16"],
+    "gold_answer_concepts": ["SEZ", "zero-rated", "IGST", "LUT"],
+    "expected_logic": "Supply of goods or services to SEZ units or developers is zero-rated under Section 16 of the IGST Act. Supplier can either supply under LUT without payment of tax and claim ITC refund, or pay IGST and claim refund."
+  },
+  {
+    "id": "GST_033",
+    "category": "GSTR-1 Amendment",
+    "query": "I made a mistake in the B2B invoice declared in GSTR-1 for April. Can I amend it and how?",
+    "gold_sources": ["Section_37", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["GSTR-1", "amendment", "Section 37", "next month"],
+    "expected_logic": "B2B invoices in GSTR-1 can be amended in the amendment table of a subsequent period's GSTR-1 under Section 37. The amendment reflects in recipient's GSTR-2B for that period."
+  },
+  {
+    "id": "GST_034",
+    "category": "Casual Taxable Person",
+    "query": "I am a Delhi trader participating in a 3-month exhibition in Goa. Do I need GST registration in Goa?",
+    "gold_sources": ["Section_24", "Section_27", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["casual taxable person", "Section 27", "90 days", "advance deposit"],
+    "expected_logic": "You must register as a Casual Taxable Person in Goa under Section 24 (mandatory registration regardless of turnover). Registration is valid up to 90 days under Section 27 and requires advance deposit of estimated tax."
+  },
+  {
+    "id": "GST_035",
+    "category": "GTA Reverse Charge",
+    "query": "I received road transport services from a Goods Transport Agency for moving my factory inputs. Who pays GST?",
+    "gold_sources": ["Section_9", "Notification", "notifications"],
+    "gold_answer_concepts": ["GTA", "Goods Transport Agency", "reverse charge", "Section 9(3)", "recipient"],
+    "expected_logic": "GST on GTA services (when GTA has not opted to pay GST forward charge) is payable under reverse charge by the recipient (your factory) under Section 9(3). Rate is 5% without ITC for GTA."
+  },
+  {
+    "id": "GST_036",
+    "category": "Healthcare Exemption",
+    "query": "A private hospital charges for room rent, doctor fees, and medicines during inpatient treatment. Is GST applicable?",
+    "gold_sources": ["Notification", "notifications", "exemption"],
+    "gold_answer_concepts": ["healthcare", "clinical establishment", "exempt", "inpatient"],
+    "expected_logic": "Healthcare services provided by a clinical establishment for diagnosis, treatment, or care are exempt from GST. This covers room rent, doctor fees, and medicines provided as part of inpatient treatment as a composite supply."
+  },
+  {
+    "id": "GST_037",
+    "category": "Restaurant Services",
+    "query": "I run a standalone restaurant (not in a hotel above Rs. 7,500/night). What is my GST rate and can I claim ITC?",
+    "gold_sources": ["Notification", "notifications", "Schedule"],
+    "gold_answer_concepts": ["restaurant", "5%", "ITC not available"],
+    "expected_logic": "Standalone restaurants pay GST at 5% (2.5% CGST + 2.5% SGST) but are not entitled to claim ITC on inputs as a condition of the concessional rate."
+  },
+  {
+    "id": "GST_038",
+    "category": "Annual Return - Reconciliation",
+    "query": "My GSTR-1 and GSTR-3B have differences in output tax declared. What is GSTR-9C and who must file it?",
+    "gold_sources": ["Section_44", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["GSTR-9C", "reconciliation", "5 Crore", "auditor", "chartered accountant"],
+    "expected_logic": "GSTR-9C is a reconciliation statement between books of accounts and GST returns. It is mandatory for taxpayers with aggregate turnover above Rs. 5 Crore and must be certified by a CA or CMA under Section 44."
+  },
+  {
+    "id": "GST_039",
+    "category": "Detention and Seizure",
+    "query": "The GST officer detained my truck carrying goods without an e-way bill. What is the procedure and can I get the goods released?",
+    "gold_sources": ["Section_129", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["Section 129", "detention", "seizure", "penalty", "release"],
+    "expected_logic": "Section 129 allows detention of goods and conveyance when transported without a valid e-way bill. Goods can be released upon payment of penalty (100% of tax for intentional default or 200% of tax for second offence) or on furnishing security."
+  },
+  {
+    "id": "GST_040",
+    "category": "Rule 86B ITC Restriction",
+    "query": "My output tax liability is Rs. 10 Lakhs. Is there any restriction on paying the entire amount from ITC?",
+    "gold_sources": ["Rule_86B", "rules", "CGST_Rules"],
+    "gold_answer_concepts": ["Rule 86B", "1%", "cash", "turnover", "50 Crore"],
+    "expected_logic": "Rule 86B restricts registered persons with taxable turnover above Rs. 50 Lakh in a month from discharging more than 99% of tax liability from ITC. At least 1% must be paid in cash. This rule does not apply to certain categories including government entities."
+  },
+  {
+    "id": "GST_041",
+    "category": "Second Hand Goods",
+    "query": "I am a second-hand car dealer buying used cars from individuals and selling at a margin. How is GST calculated?",
+    "gold_sources": ["Rule_32", "rules", "Notification", "notifications"],
+    "gold_answer_concepts": ["margin scheme", "Rule 32(5)", "second-hand goods", "selling price minus purchase price"],
+    "expected_logic": "Second-hand goods dealers can opt for the margin scheme under Rule 32(5). GST is payable only on the margin (selling price minus purchase price). No GST if sold at or below purchase price. ITC not available on the purchased goods."
+  },
+  {
+    "id": "GST_042",
+    "category": "Letter of Undertaking",
+    "query": "I want to export services without payment of IGST. What is a Letter of Undertaking and how do I file it?",
+    "gold_sources": ["Rule_96A", "rules", "CGST_Rules"],
+    "gold_answer_concepts": ["LUT", "Rule 96A", "Form RFD-11", "export", "zero-rated"],
+    "expected_logic": "Letter of Undertaking under Rule 96A is filed on the GST portal in Form RFD-11 by exporters who want to export goods/services without payment of integrated tax. It is valid for the financial year. The exporter undertakes to pay IGST with interest if the export conditions are not fulfilled."
+  },
+  {
+    "id": "GST_043",
+    "category": "Valuation - Transaction Value",
+    "query": "I supply goods for Rs. 1 Lakh but separately charge Rs. 5,000 as freight and Rs. 2,000 as insurance. What is the value for GST?",
+    "gold_sources": ["Section_15", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["Section 15", "transaction value", "freight", "insurance", "inclusive"],
+    "expected_logic": "Under Section 15, the value of supply includes all amounts charged by the supplier including freight, insurance, and other charges. GST is applicable on Rs. 1,07,000 (Rs. 1,00,000 + Rs. 5,000 + Rs. 2,000)."
+  },
+  {
+    "id": "GST_044",
+    "category": "Schedule III",
+    "query": "My employee provides services to me as part of their employment. Is this taxable under GST?",
+    "gold_sources": ["Schedule_III", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["Schedule III", "not treated as supply", "employer-employee", "services"],
+    "expected_logic": "Services by an employee to the employer in the course of or in relation to employment are not treated as supply of services under Schedule III of CGST Act and are therefore outside the scope of GST."
+  },
+  {
+    "id": "GST_045",
+    "category": "ITC Reconciliation",
+    "query": "My supplier has not filed GSTR-1. Can I still claim ITC on invoices received from that supplier?",
+    "gold_sources": ["Section_16", "Rule_36", "CGST_Act", "cgst", "rules"],
+    "gold_answer_concepts": ["GSTR-2B", "Rule 36(4)", "ITC", "invoice not reflecting"],
+    "expected_logic": "ITC can be claimed only to the extent appearing in GSTR-2B as per Rule 36(4). If your supplier has not filed GSTR-1, the invoice will not appear in your GSTR-2B and ITC cannot be claimed until the supplier files and the invoice reflects in your GSTR-2B."
+  },
+  {
+    "id": "GST_046",
+    "category": "ITC - Rule 36(4)",
+    "query": "My GSTR-2B shows ITC of Rs. 80,000 but my purchase register shows Rs. 1,00,000. How much ITC can I claim in GSTR-3B?",
+    "gold_sources": ["Rule_36", "rules", "CGST_Rules"],
+    "gold_answer_concepts": ["Rule 36(4)", "GSTR-2B", "ITC restriction", "invoice matching"],
+    "expected_logic": "As per Rule 36(4), ITC is restricted to the amount reflected in GSTR-2B (Rs. 80,000). The balance Rs. 20,000 can be claimed in the period when the supplier files their GSTR-1 and it reflects in your GSTR-2B."
+  },
+  {
+    "id": "GST_047",
+    "category": "Inspection",
+    "query": "The GST officer came to my premises and wants to inspect my records. Can they seize my documents?",
+    "gold_sources": ["Section_67", "CGST_Act", "cgst"],
+    "gold_answer_concepts": ["Section 67", "inspection", "search", "seizure", "proper officer", "reasonable belief"],
+    "expected_logic": "Section 67 empowers the proper officer to inspect premises and seize goods, documents, and books of account if there is 'reason to believe' that tax has been suppressed or goods are liable to confiscation. Officer above Assistant Commissioner rank must authorize search."
+  },
+  {
+    "id": "GST_048",
+    "category": "Zero-rated vs Exempt",
+    "query": "What is the difference between a zero-rated supply and an exempt supply for ITC purposes?",
+    "gold_sources": ["Section_16", "IGST_Act", "igst", "Section_2"],
+    "gold_answer_concepts": ["zero-rated", "exempt", "ITC refund", "nil rated", "Section 16 IGST"],
+    "expected_logic": "Zero-rated supplies (exports, SEZ supplies) attract 0% tax but ITC on inputs is allowed and refundable. Exempt supplies attract 0% tax and ITC on inputs is NOT available and must be reversed under Section 17(2). This is a critical distinction."
+  },
+  {
+    "id": "GST_049",
+    "category": "Renting Immovable Property",
+    "query": "I am renting out my commercial property to a registered GST dealer for Rs. 1 Lakh per month. Is GST applicable and who pays it?",
+    "gold_sources": ["Notification", "notifications", "Section_9"],
+    "gold_answer_concepts": ["renting", "commercial", "18%", "reverse charge", "registered person"],
+    "expected_logic": "Renting of commercial immovable property by a registered person to another registered person is taxable at 18%. If the landlord is unregistered, the tenant (registered person) pays GST under reverse charge as per Notification 13/2017 (Central Tax Rate)."
+  },
+  {
+    "id": "GST_050",
+    "category": "Import - Ocean Freight",
+    "query": "I imported goods via CIF terms. Is IGST payable on ocean freight charges included in the CIF price?",
+    "gold_sources": ["IGST_Act", "igst", "Section_5", "Notification", "notifications"],
+    "gold_answer_concepts": ["ocean freight", "CIF", "reverse charge", "IGST", "importer"],
+    "expected_logic": "After the Supreme Court's decision in Mohit Minerals (2022), IGST on ocean freight for CIF imports cannot be levied separately on the importer under reverse charge. IGST is already subsumed in the CIF value on which customs/IGST is paid. The earlier Notification 10/2017-IGST mandating RCM on ocean freight was struck down."
   }
 ]
