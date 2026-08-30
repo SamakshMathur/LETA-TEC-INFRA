@@ -1,4 +1,7 @@
-import fitz  # PyMuPDF
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    fitz = None  # type: ignore  # CI env; only fails if extract_text_from_pdf is called
 
 def extract_text_from_pdf(path):
     doc = fitz.open(path)

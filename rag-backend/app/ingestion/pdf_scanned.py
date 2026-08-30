@@ -1,8 +1,20 @@
-import pytesseract
-from pdf2image import convert_from_path
-import cv2
+try:
+    import pytesseract
+except ImportError:
+    pytesseract = None  # type: ignore  # CI env
+try:
+    from pdf2image import convert_from_path
+except ImportError:
+    convert_from_path = None  # type: ignore  # CI env
+try:
+    import cv2
+except ImportError:
+    cv2 = None  # type: ignore  # CI env
 import numpy as np
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    Image = None  # type: ignore  # CI env
 
 def remove_stamps(image):
     """
