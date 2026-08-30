@@ -9,6 +9,7 @@
 # lazy-load fix), so the import check and test suite work without them.
 
 fastapi
+python-multipart    # required by FastAPI at route-registration time for File/Form endpoints
 uvicorn
 gunicorn
 pydantic
