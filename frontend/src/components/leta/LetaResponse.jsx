@@ -48,27 +48,19 @@ function findBestSrc(text, sources, ...categoryKws) {
 
 /**
  * Replace inline (Sn) citation markers with real document links.
- * Uses the resolved marker map from the backend __CITATIONS__ block —
- * deterministic, no regex guessing. Runs before linkifyLegalRefs so
- * that already-resolved markers are never double-processed.
- *
- * @param {string} text - Raw answer text (may contain (S1), (S2) …)
- * @param {Array}  citationMap - [{marker, title, url, page, …}] from __CITATIONS__
  */
 function applyCitationMarkers(text, citationMap) {
   if (!citationMap || citationMap.length === 0 || !text) return text;
 
-  // Build lookup: "1" → entry, "2" → entry, … (marker field is "S1", "S2", …)
   const lookup = {};
   for (const entry of citationMap) {
     const num = String(entry.marker || '').replace(/[^0-9]/g, '');
     if (num) lookup[num] = entry;
   }
 
-  // Replace (S1), (S2), etc. with [📄 Title](url) markdown links
   return text.replace(/\(S(\d+)\)/g, (match, num) => {
     const entry = lookup[num];
-    if (!entry || !entry.url) return match;   // unknown marker — leave as-is
+    if (!entry || !entry.url) return match;
     const label = (entry.title || 'Source')
       .replace(/%20/g, ' ')
       .replace(/\.[a-z]{2,5}$/i, '')
@@ -79,8 +71,7 @@ function applyCitationMarkers(text, citationMap) {
 }
 
 /**
- * Turn legal references in the markdown text into clickable links
- * pointing to the most relevant consulted source.
+ * Turn legal references in the markdown text into clickable links.
  */
 function linkifyLegalRefs(markdown, sources) {
   if (!sources || sources.length === 0 || !markdown) return markdown;
@@ -88,38 +79,17 @@ function linkifyLegalRefs(markdown, sources) {
   const placeholders = [];
   const shield = m => { placeholders.push(m); return `\x00LINK${placeholders.length - 1}\x00`; };
 
-  // ── PRE-CLEAN: Strip ALL LLM-generated /api/ URLs before linkification ───
-  //
-  // Root cause: the LLM embeds document URLs inline (e.g. [Section 2(47)](url))
-  // using a URL format that differs from what the frontend expects.  When these
-  // links span a newline the URL leaks as raw visible text in the rendered output.
-  //
-  // Fix: strip every /api/ URL the LLM produces here.  The linkification regexes
-  // below (Sections, Circulars, Rules…) then re-add correct links that point to
-  // the actual consulted_sources already known by the frontend.
-  // Use [\s\S]*? (lazy dotAll) so URLs that the LLM wraps across multiple lines
-  // are still matched. The previous [^)]* stopped at newlines, letting the URL
-  // portion leak as visible plain text in the rendered output.
   let safe = markdown
-    // 1. Full [text](/api/...) links — handles URLs spanning multiple lines
     .replace(/\[([^\]]*)\]\s*\(\/api\/[\s\S]*?\)/g, '$1')
-    // 2. Orphan ]/n(/api/...) — ] already on previous line, URL on this line
     .replace(/\]\s*\(\/api\/[\s\S]*?\)/g, ']')
-    // 3. Bare (/api/...) — standalone URL not preceded by ] (multi-line safe)
     .replace(/(?<!\])\(\/api\/[\s\S]*?\)/g, '')
-    // 4. All remaining [text](url) — strip any other LLM-inserted hyperlinks
     .replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text) => text);
 
   const wrap = (text, src) => (src?.url ? `[${text}](${src.url})` : text);
 
-  // ── Specific document pattern helpers ─────────────────────────────────────
   const findSrc = (...kws) =>
     sources.find(s => { const h = (s.title || s.url || '').toLowerCase(); return kws.some(k => h.includes(k)); });
 
-  // ── 0. SOURCE FILENAME HYPERLINKS — runs first, highest priority ──────────
-  // Wraps every occurrence of a source's actual filename (with and without extension)
-  // in the text into a clickable link that opens the document in the sidebar.
-  // Handles **bold** occurrences (e.g. **CGST ACT.docx**) and plain text.
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const src of sources) {
     if (!src?.url || !src?.title) continue;
@@ -127,31 +97,24 @@ function linkifyLegalRefs(markdown, sources) {
     const nameNoExt = rawName.replace(/\.[a-z]{2,5}$/i, '').trim();
     if (rawName.length < 5) continue;
 
-    // Bold occurrences: **filename.pdf** or **filename** → [**filename**](url)
     for (const candidate of [rawName, nameNoExt]) {
       if (candidate.length < 5) continue;
       const boldPat = new RegExp(`\\*\\*(${esc(candidate)})\\*\\*`, 'gi');
-      safe = safe.replace(boldPat, (_, inner) =>
-        shield(`[**${inner}**](${src.url})`)
-      );
+      safe = safe.replace(boldPat, (_, inner) => shield(`[**${inner}**](${src.url})`));
     }
 
-    // Plain occurrences (not already inside a link or placeholder)
     const plainPat = new RegExp(`(?<![\\[\\(\x00])\\b(${esc(rawName)})`, 'gi');
     safe = safe.replace(plainPat, (_, inner) => shield(wrap(inner, src)));
   }
 
-  // ── 1. Source [N] / [Source N] numbered citations from the LLM ──────────
   safe = safe.replace(/\[?(?:Source|source|Src)\s*\[?(\d+)\]?\]?/g, (match, numStr) => {
-    const idx = parseInt(numStr, 10) - 1; // LLM uses 1-based index
-    // Map to nearest source in the 0-7 range
+    const idx = parseInt(numStr, 10) - 1;
     const src = sources[Math.min(Math.max(idx, 0), sources.length - 1)];
     if (!src?.url) return match;
     const label = (src.title || 'Document').replace(/%20/g, ' ').replace(/\.[a-z]{2,5}$/i, '');
     return shield(`[📄 ${label}](${src.url})`);
   });
 
-  // ── 1b. Case-law citations: "XYZ vs ABC" or "XYZ v. ABC" ─────────────
   safe = safe.replace(
     /\b([A-Z][A-Za-z./&\s]{2,60?}?)\s+(?:v\.?s?\.?|versus)\s+([A-Za-z][A-Za-z./&\s]{2,60?}?)(?=[,;:()\n]|$)/g,
     (match) => {
@@ -160,57 +123,45 @@ function linkifyLegalRefs(markdown, sources) {
     }
   );
 
-  // ── 2. Specific CBIC Circulars: "Circular No. 228/2024" ──────────────────
   safe = safe.replace(/\b(?:CBIC\s+)?Circular\s+No\.?\s*(\d+)[/\-](\d+)(?:[/\-]\w+)?\b/gi, (match, num) => {
-    const src =
-      sources.find(s => (s.title || '').toLowerCase().includes(num)) ||
-      findSrc('circular');
-    return wrap(match, src);  // no fallback to sources[0] — unlink if no circular found
+    const src = sources.find(s => (s.title || '').toLowerCase().includes(num)) || findSrc('circular');
+    return wrap(match, src);
   });
 
-  // ── 3. Notifications: "Notification No. 12/2023" ─────────────────────────
   safe = safe.replace(/\bNotification\s+No\.?\s*\d+\/\d{4}[-\w]*/gi, m =>
-    wrap(m, findSrc('notification', 'circular'))  // no sources[0] fallback
+    wrap(m, findSrc('notification', 'circular'))
   );
 
-  // ── 4. Sections: "Section 17(5)(c)" — handles any number of sub-clauses ──
   safe = safe.replace(/\bSection\s+\d+[A-Z]?(?:\([^)]{1,10}\))*/g, m =>
-    wrap(m, findSrc('act', 'cgst', 'igst', 'gst', 'rules'))  // no sources[0] fallback
+    wrap(m, findSrc('act', 'cgst', 'igst', 'gst', 'rules'))
   );
 
-  // ── 5. Rules: "Rule 86A" ─────────────────────────────────────────────────
   safe = safe.replace(/\bRule\s+\d+[A-Z]?(?:\(\d+\))*/g, m =>
-    wrap(m, findSrc('rule', 'rules', 'cgst rules', 'igst rules'))  // no sources[0] fallback
+    wrap(m, findSrc('rule', 'rules', 'cgst rules', 'igst rules'))
   );
 
-  // ── 6. GSTR forms: "GSTR-3B", "GSTR 9C" ─────────────────────────────────
   safe = safe.replace(/\bGSTR[-‑]?\d+[A-Z]?\b/gi, m => {
     const norm = m.replace(/[-‑\s]/g, '').toLowerCase();
     return wrap(
       m,
       sources.find(s => (s.title || s.url || '').toLowerCase().replace(/[_\-.\s%20]/g, '').includes(norm)) ||
       findSrc('gstr', 'form', 'return')
-      // no sources[0] fallback
     );
   });
 
-  // ── 7. GST Act references ─────────────────────────────────────────────────
   safe = safe.replace(/\b(?:C|I|S|UT)?GST\s+Act(?:,?\s*\d{4})?\b/gi, m =>
-    wrap(m, findSrc('act', 'bare law', 'cgst', 'igst'))  // no sources[0] fallback
+    wrap(m, findSrc('act', 'bare law', 'cgst', 'igst'))
   );
 
-  // ── 8. Form codes: "DRC-01", "RFD-09", "PMT-06" ─────────────────────────
   safe = safe.replace(/\b(?:DRC|RFD|PMT|REG|CMP|ITC|RET|ANX|PCT|EWB|SPL)[-\s]?\d+[A-Z]?\b/gi, m => {
     const norm = m.replace(/[-\s]/g, '').toLowerCase();
     return wrap(
       m,
       sources.find(s => (s.title || s.url || '').toLowerCase().replace(/[_\-.\s]/g, '').includes(norm)) ||
       findSrc('form', 'drc', 'rfd', 'pmt')
-      // no sources[0] fallback
     );
   });
 
-  // ── 9. Bold legal terms (broad sweep) ────────────────────────────────────
   safe = safe.replace(/\*\*([^*\x00\n]{2,150})\*\*/g, (match, inner) => {
     const t = inner.toLowerCase();
     const gstrM = t.match(/gstr[-‑]?(\d+[a-z]?)/i);
@@ -237,7 +188,6 @@ function linkifyLegalRefs(markdown, sources) {
     return match;
   });
 
-  // Restore shielded placeholders
   return safe.replace(/\x00LINK(\d+)\x00/g, (_, i) => placeholders[+i]);
 }
 
@@ -245,6 +195,7 @@ function linkifyLegalRefs(markdown, sources) {
 
 const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
   const [hasCopied, setHasCopied] = useState(false);
+  const [actionsVisible, setActionsVisible] = useState(false);
 
   const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
 
@@ -259,256 +210,268 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
 
   const sources = data.consulted_sources || [];
 
-  // Skip heavy linkification during streaming — only process once complete
   const processedContent = React.useMemo(() => {
     if (isStreaming) return data?.answer || '';
-    // 1. Resolve (Sn) markers using the deterministic citation map from the backend.
-    //    This replaces e.g. (S1) → [📄 CGST Act](url) before linkifyLegalRefs runs,
-    //    so those markers are never double-processed or left as orphan text.
     const withMarkers = applyCitationMarkers(data?.answer || '', data?.citationMap);
-    // 2. Regex-based linkification for any remaining legal refs not covered by markers.
     return linkifyLegalRefs(withMarkers, sources)
-      // Remove orphaned (/api/...) URLs not part of a markdown link
       .replace(/(?<!\])\(\/api\/[^()\s)]+\)/g, '')
-      // Remove naked [text] brackets left when their URL was stripped
       .replace(/\[([^\]\x00]{1,300})\](?!\()/g, '$1');
   }, [data?.answer, data?.citationMap, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl overflow-hidden"
-      style={{ background: '#000000', border: '1px solid rgba(79,183,197,0.15)' }}
+      transition={{ duration: 0.25 }}
+      className="relative w-full"
+      onMouseEnter={() => setActionsVisible(true)}
+      onMouseLeave={() => setActionsVisible(false)}
     >
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div
-        className="px-5 py-3 flex items-center justify-between"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(103,232,249,0.05)' }}
-      >
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={14} style={{ color: '#67E8F9' }} />
-          <span className="font-mono text-[10px] font-bold tracking-widest uppercase" style={{ color: '#67E8F9' }}>
-            LETA_OUTPUT_V1.0
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleCopy}
-            className="p-1.5 rounded-lg transition-colors"
-            style={{ color: '#475569' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#475569'; e.currentTarget.style.background = 'transparent'; }}
-            title="Copy Answer"
-          >
-            {hasCopied ? <Check size={13} style={{ color: '#22C55E' }} /> : <Copy size={13} />}
-          </button>
-          {onRegenerate && (
-            <button
-              onClick={onRegenerate}
-              className="p-1.5 rounded-lg transition-colors"
-              style={{ color: '#475569' }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = '#475569'; e.currentTarget.style.background = 'transparent'; }}
-              title="Regenerate"
+      {/* ── Thinking / loading state ─────────────────────────────────────── */}
+      {!data?.answer && (
+        <div className="flex flex-col gap-4 py-2">
+          {/* Animated dots + live status message */}
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1.5">
+              {[0, 150, 300].map(delay => (
+                <span
+                  key={delay}
+                  style={{
+                    display: 'inline-block',
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#67E8F9',
+                    animation: `leta-thinking-bounce 1.1s ease-in-out ${delay}ms infinite`,
+                    opacity: 0.85,
+                  }}
+                />
+              ))}
+            </div>
+            <span
+              key={data?.status}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: '11px',
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                color: '#67E8F9',
+                opacity: 0.9,
+                animation: 'leta-status-fade 0.35s ease',
+              }}
             >
-              <RefreshCw size={13} />
-            </button>
-          )}
-        </div>
-      </div>
+              {data?.status || 'Initializing Statutory Analyzer...'}
+            </span>
+          </div>
 
-      {/* ── Body ─────────────────────────────────────────────────────────── */}
-      <div className="p-6 md:p-8">
-
-        {/* ── Thinking indicator: shown while answer is empty (status events flowing) ── */}
-        {!data?.answer && (
-          <div className="flex flex-col gap-4 py-2">
-            {/* Animated dots + live status message */}
-            <div className="flex items-center gap-3">
-              <div className="flex gap-1.5">
-                {[0, 150, 300].map(delay => (
-                  <span
-                    key={delay}
-                    style={{
-                      display: 'inline-block',
-                      width: '6px',
-                      height: '6px',
-                      borderRadius: '50%',
-                      background: '#67E8F9',
-                      animation: `leta-thinking-bounce 1.1s ease-in-out ${delay}ms infinite`,
-                      opacity: 0.85,
-                    }}
-                  />
+          {/* Stage rail */}
+          {(() => {
+            const stages = [
+              { key: 'init',     label: 'Init',     match: ['initializing', 'computing', 'initializ'] },
+              { key: 'cache',    label: 'Cache',    match: ['cache', 'scanning'] },
+              { key: 'retrieve', label: 'Retrieve', match: ['searching', 'database', 'provision'] },
+              { key: 'rerank',   label: 'Rerank',   match: ['expanding', 'precision', 'refin'] },
+              { key: 'generate', label: 'Generate', match: ['synthesiz', 'drafting', 'advisory'] },
+            ];
+            const st = (data?.status || '').toLowerCase();
+            let activeIdx = 0;
+            for (let i = stages.length - 1; i >= 0; i--) {
+              if (stages[i].match.some(m => st.includes(m))) { activeIdx = i; break; }
+            }
+            return (
+              <div className="flex items-center gap-0 mt-1" style={{ maxWidth: '340px' }}>
+                {stages.map((s, i) => (
+                  <React.Fragment key={s.key}>
+                    <div className="flex flex-col items-center gap-1" style={{ minWidth: '52px' }}>
+                      <div style={{
+                        width: '8px', height: '8px', borderRadius: '50%',
+                        background: i <= activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.08)',
+                        boxShadow: i === activeIdx ? '0 0 8px rgba(103,232,249,0.6)' : 'none',
+                        transition: 'all 0.3s ease',
+                      }} />
+                      <span style={{
+                        fontFamily: 'monospace', fontSize: '8px', letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        color: i <= activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.2)',
+                        transition: 'color 0.3s ease',
+                      }}>
+                        {s.label}
+                      </span>
+                    </div>
+                    {i < stages.length - 1 && (
+                      <div style={{
+                        flex: 1, height: '1px', marginBottom: '14px',
+                        background: i < activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.08)',
+                        transition: 'background 0.3s ease',
+                      }} />
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
-              <span
-                key={data?.status}
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: '11px',
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                  color: '#67E8F9',
-                  opacity: 0.9,
-                  animation: 'leta-status-fade 0.35s ease',
-                }}
-              >
-                {data?.status || 'Initializing Statutory Analyzer...'}
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── Answer body ──────────────────────────────────────────────────── */}
+      {data?.answer && (
+        <>
+          {/* Floating action bar — appears on hover, top-right of the answer */}
+          <motion.div
+            initial={false}
+            animate={{ opacity: actionsVisible ? 1 : 0, y: actionsVisible ? 0 : -4 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-0 right-0 flex items-center gap-1 z-10"
+            style={{ pointerEvents: actionsVisible ? 'auto' : 'none' }}
+          >
+            {/* LETA badge */}
+            <div
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md"
+              style={{ background: 'rgba(103,232,249,0.06)', border: '1px solid rgba(103,232,249,0.12)' }}
+            >
+              <ShieldCheck size={10} style={{ color: '#67E8F9' }} />
+              <span className="font-mono text-[9px] font-bold tracking-widest uppercase" style={{ color: '#4FB7C5' }}>
+                LETA
               </span>
             </div>
 
-            {/* Stage rail — 5 steps, lights up as status progresses */}
-            {(() => {
-              const stages = [
-                { key: 'init',      label: 'Init',      match: ['initializing', 'computing', 'initializ'] },
-                { key: 'cache',     label: 'Cache',     match: ['cache', 'scanning'] },
-                { key: 'retrieve',  label: 'Retrieve',  match: ['searching', 'database', 'provision'] },
-                { key: 'rerank',    label: 'Rerank',    match: ['expanding', 'precision', 'refin'] },
-                { key: 'generate',  label: 'Generate',  match: ['synthesiz', 'drafting', 'advisory'] },
-              ];
-              const st = (data?.status || '').toLowerCase();
-              let activeIdx = 0;
-              for (let i = stages.length - 1; i >= 0; i--) {
-                if (stages[i].match.some(m => st.includes(m))) { activeIdx = i; break; }
-              }
-              return (
-                <div className="flex items-center gap-0 mt-1" style={{ maxWidth: '340px' }}>
-                  {stages.map((s, i) => (
-                    <React.Fragment key={s.key}>
-                      <div className="flex flex-col items-center gap-1" style={{ minWidth: '52px' }}>
-                        <div style={{
-                          width: '8px', height: '8px', borderRadius: '50%',
-                          background: i <= activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.08)',
-                          boxShadow: i === activeIdx ? '0 0 8px rgba(103,232,249,0.6)' : 'none',
-                          transition: 'all 0.3s ease',
-                        }} />
-                        <span style={{
-                          fontFamily: 'monospace', fontSize: '8px', letterSpacing: '0.08em',
-                          textTransform: 'uppercase',
-                          color: i <= activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.2)',
-                          transition: 'color 0.3s ease',
-                        }}>
-                          {s.label}
-                        </span>
-                      </div>
-                      {i < stages.length - 1 && (
-                        <div style={{
-                          flex: 1, height: '1px', marginBottom: '14px',
-                          background: i < activeIdx ? '#67E8F9' : 'rgba(255,255,255,0.08)',
-                          transition: 'background 0.3s ease',
-                        }} />
-                      )}
-                    </React.Fragment>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* Main answer — body: Times New Roman, headings: Bookman Old Style */}
-        <div
-          className="prose prose-sm md:prose-base max-w-none leading-relaxed"
-          style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif", display: data?.answer ? 'block' : 'none' }}
-        >
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              h1: p => <h1 className="text-xl font-bold mt-6 mb-4 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
-              h2: p => <h2 className="text-lg font-bold mt-5 mb-3 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
-              h3: p => <h3 className="text-base font-bold mt-4 mb-2 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
-              ul: p => <ul className="list-disc list-outside ml-5 mb-4 space-y-2" {...p} />,
-              ol: p => <ol className="list-decimal list-outside ml-5 mb-4 space-y-2" {...p} />,
-              li: p => <li className="pl-1" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
-              p:  p => <p className="mb-4" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
-              strong: p => <strong className="font-bold" style={{ color: '#67E8F9' }} {...p} />,
-              table: p => (
-                <div className="overflow-x-auto my-6">
-                  <table className="min-w-full text-sm font-mono" style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }} {...p} />
-                </div>
-              ),
-              thead: p => <thead style={{ background: 'rgba(103,232,249,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }} {...p} />,
-              th: p => <th className="px-4 py-3 text-left font-bold text-white" {...p} />,
-              td: p => <td className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#CBD5E1' }} {...p} />,
-              a: p => {
-                // ── Safety net layer 2 ──────────────────────────────────────────
-                // view_by_path URLs are NEVER produced by linkifyLegalRefs — they
-                // only appear when the LLM hallucinates a raw /api/ path despite the
-                // prompt rule. Render as plain text so the URL never leaks visually.
-                // The pre-render regex (layer 1) handles the same case for URLs that
-                // ReactMarkdown couldn't parse as a proper link (e.g. multiline URLs).
-                if (p.href && p.href.includes('view_by_path')) {
-                  return <>{p.children}</>;
-                }
-                const isDocLink = p.href && p.href.includes('/api/documents/');
-                const openInViewer = (href, linkText) => {
-                  let baseUrl = href;
-                  let page = null;
-                  let search = null;
-                  if (href.includes('#')) {
-                    const [base, hash] = href.split('#');
-                    baseUrl = base;
-                    const hp = new URLSearchParams(hash);
-                    if (hp.has('page')) page = hp.get('page');
-                    if (hp.has('search')) search = hp.get('search');
-                  }
-                  if (baseUrl.startsWith('/api/')) baseUrl = BASE_URL + baseUrl;
-                  const urlTitle = (() => { try { return decodeURIComponent(baseUrl.split('filename=')[1]?.split('&')[0] || ''); } catch { return ''; } })();
-                  const docTitle = (linkText && !linkText.startsWith('http')) ? linkText : urlTitle || 'Document';
-                  if (onDocumentClick) onDocumentClick({ url: baseUrl, page, search, title: docTitle });
-                };
-                return (
-                  <a
-                    {...p}
-                    target={isDocLink ? undefined : '_blank'}
-                    rel="noopener noreferrer"
-                    className="font-mono font-bold underline cursor-pointer transition-colors"
-                    style={{ color: '#67E8F9' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#22D3EE'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#67E8F9'; }}
-                    onClick={e => {
-                      e.stopPropagation();
-                      const linkText = p.children?.toString?.() || '';
-                      if (isDocLink && onDocumentClick) { e.preventDefault(); openInViewer(p.href, linkText); return; }
-                      if (onDocumentClick && sources.length > 0 && /section|rule|gstr|act|notification|circular|itc|lut|rcm/i.test(linkText)) {
-                        e.preventDefault();
-                        openInViewer(BASE_URL + sources[0].url, linkText);
-                      }
-                    }}
-                  />
-                );
-              },
-            }}
-          >
-            {processedContent}
-          </ReactMarkdown>
-          {/* Blinking cursor during active streaming */}
-          {isStreaming && (
-            <span
+            {/* Copy */}
+            <button
+              onClick={handleCopy}
+              className="p-1.5 rounded-md transition-all"
               style={{
-                display: 'inline-block',
-                width: '2px',
-                height: '1em',
-                background: '#4FB7C5',
-                marginLeft: '2px',
-                verticalAlign: 'text-bottom',
-                animation: 'leta-cursor-blink 0.8s step-end infinite',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                color: hasCopied ? '#22C55E' : '#64748B',
               }}
-            />
-          )}
-        </div>
+              onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = hasCopied ? '#22C55E' : '#64748B'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+              title="Copy answer"
+            >
+              {hasCopied ? <Check size={12} /> : <Copy size={12} />}
+            </button>
 
-      </div>
+            {/* Regenerate */}
+            {onRegenerate && (
+              <button
+                onClick={onRegenerate}
+                className="p-1.5 rounded-md transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  color: '#64748B',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#64748B'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                title="Regenerate"
+              >
+                <RefreshCw size={12} />
+              </button>
+            )}
+          </motion.div>
 
-      {/* ── Footer ───────────────────────────────────────────────────────── */}
-      <div
-        className="px-6 py-2 flex justify-between items-center text-[10px] font-mono uppercase tracking-widest"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.04)', color: '#2a3050' }}
-      >
-        <span>GENERATED_BY_LETA.AI_ENGINE</span>
-        <span>ID: {responseId}</span>
-      </div>
+          {/* Content — no box, flows naturally */}
+          <div
+            className="prose prose-sm md:prose-base max-w-none leading-relaxed pt-1"
+            style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }}
+          >
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                h1: p => <h1 className="text-xl font-bold mt-6 mb-4 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
+                h2: p => <h2 className="text-lg font-bold mt-5 mb-3 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
+                h3: p => <h3 className="text-base font-bold mt-4 mb-2 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
+                ul: p => <ul className="list-disc list-outside ml-5 mb-4 space-y-2" {...p} />,
+                ol: p => <ol className="list-decimal list-outside ml-5 mb-4 space-y-2" {...p} />,
+                li: p => <li className="pl-1" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
+                p:  p => <p className="mb-4" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
+                strong: p => <strong className="font-bold" style={{ color: '#67E8F9' }} {...p} />,
+                table: p => (
+                  <div className="overflow-x-auto my-6">
+                    <table className="min-w-full text-sm font-mono" style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }} {...p} />
+                  </div>
+                ),
+                thead: p => <thead style={{ background: 'rgba(103,232,249,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }} {...p} />,
+                th: p => <th className="px-4 py-3 text-left font-bold text-white" {...p} />,
+                td: p => <td className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#CBD5E1' }} {...p} />,
+                a: p => {
+                  if (p.href && p.href.includes('view_by_path')) {
+                    return <>{p.children}</>;
+                  }
+                  const isDocLink = p.href && p.href.includes('/api/documents/');
+                  const openInViewer = (href, linkText) => {
+                    let baseUrl = href;
+                    let page = null;
+                    let search = null;
+                    if (href.includes('#')) {
+                      const [base, hash] = href.split('#');
+                      baseUrl = base;
+                      const hp = new URLSearchParams(hash);
+                      if (hp.has('page')) page = hp.get('page');
+                      if (hp.has('search')) search = hp.get('search');
+                    }
+                    if (baseUrl.startsWith('/api/')) baseUrl = BASE_URL + baseUrl;
+                    const urlTitle = (() => { try { return decodeURIComponent(baseUrl.split('filename=')[1]?.split('&')[0] || ''); } catch { return ''; } })();
+                    const docTitle = (linkText && !linkText.startsWith('http')) ? linkText : urlTitle || 'Document';
+                    if (onDocumentClick) onDocumentClick({ url: baseUrl, page, search, title: docTitle });
+                  };
+                  return (
+                    <a
+                      {...p}
+                      target={isDocLink ? undefined : '_blank'}
+                      rel="noopener noreferrer"
+                      className="font-mono font-bold underline cursor-pointer transition-colors"
+                      style={{ color: '#67E8F9' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#22D3EE'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = '#67E8F9'; }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        const linkText = p.children?.toString?.() || '';
+                        if (isDocLink && onDocumentClick) { e.preventDefault(); openInViewer(p.href, linkText); return; }
+                        if (onDocumentClick && sources.length > 0 && /section|rule|gstr|act|notification|circular|itc|lut|rcm/i.test(linkText)) {
+                          e.preventDefault();
+                          openInViewer(BASE_URL + sources[0].url, linkText);
+                        }
+                      }}
+                    />
+                  );
+                },
+              }}
+            >
+              {processedContent}
+            </ReactMarkdown>
+
+            {/* Blinking cursor during streaming */}
+            {isStreaming && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '2px',
+                  height: '1em',
+                  background: '#4FB7C5',
+                  marginLeft: '2px',
+                  verticalAlign: 'text-bottom',
+                  animation: 'leta-cursor-blink 0.8s step-end infinite',
+                }}
+              />
+            )}
+          </div>
+
+          {/* Minimal ID watermark — only visible on hover */}
+          <motion.div
+            initial={false}
+            animate={{ opacity: actionsVisible ? 1 : 0 }}
+            transition={{ duration: 0.2 }}
+            className="mt-4 flex items-center gap-2"
+            style={{ pointerEvents: 'none' }}
+          >
+            <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.04)' }} />
+            <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: 'rgba(42,48,80,0.8)' }}>
+              ID: {responseId}
+            </span>
+          </motion.div>
+        </>
+      )}
     </motion.div>
   );
 };
