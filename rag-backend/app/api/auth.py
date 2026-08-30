@@ -863,6 +863,7 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
         metadata=_auth_contact_metadata(req.contact, otp_record.get("method")),
     )
 
+    session_end_ms = user.get("session_end_ms")
     return _build_auth_response(user_info, session_end_ms=session_end_ms)
 
 

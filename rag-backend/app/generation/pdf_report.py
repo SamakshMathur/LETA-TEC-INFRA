@@ -31,7 +31,7 @@ class PDFReportGenerator:
             spaceAfter=8
         ))
 
-    def _draw_watermark(self, canvas, doc):
+    def _draw_watermark(self, canvas, doc):  # noqa: F811
         """Draws a diagonal watermark on every page."""
         canvas.saveState()
         canvas.setFont("Helvetica-Bold", 60)

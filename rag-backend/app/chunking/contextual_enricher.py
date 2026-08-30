@@ -18,6 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
+import anthropic
 from app.config import CLAUDE_UTILITY_MODEL
 from app.utils.anthropic_client import get_anthropic_client, TIMEOUT_INGESTION
 
