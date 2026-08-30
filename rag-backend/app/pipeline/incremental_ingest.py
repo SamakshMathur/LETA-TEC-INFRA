@@ -12,7 +12,10 @@ import os
 from pathlib import Path
 from typing import List, Dict
 
-import faiss
+try:
+    import faiss
+except ImportError:
+    faiss = None  # type: ignore  # CI env; only fails if index load/write is attempted
 import numpy as np
 
 from app.config import DATA_DIR, CHUNKS_PATH, VECTOR_DB_PATH

@@ -7,7 +7,10 @@ from datetime import datetime
 from app.utils.time import utc_now
 from typing import List, Dict
 
-import faiss
+try:
+    import faiss
+except ImportError:
+    faiss = None  # type: ignore  # CI env; only fails if index ops are attempted
 import pandas as pd
 from app.config import DATA_DIR, CHUNKS_PATH, VECTOR_DB_PATH
 from app.database import get_db
