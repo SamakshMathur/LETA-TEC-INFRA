@@ -1,4 +1,8 @@
-import faiss
+try:
+    import faiss
+except ImportError:
+    faiss = None  # type: ignore  # CI/test environments omit the heavy C++ library;
+                  # Retriever.__init__ will raise naturally if instantiated without it.
 import json
 import logging
 import threading
