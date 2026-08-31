@@ -9,13 +9,15 @@ class ScoringPolicy:
     and dynamic query-intent boosts.
     """
     def __init__(self):
-        # Default weight matrix for named dimensions
+        # Default weight matrix — calibrated to match main's tuned reranker values.
+        # semantic + authority + keyword + topic + recency must sum to 1.0.
+        # Change here; deploy — no code change needed.
         self.weights = {
-            "semantic": 0.40,
-            "authority": 0.18,
-            "keyword": 0.18,
-            "topic": 0.14,
-            "recency": 0.10
+            "semantic":   0.42,   # CrossEncoder cosine similarity (primary signal)
+            "authority":  0.20,   # Legal hierarchy weight (Act > Rule > Circular > AAR)
+            "keyword":    0.22,   # BM25 keyword overlap (raised from 0.18 — boosts exact-term recall)
+            "topic":      0.06,   # Ontology topic match (lowered from 0.14 — avoids topic over-bias)
+            "recency":    0.10,   # Year recency for circulars/notifications
         }
 
         # Extensible typology base weights loaded from config
