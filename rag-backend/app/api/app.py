@@ -55,6 +55,45 @@ def _configure_json_logging():
 _configure_json_logging()
 logger = logging.getLogger(__name__)
 
+
+def compute_context_fingerprint(
+    question: str,
+    chunks: list,
+    assembled_context: str,
+    provider: str,
+    model: str,
+) -> dict:
+    """
+    SHA-256 fingerprint of the retrieval context used to generate an answer.
+    Stored alongside each answer for post-hoc grounding audits.
+    """
+    import hashlib, json as _json
+
+    chunk_identifiers, chunk_hashes = [], []
+    for idx, c in enumerate(chunks or []):
+        c_path = c.get("rel_path") or c.get("metadata", {}).get("rel_path") or c.get("source") or ""
+        c_page = c.get("page") or c.get("metadata", {}).get("page") or 0
+        chunk_identifiers.append(f"{c_path}:{c_page}")
+        txt_hash = hashlib.sha256((c.get("text") or "").encode()).hexdigest()
+        chunk_hashes.append({"index": idx, "identifier": f"{c_path}:{c_page}", "text_hash": txt_hash})
+
+    context_hash = hashlib.sha256(assembled_context.encode()).hexdigest()
+    payload_str  = _json.dumps(
+        {"question": question, "chunk_identifiers": chunk_identifiers,
+         "chunk_hashes": chunk_hashes, "context_hash": context_hash},
+        sort_keys=True,
+    )
+    return {
+        "fingerprint_hash":   hashlib.sha256(payload_str.encode()).hexdigest(),
+        "context_hash":       context_hash,
+        "chunk_identifiers":  chunk_identifiers,
+        "chunk_hashes":       chunk_hashes,
+        "question":           question,
+        "answer_provider":    provider,
+        "answer_model":       model,
+    }
+
+
 # ---------- App ----------
 app = FastAPI(
     title="GST Legal RAG API",
