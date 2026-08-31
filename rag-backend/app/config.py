@@ -91,6 +91,26 @@ DATA_DIR = str(_APP_ROOT / "RAG_INFORMATION_DATABASE")
 S3_BUCKET_NAME = "gst-rag-documents"
 LOCAL_DATA_ROOT = str(_APP_ROOT)
 
+# ─── Legal Taxonomy & Authority Weights ───────────────────────────────────
+# Used by scoring_policy.py to weight document types in retrieval scoring.
+# Higher = more authoritative in GST law hierarchy.
+AUTHORITY_WEIGHTS = {
+    "PRIMARY_LAW":    5.0,   # CGST/IGST/UTGST Acts
+    "RULES":          4.0,   # CGST Rules
+    "CIRCULAR":       3.0,   # CBIC Circulars
+    "NOTIFICATION":   3.0,   # Rate/exemption notifications
+    "CASE_LAW":       2.0,   # High Court / Supreme Court / AAR
+    "ADVANCE_RULING": 2.0,
+    "ICAI_GUIDANCE":  1.0,
+    "REFERENCE":      0.5,
+    "OTHER":          0.5,
+}
+
+# GST sections whose subject-matter is substantive (eligibility / liability rules)
+# vs procedural (appeals, advance ruling process) — used by reranker
+SUBSTANTIVE_SECTIONS = ["7", "8", "9", "10", "11", "12", "13", "15", "16", "17", "54"]
+PROCEDURAL_SECTIONS  = ["97", "98", "100", "101", "107", "112"]
+
 
 # ─── Startup Validation ───────────────────────────────────────────────────
 def validate_config():
