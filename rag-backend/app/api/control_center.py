@@ -69,6 +69,13 @@ async def get_health(request: Request, current_admin: dict = Depends(get_current
     redis_status = c_health.get("status", "unavailable")
     redis_ok = redis_status in ["connected", "ok"]
     redis_keys = c_health.get("keys_count", 0)
+    # If REDIS_URL was never set (still the localhost default), treat it as
+    # "optional" rather than "failed" — DiskCache fallback is active.
+    from app.config import REDIS_URL as _REDIS_URL
+    _redis_configured = bool(import_module_env("REDIS_URL")) if False else (
+        "REDIS_URL" in __import__("os").environ
+    )
+    redis_optional = not _redis_configured and not redis_ok
     
     # 3. FAISS Checks
     faiss_status = "ok"
@@ -113,14 +120,19 @@ async def get_health(request: Request, current_admin: dict = Depends(get_current
     # Startup Checks Validation
     startup_checks = {
         "mongodb": "passed" if mongodb_ok else "failed",
-        "redis": "passed" if redis_ok else "failed",
+        # Redis is optional — DiskCache fallback is active when it's not provisioned.
+        # Show "optional" (amber) rather than "failed" (red) when REDIS_URL is not set.
+        "redis": "passed" if redis_ok else ("optional" if redis_optional else "failed"),
         "faiss": "passed" if faiss_ok else "failed",
         "upload_folder": "passed" if os.access(".", os.W_OK) else "failed",
         "embedding_model": "passed" if embed_status == "online" else "failed",
         "api_keys": "passed" if llm_status == "online" else "failed"
     }
-    
-    startup_all_passed = all(v == "passed" for v in startup_checks.values())
+
+    # Redis "optional" does not block a full startup_all_passed score
+    startup_all_passed = all(
+        v in ("passed", "optional") for v in startup_checks.values()
+    )
     if startup_all_passed: score += 10
     
     overall_status = "healthy"
