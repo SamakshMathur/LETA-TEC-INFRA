@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from app.retrieval.source_priority import source_priority
+from app.retrieval.scoring_policy import scoring_policy
 
 logger = logging.getLogger(__name__)
 
@@ -154,16 +155,21 @@ class LegalReranker:
         _query_topic_kw = set(re.findall(r'\b[a-z]{3,}\b', normalized_query_topic)) - _KW_STOPWORDS if normalized_query_topic else set()
 
         # Composite weight sets:
-        # Standard — balanced across statute + circular + keyword signal
-        # Circular-mode — when query explicitly targets circulars/notifications,
-        #   recency is raised so newer circulars beat older ones, doctype_match
-        #   is added so circular chunks beat statute chunks.
+        # Standard — loaded from scoring_policy (tune without code deploy).
+        # Circular-mode — hardcoded override: when the query explicitly targets
+        #   circulars/notifications, recency is raised so newer docs rank higher
+        #   and doctype_match is added to boost circular/notification chunks.
         if _targets_circular:
             W_SEM, W_LEGAL, W_KW, W_TOPIC, W_RECENCY, W_DOCTYPE = \
                 0.35, 0.12, 0.18, 0.04, 0.25, 0.06
         else:
-            W_SEM, W_LEGAL, W_KW, W_TOPIC, W_RECENCY, W_DOCTYPE = \
-                0.42, 0.20, 0.22, 0.06, 0.10, 0.00
+            _w = scoring_policy.weights
+            W_SEM     = _w.get("semantic",   0.42)
+            W_LEGAL   = _w.get("authority",  0.20)
+            W_KW      = _w.get("keyword",    0.22)
+            W_TOPIC   = _w.get("topic",      0.06)
+            W_RECENCY = _w.get("recency",    0.10)
+            W_DOCTYPE = 0.00
 
         reranked_chunks = []
         for chunk in chunks:

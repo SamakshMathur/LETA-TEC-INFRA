@@ -543,6 +543,17 @@ def _extract_query_refs(query: str) -> list:
             seen.add(key)
             refs.append(key)
 
+    # Notification references: "Notification 40/2021", "Notification No. 12/2017",
+    # "Notification No. 12/2017-Central Tax", "notif 5/2023"
+    for m in re.finditer(
+        r'\bnotif(?:ication)?\s*(?:no\.?\s*)?(\d+)\s*/\s*(\d{4})', q
+    ):
+        num, year = m.group(1), m.group(2)
+        key = f"NOTIF_{num}_{year}"
+        if key not in seen:
+            seen.add(key)
+            refs.append(key)
+
     return refs
 
 
@@ -880,6 +891,32 @@ class Retriever:
                 if _ci not in self._circular_index[_key]:
                     self._circular_index[_key].append(_ci)
         logger.info(f"Circular index built: {len(self._circular_index)} circular numbers indexed")
+
+        # Build notification number index for O(1) direct notification lookup.
+        # Maps "NOTIF_{num}_{year}" → list of chunk indices from notification filenames.
+        # Covers patterns like: "12_2017", "Notification-No-12-2017", "40-2021-CT"
+        self._notification_index: dict = {}
+        _notif_num_re = re.compile(
+            r'(?:notif(?:ication)?[-_.\s]*(?:no[-_.\s]*)?)?(\d+)[-_/](\d{4})',
+            re.IGNORECASE,
+        )
+        for _ci, _chunk in enumerate(self.chunks):
+            _meta = _chunk.get("metadata", {})
+            _cat  = (_meta.get("category") or "").lower()
+            _dtype = (_meta.get("document_type") or "").lower()
+            _rel  = _chunk.get("rel_path") or _meta.get("rel_path", "")
+            _rel_lower = _rel.lower()
+            if "notification" not in _cat and "notification" not in _dtype and "notification" not in _rel_lower:
+                continue
+            _fname = _rel.split("/")[-1].split("\\")[-1] if _rel else ""
+            _nm = _notif_num_re.search(_fname)
+            if _nm:
+                _key = f"NOTIF_{_nm.group(1)}_{_nm.group(2)}"
+                if _key not in self._notification_index:
+                    self._notification_index[_key] = []
+                if _ci not in self._notification_index[_key]:
+                    self._notification_index[_key].append(_ci)
+        logger.info(f"Notification index built: {len(self._notification_index)} notification numbers indexed")
 
         # ── TF-IDF matrix (3rd RRF signal) — background build ────────────────
         # TF-IDF assigns ultra-high scores to rare legal tokens — specific circular
@@ -1480,6 +1517,16 @@ class Retriever:
             # Circular number keys (CIRCULAR_183) — resolved from filename-based index
             if ref.startswith("CIRCULAR_") and hasattr(self, "_circular_index"):
                 for idx in self._circular_index.get(ref, []):
+                    if _ref_count >= _PER_KEY_CAP:
+                        break
+                    if _pin(idx, ref):
+                        _ref_count += 1
+                    if len(pinned) >= _GLOBAL_CAP:
+                        return pinned
+
+            # Notification number keys (NOTIF_12_2017) — resolved from filename-based index
+            if ref.startswith("NOTIF_") and hasattr(self, "_notification_index"):
+                for idx in self._notification_index.get(ref, []):
                     if _ref_count >= _PER_KEY_CAP:
                         break
                     if _pin(idx, ref):
