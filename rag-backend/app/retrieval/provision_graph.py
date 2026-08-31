@@ -3,6 +3,8 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Set, Any
 
+from app.retrieval.quarantine import _is_quarantined
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,7 +80,7 @@ class ProvisionGraphRetriever:
         if not provision_ids or not self.adj_list:
             return set()
 
-        related = set()
+        related = set(provision_ids)
         queue = list(set(provision_ids))
         visited = set(queue)
 
@@ -130,6 +132,9 @@ class ProvisionGraphRetriever:
         """
         results = []
         for chunk in chunks:
+            # Phase 3: quarantine gate — never return quarantined chunks from graph expansion
+            if _is_quarantined(chunk):
+                continue
             chunk_citations = chunk.get("metadata", {}).get("citations", [])
             if any(
                 _provision_matches(cit, target)

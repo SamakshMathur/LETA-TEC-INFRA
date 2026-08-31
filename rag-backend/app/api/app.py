@@ -10,8 +10,6 @@ from pathlib import Path
 
 from app.routing.router import route_query
 from app.generation.context_builder import build_context
-from app.api.rag_helpers import build_keyword_queries, build_unique_sources
-from app.utils.time import utc_now
 
 # ── Structured JSON logging setup ────────────────────────────────────────────
 # Each log line is a JSON object — queryable in CloudWatch Logs Insights.
@@ -52,39 +50,83 @@ def _configure_json_logging():
     root.setLevel(logging.INFO)
 
 
+def compute_context_fingerprint(
+    question: str,
+    chunks: list,
+    assembled_context: str,
+    provider: str,
+    model: str
+) -> dict:
+    import hashlib
+    import json
+
+    chunk_identifiers = []
+    chunk_hashes = []
+    for idx, c in enumerate(chunks or []):
+        c_path = c.get("rel_path") or c.get("metadata", {}).get("rel_path") or c.get("source") or ""
+        c_page = c.get("page") or c.get("metadata", {}).get("page") or 0
+        chunk_identifiers.append(f"{c_path}:{c_page}")
+
+        c_text = c.get("text") or ""
+        txt_hash = hashlib.sha256(c_text.encode("utf-8")).hexdigest()
+        chunk_hashes.append({
+            "index": idx,
+            "identifier": f"{c_path}:{c_page}",
+            "text_hash": txt_hash
+        })
+
+    context_hash = hashlib.sha256(assembled_context.encode("utf-8")).hexdigest()
+
+    context_fingerprint_payload = {
+        "question": question,
+        "chunk_identifiers": chunk_identifiers,
+        "chunk_hashes": chunk_hashes,
+        "context_hash": context_hash
+    }
+
+    fingerprint_str = json.dumps(context_fingerprint_payload, sort_keys=True)
+    fingerprint_hash = hashlib.sha256(fingerprint_str.encode("utf-8")).hexdigest()
+
+    return {
+        "fingerprint_hash": fingerprint_hash,
+        "context_hash": context_hash,
+        "chunk_identifiers": chunk_identifiers,
+        "chunk_hashes": chunk_hashes,
+        "question": question,
+        "answer_provider": provider,
+        "answer_model": model
+    }
+
+
 _configure_json_logging()
 logger = logging.getLogger(__name__)
 
-# ---------- App ----------
-app = FastAPI(
-    title="GST Legal RAG API",
-    version="1.0",
-    description="In-house GST knowledge assistant",
-)
+from contextlib import asynccontextmanager
 
-# Readiness gate: ALB health check returns 503 until models are loaded.
-# Prevents live traffic from hitting a task that isn't ready to serve yet.
-_warmup_complete: bool = False
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ─── Startup Tasks ───
+    logger.info("LETA/Sentinel.AI starting up via Lifespan...")
 
-# ── Canonical draft-detection keyword list ────────────────────────────────────
-# Shared by /ask (streaming) and /ask-sync so both endpoints classify draft
-# intent identically.  Add keywords here ONLY — never in one endpoint alone.
-_DRAFT_KW_CANONICAL = [
-    "draft", "notice", "reply", "appeal", "submission", "advisory", "scn", "show cause",
-    "drc-01", "drc 01", "asmt-10", "asmt 10", "drc-07", "drc 07", "drc-03", "drc 03",
-    "write a letter", "write letter", "prepare reply", "representation",
-    "response to notice", "respond to", "our understanding", "gst implications",
-    "gst implication", "provide opinion", "provide advisory", "our comments",
-    "tax position", "gst treatment of", "advise on", "legal opinion",
-    "our client is", "we are engaged in", "facts of the case",
-]
+    # 1. Validate Config
+    try:
+        from app.config import validate_config
+        config_ok = validate_config()
+        if not config_ok:
+            logger.error("Configuration validation failed — check warnings")
+        else:
+            logger.info("Configuration validated successfully")
+    except Exception as e:
+        logger.error(f"Config validation error: {e}", exc_info=True)
 
-@app.on_event("startup")
-async def _startup_tasks():
-    """Seed feed store and pre-warm AI models in background."""
-    import asyncio as _asyncio
+    # 2. Run Vector Store Validation Gate
+    try:
+        from app.retrieval.retriever import validate_vector_store
+        validate_vector_store()
+    except Exception as e:
+        logger.error(f"Vector store validation failed: {e}", exc_info=True)
 
-    # 1. Seed in-memory event log
+    # 3. Seed feed store
     try:
         from app.api.documents import get_activity_feed
         from app.feed_store import _event_log
@@ -95,20 +137,48 @@ async def _startup_tasks():
     except Exception as e:
         logger.warning(f"Feed store seed failed (non-fatal): {e}")
 
-    # 2. Pre-load embedding model + FAISS index so the first /ask-sync request
-    #    doesn't pay the ~15-20s cold-start cost and timeout at API Gateway.
+    # 4. Pre-load embedding model + FAISS index in the background
+    import asyncio as _asyncio
     async def _warmup():
-        global _warmup_complete
         try:
             from app.dependencies import preload_all_models
             await _asyncio.to_thread(preload_all_models)
             logger.info("Startup model warmup complete")
         except Exception as e:
             logger.warning(f"Startup warmup failed (non-fatal): {e}")
-        finally:
-            _warmup_complete = True  # always unblock health check, even on error
 
     _asyncio.ensure_future(_warmup())
+
+    yield
+
+    # ─── Shutdown Tasks ───
+    logger.info("LETA/Sentinel.AI shutting down via Lifespan...")
+
+    # 1. Close MongoDB Connection (if active)
+    from app.database import db
+    if db.client:
+        try:
+            logger.info("Closing MongoDB connection pool...")
+            db.client.close()
+            db.client = None
+        except Exception as e:
+            logger.warning(f"Error closing MongoDB client: {e}")
+
+    # 2. Close Redis Cache Connection (if active)
+    try:
+        from app.cache import close_redis
+        close_redis()
+    except Exception as e:
+        logger.warning(f"Error closing Redis client: {e}")
+
+
+# ---------- App ----------
+app = FastAPI(
+    title="GST Legal RAG API",
+    version="1.0",
+    description="In-house GST knowledge assistant",
+    lifespan=lifespan,
+)
 
 
 @app.get("/")
@@ -129,9 +199,10 @@ _default_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "https://gst-rag-95li.vercel.app",
+    "https://main.d1q7i80dk455hq.amplifyapp.com",
     "https://letatec.com",
     "https://www.letatec.com",
-    "https://main.d1q7i80dk455hq.amplifyapp.com",
 ]
 _env_origins = [
     origin.strip()
@@ -143,9 +214,9 @@ ALLOWED_ORIGINS = list(dict.fromkeys([*_default_origins, *_env_origins]))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"^https://[a-z0-9-]+\.amplifyapp\.com$",
+    allow_origin_regex=r"^https://([a-z0-9-]+\.)?(vercel\.app|amplifyapp\.com)$",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     expose_headers=["X-Request-ID"],
     max_age=600,
@@ -204,11 +275,7 @@ _request_logger = logging.getLogger("leta.request")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    # Full query_id: LETA-YYYYMMDD-HHMMSS-XXXXXXXX (CloudWatch-searchable prefix)
-    import datetime as _dt_mw
-    _ts = _dt_mw.datetime.now().strftime("%Y%m%d-%H%M%S")
-    _rand = str(uuid.uuid4()).replace("-", "")[:6].upper()
-    query_id = f"LETA-{_ts}-{_rand}"
+    query_id = str(uuid.uuid4())[:8]
     request.state.query_id = query_id
     t0 = time.monotonic()
 
@@ -226,51 +293,64 @@ async def log_requests(request: Request, call_next):
             "client_ip": request.client.host if request.client else "unknown",
         },
     )
-    response.headers["X-Request-ID"] = query_id
     return response
 
-# Rate limiting — shared singleton so router modules (payments, etc.) can
-# import the same Limiter without creating a circular import through app.py.
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from app.rate_limiter import limiter
 
+# ── Security headers middleware ───────────────────────────────────────────────
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    # Skip X-Frame-Options for document view so the frontend iframe can embed PDFs
+    if not request.url.path.startswith("/api/documents/view"):
+        response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+# Rate limiting — user-ID keyed, Redis-backed when available
+import base64 as _b64
+import json as _json_ratelimit
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+
+def _rate_limit_key(request: Request) -> str:
+    """Prefer JWT user-ID over IP so limits survive proxy/CDN hops."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            parts = auth.split(".")
+            if len(parts) == 3:
+                padded = parts[1] + "=" * (-len(parts[1]) % 4)
+                payload = _json_ratelimit.loads(_b64.b64decode(padded))
+                if "sub" in payload:
+                    return f"user:{payload['sub']}"
+        except Exception:
+            pass
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+def _build_limiter() -> Limiter:
+    _redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    try:
+        import redis as _r
+        _r.from_url(_redis_url, socket_connect_timeout=1).ping()
+        lim = Limiter(key_func=_rate_limit_key, storage_uri=_redis_url)
+        logger.info("Rate limiter: Redis-backed (distributed)")
+        return lim
+    except Exception as _e:
+        logger.warning(f"Rate limiter: in-memory fallback (Redis unavailable: {_e})")
+        return Limiter(key_func=_rate_limit_key)
+
+
+limiter = _build_limiter()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# ── Global exception handler ──────────────────────────────────────────────────
-# Catches any unhandled exception that escapes a route handler and returns
-# structured JSON with the request_id instead of the default 22-byte plain-text
-# "Internal Server Error".  Logs the full traceback so CloudWatch Logs Insights
-# can correlate failures via filter request_id = "LETA-...".
-#
-# HTTPException and RequestValidationError are explicitly delegated back to
-# FastAPI's built-in handlers so they keep their correct status codes and bodies.
-@app.exception_handler(Exception)
-async def _global_exception_handler(request: Request, exc: Exception):
-    from starlette.exceptions import HTTPException as _HTTP
-    from fastapi.exceptions import RequestValidationError as _ValErr
-    from fastapi.exception_handlers import (
-        http_exception_handler as _http_h,
-        request_validation_exception_handler as _val_h,
-    )
-    if isinstance(exc, _HTTP):
-        return await _http_h(request, exc)
-    if isinstance(exc, _ValErr):
-        return await _val_h(request, exc)
-
-    import traceback as _tb
-    query_id = getattr(request.state, "query_id", "no-id")
-    logger.error(
-        f"Unhandled exception | request_id={query_id} "
-        f"| path={request.url.path} "
-        f"| {type(exc).__name__}: {exc!r}\n{_tb.format_exc()}"
-    )
-    from starlette.responses import JSONResponse as _J
-    return _J(
-        status_code=500,
-        content={"detail": "An unexpected error occurred.", "request_id": query_id},
-    )
 
 def _get_user_info_from_req(request: Request) -> tuple:
     user_id = "anonymous"
@@ -321,14 +401,13 @@ app.include_router(transcribe.router, prefix="/api", tags=["Transcribe"])
 from app.api import payments
 app.include_router(payments.router, tags=["Payments"])
 
-from app.api import debug as _debug_api
-app.include_router(_debug_api.router, tags=["Debug"])
-
 # ---------- Request / Response ----------
 class QuestionRequest(BaseModel):
     question: str
     session_id: Optional[str] = None
     intent: Optional[str] = "general"
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 class Source(BaseModel):
     source: str
@@ -341,32 +420,84 @@ class AnswerResponse(BaseModel):
     sources: List[Source]
     reasoning: Optional[Any] = None
 
+# ---------- Validation Registry Helper (Fix 5) ----------
+def validate_provider_and_model(provider: Optional[str] = None, model: Optional[str] = None) -> tuple[str, str]:
+    """
+    Validates requested provider and model against allowlist.
+    Returns (actual_provider, actual_model).
+    Raises HTTPException 400 if invalid (no silent fallback).
+    """
+    from app.config import LLM_PROVIDER_REGISTRY, ANSWER_LLM_PROVIDER, ANSWER_LLM_MODEL
+
+    # Resolve default provider
+    if not provider:
+        provider = ANSWER_LLM_PROVIDER
+
+    # Normalise aliases
+    provider = provider.lower()
+    if provider == "claude":
+        provider = "anthropic"
+
+    if provider not in LLM_PROVIDER_REGISTRY:
+        _logger.error(f"[VALIDATION] Rejected unsupported provider: {provider}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported provider: {provider}. Allowed: {list(LLM_PROVIDER_REGISTRY.keys())}"
+        )
+
+    prov_info = LLM_PROVIDER_REGISTRY[provider]
+    if not prov_info["enabled"]:
+        _logger.error(f"[VALIDATION] Rejected disabled provider (missing API Key): {provider}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider {provider} is currently disabled (missing credentials)."
+        )
+
+    # Resolve default model
+    if not model:
+        model = prov_info["default_model"]
+
+    if model not in prov_info["models"]:
+        _logger.error(f"[VALIDATION] Rejected unsupported model {model} for provider {provider}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported model: {model} for provider: {provider}. Allowed: {list(prov_info['models'].keys())}"
+        )
+
+    return provider, model
+
+
 # ---------- Lazy Load Retriever ----------
 from app.dependencies import get_retriever
 from app.database import get_session_collection
 from datetime import datetime
 
+# ---------- Model Config Endpoint ----------
+@app.get("/api/config/models")
+async def get_available_models():
+    """Returns safe metadata about allowed providers and models (Fix 7)."""
+    from app.config import LLM_PROVIDER_REGISTRY
+    safe_registry = {}
+    for prov_id, prov_info in LLM_PROVIDER_REGISTRY.items():
+        if prov_info["enabled"]:
+            safe_registry[prov_id] = {
+                "display_name": prov_info["display_name"],
+                "default_model": prov_info["default_model"],
+                "models": {
+                    model_id: {"display_name": model_info["display_name"]}
+                    for model_id, model_info in prov_info["models"].items()
+                    if model_info["enabled"]
+                }
+            }
+    return safe_registry
+
+
 # ---------- Endpoint ----------
 @app.get("/api/health")
 async def health_check():
-    from starlette.responses import JSONResponse
-
-    # Return 503 while models are still loading so ALB withholds live traffic
-    # until this task is genuinely ready to serve requests.
-    if not _warmup_complete:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "warming_up",
-                "timestamp": utc_now().isoformat(),
-                "message": "Model warmup in progress — retry in 30s",
-            },
-            headers={"Retry-After": "30"},
-        )
-
     health_status = {
         "status": "active",
-        "timestamp": utc_now().isoformat(),
+        "timestamp": datetime.now().isoformat(),
         "systems": {
             "api": "ok",
             "database": "unknown",
@@ -376,11 +507,11 @@ async def health_check():
 
     # Check Database
     try:
+        import asyncio as _asyncio_health
         from app.database import get_db
-        db = get_db()
-        if db is not None:
-            # Simple ping
-            db.command('ping')
+        _db = get_db()
+        if _db is not None:
+            await _asyncio_health.to_thread(_db.command, "ping")
             health_status["systems"]["database"] = "connected"
     except Exception as e:
         health_status["systems"]["database"] = f"error: {str(e)}"
@@ -397,16 +528,23 @@ async def health_check():
 
     return health_status
 
-async def stream_and_save(generator, session_id, user_query, chunks=None, context="", truth_rules_text="", query_vec=None, is_draft_session: bool = False, marker_map=None):
+async def stream_and_save(
+    generator,
+    session_id,
+    user_query,
+    chunks=None,
+    context="",
+    truth_rules_text="",
+    query_vec=None,
+    is_draft_session: bool = False,
+    answer_provider: str = None,
+    answer_model: str = None,
+    context_fingerprint: dict = None
+):
     """
     Wrapper that streams the LLM response AND runs post-generation
     accuracy layers before saving to DB.
-
-    Post-stream pipeline:
-      1. Citation Validator   — cross-checks cited sections against chunks
-      2. Answer Verifier      — LLM second-pass for logical consistency
-      3. Hallucination Guard  — flags ungrounded numbers
-      4. Template Matcher     — surfaces relevant litigation templates
+    Supports Strict Mode (buffered streaming + repair gate) and Standard Mode.
     """
     import logging
     _logger = logging.getLogger("stream_and_save")
@@ -418,69 +556,305 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
     # 1. Immediately emit metadata about retrieved sources (Perplexity-style transparency)
     if chunks:
         try:
-            unique_sources = build_unique_sources(chunks, max_sources=8)
+            unique_sources = []
+            seen_src = set()
+            import urllib.parse as _urlparse
+            for c in chunks:
+                _dedup_rel = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "") or c.get("source", "")
+                src_key = (_dedup_rel, c.get("page", 0))
+                if src_key not in seen_src:
+                    seen_src.add(src_key)
+                    _raw_src = c.get("source", "") or c.get("metadata", {}).get("source", "")
+                    _rel_path = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "")
+                    # Use rel_path for display name — it holds the real filename.
+                    _basename = os.path.basename(_rel_path) if _rel_path else os.path.basename(_raw_src)
+                    _enc_path = _urlparse.quote(_rel_path.replace("\\", "/"), safe="") if _rel_path else ""
+                    _enc_name = _urlparse.quote(_basename, safe="")
+                    _url = (
+                        f"/api/documents/view_by_path?path={_enc_path}"
+                        if _enc_path else
+                        f"/api/documents/view?category=all&filename={_enc_name}"
+                    )
+                    _snippet = (c.get("text") or "").strip()
+                    unique_sources.append({
+                        "title": _basename or "Document",
+                        "page": c.get("page", 1),
+                        "url": _url,
+                        "rel_path": _rel_path,
+                        "score": float(c.get("_rerank_score", 0)),
+                        "snippet": _snippet[:800] if _snippet else "",
+                    })
+                if len(unique_sources) >= 20:  # collect more, then sort + cap
+                    break
+
+            # Sort by relevance score — the reranker already encodes legal
+            # authority (30% weight) + semantic similarity (50%) + topic (20%).
+            # Most relevant doc wins regardless of type; linkifyLegalRefs no
+            # longer uses sources[0] as a fallback so AAR-as-first-link is gone.
+            unique_sources.sort(key=lambda s: s.get("score", 0), reverse=True)
+            unique_sources = unique_sources[:8]
+
             metadata_payload = {
                 "type": "metadata",
                 "sources": unique_sources
             }
+            if answer_provider:
+                metadata_payload["answer_provider"] = answer_provider
+            if answer_model:
+                metadata_payload["answer_model"] = answer_model
+            if context_fingerprint:
+                metadata_payload["context_fingerprint"] = context_fingerprint
+
             yield f"__METADATA__:{json.dumps(metadata_payload)}__END_METADATA__"
         except Exception as me:
             _logger.warning(f"Metadata emission failed: {me}")
 
     import time
     t_gen_start = time.monotonic()
+
+    # Determine strict mode
+    is_strict = is_draft_session or any(kw in user_query.lower() for kw in [
+        "draft", "notice", "reply", "appeal", "submission", "advisory", "scn", "show cause"
+    ])
+
+    repair_triggered = False
+    final_status = "SUCCESS_VERIFIED"
+
     try:
-        for chunk in generator:
-            full_answer += chunk
-            yield chunk
+        if is_strict:
+            # Strict Mode: Buffer and validate before streaming
+            _logger.info("Strict Mode active: Buffering response stream for integrity gate...")
+            initial_answer = ""
+            last_status_time = time.monotonic()
+            for chunk in generator:
+                initial_answer += chunk
+                current_time = time.monotonic()
+                if current_time - last_status_time >= 1.5:
+                    word_count = len(initial_answer.split())
+                    yield f"__STATUS__:{json.dumps({'msg': f'Drafting reply... ({word_count} words written)'})}__END_STATUS__"
+                    last_status_time = current_time
+
+            yield f"__STATUS__:{json.dumps({'msg': 'Evaluating compliance checks...', 'status': 'VERIFICATION_PENDING'})}__END_STATUS__"
+
+            from app.generation.calculation_engine import process_internal_calculations
+            cleaned_answer, calculated_claims = process_internal_calculations(initial_answer, chunks or [])
+            if calculated_claims:
+                final_status = "SUCCESS_DERIVED"
+
+            from app.generation.validator import validate_answer_integrity
+            try:
+                val_res = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        validate_answer_integrity,
+                        cleaned_answer,
+                        chunks or [],
+                        True,
+                        user_query,
+                        calculated_claims
+                    ),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                _logger.warning("Integrity Gate validation timed out — serving as verification_pending")
+                val_res = {
+                    "is_valid": True,
+                    "warnings": ["Integrity check timed out. Verification is pending."],
+                    "citations_status": {},
+                    "ungrounded_numbers": [],
+                    "severity": "NONE",
+                    "degraded_fallback": True,
+                    "timed_out": True
+                }
+                final_status = "VERIFICATION_PENDING"
+
+            if val_res["is_valid"]:
+                full_answer = cleaned_answer
+                yield f"__STATUS__:{json.dumps({'msg': 'Compliance check complete.', 'status': final_status})}__END_STATUS__"
+            else:
+                # Execution of ONE automatic repair attempt
+                _logger.warning(f"Integrity Gate failed ({val_res['severity']}). Executing repair loop...")
+                yield f"__STATUS__:{json.dumps({'msg': 'Repairing compliance errors...', 'status': 'VERIFICATION_PENDING'})}__END_STATUS__"
+                repair_triggered = True
+                warnings_str = "\n".join(f"- {w}" for w in val_res["warnings"])
+
+                correction_prompt = f"""
+                [COMPLIANCE CORRECTION REQUIRED]
+                Your previous answer failed legal compliance checks with these errors:
+                {warnings_str}
+
+                Please regenerate the response correcting these errors. Only cite valid facts from sources:
+                Sources:
+                {context[:8000]}
+
+                Previous Answer:
+                {initial_answer[:4000]}
+                """
+
+                from app.generation.synthesizer import synthesize_answer_stream as _synth_stream
+                repaired_answer = ""
+                repair_stream = _synth_stream(correction_prompt, context, session_is_draft=is_draft_session, provider=answer_provider, model=answer_model)
+                last_status_time = time.monotonic()
+                for chunk in repair_stream:
+                    repaired_answer += chunk
+                    current_time = time.monotonic()
+                    if current_time - last_status_time >= 1.5:
+                        word_count = len(repaired_answer.split())
+                        yield f"__STATUS__:{json.dumps({'msg': f'Drafting compliance repair... ({word_count} words written)'})}__END_STATUS__"
+                        last_status_time = current_time
+
+                cleaned_repaired, calculated_claims_repaired = process_internal_calculations(repaired_answer, chunks or [])
+                if calculated_claims_repaired:
+                    final_status = "SUCCESS_DERIVED"
+
+                # Re-validate the repaired answer
+                try:
+                    val_res_repaired = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            validate_answer_integrity,
+                            cleaned_repaired,
+                            chunks or [],
+                            True,
+                            user_query,
+                            calculated_claims_repaired
+                        ),
+                        timeout=5.0
+                    )
+                except asyncio.TimeoutError:
+                    _logger.warning("Integrity Gate repair validation timed out — serving as verification_pending")
+                    val_res_repaired = {
+                        "is_valid": True,
+                        "warnings": ["Repair check timed out. Verification is pending."],
+                        "citations_status": {},
+                        "ungrounded_numbers": [],
+                        "severity": "NONE",
+                        "degraded_fallback": True,
+                        "timed_out": True
+                    }
+                    final_status = "VERIFICATION_PENDING"
+
+                if val_res_repaired["is_valid"]:
+                    _logger.info("Integrity Gate: Repair successful.")
+                    full_answer = cleaned_repaired
+                    yield f"__STATUS__:{json.dumps({'msg': 'Compliance check complete.', 'status': final_status})}__END_STATUS__"
+                else:
+                    # Second failure -> Return safe qualified fallback
+                    _logger.error("Integrity Gate: Repair failed validation. Serving fallback disclaimer.")
+                    final_status = "VERIFICATION_FAILED"
+                    full_answer = (
+                        "I cannot sufficiently verify this answer from the available legal sources.\n\n"
+                        "**Unverified details:**\n"
+                        f"{warnings_str}\n\n"
+                        "Please review the source documents manually."
+                    )
+                    yield f"__STATUS__:{json.dumps({'msg': 'Compliance check failed.', 'status': final_status})}__END_STATUS__"
+
+            # Stream the buffered/verified result to user with minor pacing
+            for i in range(0, len(full_answer), 40):
+                yield full_answer[i:i+40]
+                await asyncio.sleep(0.005)
+
+        else:
+            # Standard Mode: Stream immediately to client, validate post-stream
+            for chunk in generator:
+                full_answer += chunk
+                yield chunk
+
+            # Post-stream compliance check
+            try:
+                from app.generation.calculation_engine import process_internal_calculations
+                cleaned_answer, calculated_claims = process_internal_calculations(full_answer, chunks or [])
+                full_answer = cleaned_answer
+
+                from app.generation.validator import validate_answer_integrity, validate_logic
+                val_res = await asyncio.to_thread(
+                    validate_answer_integrity,
+                    full_answer,
+                    chunks or [],
+                    False,
+                    user_query,
+                    calculated_claims
+                )
+                final_severity = val_res.get("severity", "NONE")
+                all_warnings = val_res["warnings"] + validate_logic(full_answer)
+                if all_warnings:
+                    all_warnings = list(set(all_warnings))
+                    warning_msg = "\n\n> [!WARNING] **AUTOMATED COMPLIANCE CHECK**\n"
+                    warning_msg += "> The following potential issues were detected in this drafted opinion:\n"
+                    for w in all_warnings:
+                        warning_msg += f"> - {w}\n"
+                    warning_msg += "> \n> *Please verify these points manually before professional use.*"
+                    yield warning_msg
+                    full_answer += warning_msg
+                    final_status = "SUCCESS_PARTIALLY_VERIFIED"
+                else:
+                    final_status = "SUCCESS_DERIVED" if calculated_claims else "SUCCESS_VERIFIED"
+            except Exception as val_err:
+                _logger.warning(f"Post-stream validation failed: {val_err}")
+                final_status = "VERIFICATION_PENDING"
+                final_severity = "ERROR"
 
         if chunks and full_answer.strip():
             # Use the session-level draft flag passed in — do not re-detect from
             # user_query alone, which breaks on follow-up/correction messages.
-            # Uses _DRAFT_KW_CANONICAL so detection matches the /ask routing logic.
-            is_draft = is_draft_session or any(kw in user_query.lower() for kw in _DRAFT_KW_CANONICAL)
+            is_draft = is_draft_session or any(kw in user_query.lower() for kw in [
+                "draft","notice","reply","appeal","submission","advisory","scn",
+                "show cause","drc-01","drc 01","asmt-10","our understanding",
+                "gst implications","provide opinion","our comments","tax position",
+                "advise on","legal opinion","our client is","we are engaged in",
+            ])
 
-            # ── Post-generation verification pipeline ─────────────────────────
-            # Runs citation validation, hallucination guard, authority verifier,
-            # and answer verifier in parallel.  All checks are non-fatal —
-            # errors in individual checks are logged and skipped.
-            from app.generation.verification_pipeline import run_verification_pipeline
-            vr = await run_verification_pipeline(
-                answer=full_answer,
-                query=user_query,
-                chunks=chunks,
-                context=context,
-                truth_rules_text=truth_rules_text,
-                marker_map=marker_map,
-                is_draft=is_draft,
-            )
+            if not is_draft:
+                # --- Parallel Accuracy Pipeline ---
+                async def run_citation_validator():
+                    try:
+                        from app.generation.citation_validator import CitationValidator
+                        return CitationValidator.validate_citations(full_answer, chunks)
+                    except Exception as e:
+                        _logger.warning(f"Citation validator error: {e}")
+                        return full_answer
 
-            # Stream verifier warning to user if a logical contradiction was found
-            if vr.verifier_warning:
-                yield vr.verifier_warning
+                async def run_answer_verifier():
+                    try:
+                        from app.generation.answer_verifier import verify_answer
+                        return await asyncio.to_thread(verify_answer, user_query, full_answer, chunks)
+                    except Exception as e:
+                        _logger.warning(f"Answer verifier error: {e}")
+                        return None
 
-            # Emit resolved [Sn] citation block for frontend link resolution
-            if vr.citations_block:
-                yield vr.citations_block
+                async def run_hallucination_guard():
+                    try:
+                        from app.generation.hallucination_guard import check_hallucinated_numbers
+                        return check_hallucinated_numbers(full_answer, context, truth_rules_text, chunks)
+                    except Exception as e:
+                        _logger.warning(f"Hallucination guard error: {e}")
+                        return ""
 
-            # ── Safety guards: compute confidence and append caveat if needed ──
-            # Runs unconditionally — not only when citation markers were resolved.
-            # An answer with no [Sn] markers (drafts, simple queries, marker_map=None)
-            # must still go through the safety/confidence check.
-            try:
-                from app.generation.confidence import estimate_confidence
-                from app.generation.safety import apply_safety_guards
-                _confidence = estimate_confidence(context, chunks or [])
-                _logger.debug(f"Confidence (context-based): {_confidence:.3f}")
-                _safe_answer = apply_safety_guards(full_answer, _confidence, "")
-                # If safety guard appended a caveat, stream it now
-                if _safe_answer != full_answer:
-                    caveat = _safe_answer[len(full_answer):]
-                    yield caveat
-            except Exception as _sg_exc:
-                _logger.debug(f"Safety guard error (non-fatal): {_sg_exc}")
+                async def run_template_matcher():
+                    try:
+                        from app.retrieval.template_matcher import search_templates, format_template_suggestions
+                        matched = await asyncio.to_thread(search_templates, user_query, top_k=3)
+                        return format_template_suggestions(matched)
+                    except Exception as e:
+                        _logger.warning(f"Template matcher error: {e}")
+                        return ""
 
-            # template_block intentionally not streamed — surfaced via /api/templates instead
+                try:
+                    results = await asyncio.wait_for(
+                        asyncio.gather(
+                            run_citation_validator(),
+                            run_hallucination_guard(),
+                        ),
+                        timeout=3.0,
+                    )
+                except asyncio.TimeoutError:
+                    _logger.warning("Post-generation validators timed out — skipping")
+                    results = (full_answer, "")
+
+                _, hallu_warn = results
+
+                # Log internally — validator output is NEVER streamed to the user.
+                if hallu_warn:
+                    _logger.warning(f"Hallucination guard: {hallu_warn[:300]}")
 
     except Exception as e:
         _logger.error(f"Error in stream_and_save: {e}", exc_info=True)
@@ -492,8 +866,6 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             collection = get_session_collection()
             if collection is not None:
                 try:
-                    from datetime import timezone as _tz
-                    _now = utc_now()
                     await asyncio.to_thread(
                         collection.update_one,
                         {"session_id": session_id},
@@ -502,11 +874,12 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                                 "message_id": str(uuid.uuid4()),
                                 "role": "assistant",
                                 "content": full_answer,
+                                "metadata": {"status": final_status},
+                                "citations": unique_sources,
                                 "sources": unique_sources,
-                                "timestamp": _now,
+                                "timestamp": datetime.now(),
                             }},
-                            "$set": {"updated_at": _now},
-                            "$inc": {"message_count": 1},
+                            "$set": {"updated_at": datetime.now()},
                         },
                     )
                 except Exception as dbe:
@@ -517,26 +890,189 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
             try:
                 from app.cache import cache_store
                 from app.generation.confidence import estimate_confidence
-                # Pass the RETRIEVED CONTEXT string (not the generated answer) so
-                # confidence reflects evidence volume, not answer verbosity.
-                confidence = await asyncio.to_thread(estimate_confidence, context, chunks or [])
+                confidence = await asyncio.to_thread(estimate_confidence, full_answer, chunks or [])
                 await asyncio.to_thread(cache_store, user_query, query_vec, full_answer, confidence, unique_sources if chunks else [])
-                _logger.debug(f"Cache store attempt | confidence={confidence:.3f}")
+                _logger.debug(f"Cache store attempt | confidence={confidence:.2f}")
             except Exception as ce:
                 _logger.warning(f"Cache store error (non-fatal): {ce}")
 
         # Commit AI log analytics
         try:
             from app.ai_logger import update_ai_log, commit_ai_log
+            if "val_res_repaired" in locals():
+                gate_severity = val_res_repaired.get("severity", "NONE")
+            elif "val_res" in locals():
+                gate_severity = val_res.get("severity", "NONE")
+            else:
+                gate_severity = "NONE"
+
             update_ai_log(
                 generation_time_ms=round((time.monotonic() - t_gen_start) * 1000, 2),
                 estimated_completion_tokens=len(full_answer) // 4,
                 response_length=len(full_answer),
-                citations_count=len(unique_sources)
+                citations_count=len(unique_sources),
+                integrity_gate_result=gate_severity,
+                repair_triggered=repair_triggered
             )
             commit_ai_log(success=bool(full_answer.strip()))
         except Exception as cle:
             _logger.warning(f"AI logger commit error (non-fatal): {cle}")
+
+def check_and_escalate_evidence(question: str, chunks: list, allowed_sources=None, domain_paths=None, is_draft: bool = False) -> tuple[list, bool, list]:
+    """
+    Verifies if all explicit citations mentioned in the query exist in the chunks.
+    If any citation is missing, triggers Retrieval Escalation:
+    1. Force-lookup the exact provision index for the missing reference key.
+    2. Add matched canonical primary/secondary chunks to the result pool.
+    Returns (chunks, coverage_satisfied, list_of_still_missing_provisions).
+    """
+    from app.retrieval.reference_resolver import ReferenceResolver
+    from app.retrieval.retriever import _is_quarantined
+
+    resolved = ReferenceResolver.resolve_references(question)
+    if not resolved:
+        return chunks, True, []  # no explicit references, trivially satisfied
+
+    retriever = get_retriever()
+    current_chunk_ids = {c.get("chunk_id") for c in chunks}
+
+    missing_refs = []
+    for ref_obj in resolved:
+        key = ref_obj["canonical_key"]
+
+        # Check if this key exists in the retrieved chunks provisions/citations
+        found = False
+        for c in chunks:
+            c_refs = c.get("metadata", {}).get("provisions", []) + c.get("metadata", {}).get("citations", []) + c.get("provisions", [])
+            if any(key in str(r) for r in c_refs):
+                found = True
+                break
+
+        if not found:
+            missing_refs.append(ref_obj)
+
+    if not missing_refs:
+        return chunks, True, []  # all references covered!
+
+    # Trigger Retrieval Escalation
+    _logger = logging.getLogger("leta.escalation")
+    _logger.info(f"Retrieval Escalation triggered for missing citations: {[r['canonical_key'] for r in missing_refs]}")
+    escalated_chunks = list(chunks)
+
+    for ref_obj in missing_refs:
+        key = ref_obj["canonical_key"]
+
+        # Directly fetch all chunks matching the provision key from the provision index
+        indices = retriever._provision_index.get(key, [])
+        if key.startswith("CIRCULAR_") and hasattr(retriever, "_circular_index"):
+            indices = list(set(indices + retriever._circular_index.get(key, [])))
+
+        ref_chunks = []
+        for idx in indices:
+            if idx >= len(retriever.chunks):
+                continue
+            c = retriever.chunks[idx]
+            if _is_quarantined(c):
+                continue
+            rel_path = c.get("rel_path") or c.get("metadata", {}).get("rel_path", "")
+            if rel_path in retriever.inactive_paths:
+                continue
+
+            ref_chunks.append(c)
+
+        if not ref_chunks:
+            continue
+
+        # Sort the direct matches: primary Act/Rule matches first
+        primary_matches = []
+        secondary_matches = []
+        for c in ref_chunks:
+            meta = c.get("metadata", {})
+            doc_type = meta.get("canonical_document_type", meta.get("document_type", "REFERENCE")).upper()
+            rel_path_lower = (c.get("rel_path") or meta.get("rel_path", "")).lower()
+
+            is_primary = False
+            filename = os.path.basename(rel_path_lower)
+            in_acts_folder = any(k in rel_path_lower for k in ["acts/", "act/", "cgst acts", "igst acts"])
+            in_rules_folder = any(k in rel_path_lower for k in ["rules/", "rule/", "cgst rules", "igst rules"])
+
+            if "_SEC_" in key:
+                sec_part = key.split("_SEC_")[-1]
+                m_num = re.search(r'\d+', sec_part)
+                if m_num:
+                    target_sec = int(m_num.group(0))
+                    range_match = re.search(r'\b(?:sections?|secs?\.?)\s*(\d+)(?:\s*[\–\-]\s*(\d+))?', filename, re.IGNORECASE)
+                    if range_match:
+                        start = int(range_match.group(1))
+                        end = int(range_match.group(2)) if range_match.group(2) else start
+                        is_primary = (start <= target_sec <= end)
+                    else:
+                        is_primary = in_acts_folder or (doc_type == "PRIMARY_LAW" and any(k in rel_path_lower for k in ["acts", "act"]))
+                else:
+                    is_primary = in_acts_folder or (doc_type == "PRIMARY_LAW" and any(k in rel_path_lower for k in ["acts", "act"]))
+            elif "_RUL_" in key:
+                rule_part = key.split("_RUL_")[-1]
+                if in_rules_folder and rule_part.lower() in filename:
+                    is_primary = True
+                else:
+                    is_primary = in_rules_folder or (doc_type == "RULES" and any(k in rel_path_lower for k in ["rules", "rule"]))
+            elif "_NOT_" in key:
+                is_primary = (doc_type == "NOTIFICATION" or "notification" in rel_path_lower)
+            elif "CIRCULAR_" in key:
+                is_primary = (doc_type == "CIRCULAR" or "circular" in rel_path_lower)
+
+            if is_primary:
+                primary_matches.append(c)
+            else:
+                secondary_matches.append(c)
+
+        # Dynamic allocation for escalated items
+        added = 0
+        for c in primary_matches:
+            cid = c.get("chunk_id")
+            if cid and cid not in current_chunk_ids:
+                c_copy = c.copy()
+                c_copy["_pinned_by_ref"] = True
+                c_copy["_pinned_tier"] = "PRIMARY"
+                c_copy["_statute_priority"] = 1.0
+                escalated_chunks.append(c_copy)
+                current_chunk_ids.add(cid)
+                added += 1
+                if added >= 3:
+                    break
+
+        for c in secondary_matches:
+            if added >= 5:
+                break
+            cid = c.get("chunk_id")
+            if cid and cid not in current_chunk_ids:
+                c_copy = c.copy()
+                c_copy["_pinned_by_ref"] = True
+                c_copy["_pinned_tier"] = "SECONDARY"
+                c_copy["_statute_priority"] = 0.8
+                escalated_chunks.append(c_copy)
+                current_chunk_ids.add(cid)
+                added += 1
+
+    # Verify coverage again after escalation
+    still_missing = []
+    for ref_obj in resolved:
+        key = ref_obj["canonical_key"]
+        found = False
+        for c in escalated_chunks:
+            c_refs = c.get("metadata", {}).get("provisions", []) + c.get("metadata", {}).get("citations", []) + c.get("provisions", [])
+            if any(key in str(r) for r in c_refs):
+                found = True
+                break
+        if not found:
+            still_missing.append(ref_obj["provision"])
+
+    if still_missing:
+        _logger.warning(f"Retrieval Escalation failed to recover evidence for: {still_missing}")
+        return escalated_chunks, False, still_missing
+
+    return escalated_chunks, True, []
+
 
 _ask_logger = logging.getLogger("leta.ask")
 
@@ -547,6 +1083,9 @@ async def ask_question(request: Request, req: QuestionRequest):
     session_id = req.session_id
     query_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
     t0 = time.monotonic()
+
+    # 1. Validate requested provider & model (Fix 5)
+    actual_provider, actual_model = validate_provider_and_model(req.provider, req.model)
 
     user_id, username = _get_user_info_from_req(request)
     from app.ai_logger import init_ai_log
@@ -559,63 +1098,58 @@ async def ask_question(request: Request, req: QuestionRequest):
         request_id=query_id,
         client_ip=request.client.host if request.client else None
     )
+    from app.ai_logger import update_ai_log
+    update_ai_log(
+        selected_provider=req.provider or "default",
+        selected_model=req.model or "default",
+        provider=actual_provider,
+        model_used=actual_model
+    )
 
-    # IMMEDIATE SAVE: Save User Question First
-    if session_id and _warmup_complete:
-        collection = get_session_collection()
-        if collection is not None:
-            from datetime import timezone as _tz
-            collection.update_one(
+    # IMMEDIATE SAVE: Save User Question First (off event loop)
+    if session_id:
+        _msg_collection = get_session_collection()
+        if _msg_collection is not None:
+            import asyncio as _asyncio_save
+            _user_msg = {
+                "message_id": str(uuid.uuid4()),
+                "role": "user",
+                "content": question,
+                "metadata": {},
+                "citations": [],
+                "sources": [],
+                "timestamp": datetime.now(),
+            }
+            await _asyncio_save.to_thread(
+                _msg_collection.update_one,
                 {"session_id": session_id},
-                {
-                    "$push": {"messages": {
-                        "message_id": str(uuid.uuid4()),
-                        "role": "user",
-                        "content": question,
-                        "timestamp": utc_now(),
-                    }},
-                    "$inc": {"message_count": 1},
-                }
+                {"$push": {"messages": _user_msg}},
             )
 
     async def rag_pipeline_orchestrator():
         import asyncio as _asyncio
-        # ── Warmup wait (ECS rolling-deployment grace period) ────────────────────
-        # During a rolling deploy the new task registers in the ALB target group
-        # before finishing model/index load (60-90s).  Instead of 503-ing immediately
-        # and exhausting the frontend's retry budget, we hold the streaming connection
-        # open with a STATUS keepalive and release it as soon as warmup completes.
-        if not _warmup_complete:
-            yield f"__STATUS__:{json.dumps({'msg': 'LETA is starting up — please wait…'})}__END_STATUS__"
-            _wt = 0
-            while not _warmup_complete and _wt < 90:
-                await _asyncio.sleep(3)
-                _wt += 3
-            if not _warmup_complete:
-                yield "\n\n⚠ **LETA is taking longer than expected to start.** Please refresh the page and try your question again in a moment."
-                return
         from app.routing.router import route_query
         from app.generation.synthesizer import _estimate_complexity
         from app.generation.calculation_engine import detect_and_calculate, format_for_context
         from app.generation.context_compressor import compress_context
         from app.cache import cache_lookup
         from app.retrieval.retriever import embed_query
-        from app.retrieval.retrieval_trace import RetrievalTrace, store_trace
 
-        # ── RetrievalTrace — created once per query, threaded through entire pipeline ──
-        _trace = RetrievalTrace(query_id=query_id, query=question)
-
-        # ── Stage 1: Intent classification — computed lazily in Stage 2 gather ──
-        # route_query() calls classify_intent() which makes a real blocking Haiku
-        # round-trip (capped at 5s; keyword fallback on any error).  We defer it
-        # into the Stage 2 gather so the Haiku call overlaps with embedding +
-        # history fetch instead of blocking the pipeline serially.
-        # route is set below in the gather; leave placeholder for type-checker.
-        route = {}
+        # ── Stage 1: Instant intent classification (pure keyword, ~1ms) ──────────
+        route = route_query(question)
+        domain_paths = route.get("domain_paths", [])
         _complexity = _estimate_complexity(question)
         _q = question.lower()
 
-        _DRAFT_KW = _DRAFT_KW_CANONICAL
+        _DRAFT_KW = [
+            "draft","notice","reply","appeal","submission","advisory","scn","show cause",
+            "drc-01","drc 01","asmt-10","asmt 10","drc-07","drc 07","drc-03","drc 03",
+            "write a letter","write letter","prepare reply","representation",
+            "response to notice","respond to","our understanding","gst implications",
+            "gst implication","provide opinion","provide advisory","our comments",
+            "tax position","gst treatment of","advise on","legal opinion",
+            "our client is","we are engaged in","facts of the case",
+        ]
         # Definition/explanation queries must NEVER route to DRAFTING_PROMPT regardless
         # of session history. A plain knowledge query ("define X", "what is X",
         # "provide definition of X") has no missing facts and should never trigger
@@ -625,17 +1159,6 @@ async def ask_question(request: Request, req: QuestionRequest):
             r'\b(provide|give|state|share)\s+(the\s+)?(definition|meaning|explanation|rate|provision)',
             r'\b(relevant\s+circular|applicable\s+circular|circular\s+on)\b',
             r'\b(full\s+form|abbreviation|what\s+does\s+.+stand\s+for)\b',
-            # Correction / continuation signals — never reroute to advisory/drafting mode
-            r'you\s+got\s+me\s+(all\s+)?wrong',
-            r'(that\'s|that\s+is)\s+(wrong|incorrect|not\s+right|off\s+route|off\s+track)',
-            r'completely\s+(switched|diverted|changed)\s+to',
-            r'stick\s+to\s+(our|the|this)\s+conversation',
-            r'take\s+it\s+forward|taking\s+(it|this)\s+forward',
-            r'continue\s+(the|our|this)\s+(discussion|conversation|analysis|thread|topic)',
-            r'\bi\s+(already|have\s+already)\s+(said|told|replied|mentioned)',
-            r'\bi\s+replied\s+to\s+you',
-            r'as\s+(i|we)\s+(said|mentioned|discussed|told|replied)',
-            r'not\s+what\s+(i|we)\s+(asked|said|meant)',
         ]
         import re as _re
         _is_never_draft = any(_re.search(p, _q) for p in _NEVER_DRAFT_PATTERNS)
@@ -671,70 +1194,6 @@ async def ask_question(request: Request, req: QuestionRequest):
             "issue raised","section invoked","to draft a strong reply",
         ]
 
-        # Phrases that indicate the user is referencing a previous session
-        _CROSS_SESSION_KW = [
-            "remember", "that chat", "previous session", "last time", "we discussed",
-            "earlier session", "you mentioned", "from before", "that consultation",
-            "we talked about", "as discussed", "recall when", "in our previous",
-            "that case we", "previous chat", "last session",
-        ]
-        _is_cross_session_ref = any(k in question.lower() for k in _CROSS_SESSION_KW)
-
-        def _fetch_cross_session_context():
-            """Search the user's other sessions for relevant content when they reference a past chat."""
-            if not _is_cross_session_ref:
-                return ""
-            _coll = get_session_collection()
-            if _coll is None:
-                return ""
-            # Get the user_id from the current session
-            _sess_doc = _coll.find_one({"session_id": session_id}, {"user_id": 1}) if session_id else None
-            if not _sess_doc:
-                return ""
-            _user_id = _sess_doc.get("user_id", "")
-            if not _user_id:
-                return ""
-            # Build search terms: strip cross-session keywords and use remaining words
-            _search_q = question.lower()
-            for kw in _CROSS_SESSION_KW:
-                _search_q = _search_q.replace(kw, " ")
-            _search_terms = [w for w in _search_q.split() if len(w) > 3][:6]
-            if not _search_terms:
-                return ""
-            _regex = "|".join(_search_terms)
-            try:
-                _matches = list(_coll.find(
-                    {"user_id": _user_id, "session_id": {"$ne": session_id},
-                     "messages.content": {"$regex": _regex, "$options": "i"}},
-                    {"_id": 0, "session_id": 1, "title": 1, "messages": 1, "updated_at": 1}
-                ).sort("updated_at", -1).limit(3))
-            except Exception:
-                return ""
-            if not _matches:
-                return ""
-            _ctx_parts = []
-            for _m in _matches:
-                # Find the most relevant message pair (user question + LETA answer)
-                _msgs = _m.get("messages", [])
-                _best_pair = ""
-                for _i, _msg in enumerate(_msgs):
-                    _content = _msg.get("content", "")
-                    if any(t in _content.lower() for t in _search_terms):
-                        # Include user question + LETA response pair
-                        _u_msg = _msgs[_i - 1]["content"][:300] if _i > 0 and _msgs[_i-1]["role"] == "user" else ""
-                        _a_msg = _content[:500]
-                        if _u_msg:
-                            _best_pair = f"USER: {_u_msg}\nLETA: {_a_msg}"
-                        else:
-                            _best_pair = f"LETA: {_a_msg}"
-                        break
-                if _best_pair:
-                    _title = _m.get("title", "Previous Session")
-                    _date = _m.get("updated_at", "")
-                    _date_str = _date.strftime("%b %d, %Y") if hasattr(_date, "strftime") else str(_date)[:10]
-                    _ctx_parts.append(f'[MEMORY — "{_title}" ({_date_str})]:\n{_best_pair}')
-            return "\n\n".join(_ctx_parts)
-
         def _fetch_history_sync():
             if not session_id:
                 return "", False
@@ -751,48 +1210,22 @@ async def ask_question(request: Request, req: QuestionRequest):
             # the full sequence: LETA-questions → USER-answers → produce draft.
             _recent = _sess["messages"][-7:]
             _hist = "".join(f"{m['role'].upper()}: {m['content']}\n" for m in _recent)
-            # Draft detection: check only the 2 most recent messages so a single
-            # old advisory turn doesn't permanently lock the whole session into
-            # drafting mode for every follow-up question.
-            _last_2_text = " ".join(
-                m.get("content", "") for m in _sess["messages"][-2:]
-            ).lower()
-            _is_d = any(k in _last_2_text for k in _HISTORY_DRAFT_KW)
+            _is_d = any(k in _hist.lower() for k in _HISTORY_DRAFT_KW)
             return _hist, _is_d
 
         yield f"__STATUS__:{json.dumps({'msg': 'Scanning Semantic Cache...'})}__END_STATUS__"
 
-        # ── Stage 2: PARALLEL — intent routing + session history + query embedding ──
-        # route_query (Haiku LLM call, 5s cap) now runs IN PARALLEL with embedding
-        # and MongoDB fetches instead of blocking the pipeline beforehand.
-        # Saves 500–3 000 ms on every non-cached query by overlapping network I/O.
-        (history_context, _session_is_draft), query_vec, cross_session_context, route = (
-            await _asyncio.gather(
-                _asyncio.to_thread(_fetch_history_sync),
-                _asyncio.to_thread(embed_query, question),
-                _asyncio.to_thread(_fetch_cross_session_context),
-                _asyncio.to_thread(route_query, question),
-            )
+        (history_context, _session_is_draft), query_vec = await _asyncio.gather(
+            _asyncio.to_thread(_fetch_history_sync),
+            _asyncio.to_thread(embed_query, question),
         )
-        domain_paths = route.get("domain_paths", [])
         _is_draft = _is_draft_early or _session_is_draft
 
         # ── Stage 3: Cache lookup ─────────────────────────────────────────────────
-        cached_answer = await _asyncio.to_thread(cache_lookup, question, query_vec)
+        cached_answer = await _asyncio.to_thread(cache_lookup, question, query_vec, provider=actual_provider, model=actual_model)
         if cached_answer:
             cached_text, cached_sources = cached_answer
             _ask_logger.info("Cache HIT", extra={"query_id": query_id, "cache_hit": True})
-            # Log minimal trace for cache hits so query_id is still searchable
-            try:
-                _trace.record_preprocessing(
-                    original_query=question, refined_query=question,
-                    domain_route=domain_paths, complexity_score=_complexity,
-                    response_mode="cache_hit",
-                )
-                _trace.answer = {"cache_hit": True, "query_id": query_id}
-                store_trace(_trace)
-            except Exception:
-                pass
             yield f"__STATUS__:{json.dumps({'msg': 'Cache Hit — Instant Retrieval Complete.'})}__END_STATUS__"
             if cached_sources:
                 yield f"__METADATA__:{json.dumps({'type': 'metadata', 'sources': cached_sources})}__END_METADATA__"
@@ -821,7 +1254,7 @@ async def ask_question(request: Request, req: QuestionRequest):
         # exists, enrich the retrieval query with context from the last exchange
         # so "what about penalties?" searches with full legal context.
         retriever = get_retriever()
-        _retrieval_top_k = 30 if _is_draft else (25 if _complexity >= 0.60 else 20)
+        _retrieval_top_k = 15 if _is_draft else (12 if _complexity >= 0.60 else 8)
         domain_label = ", ".join(domain_paths[:2]) if domain_paths else "All Databases"
 
         def _enrich_for_retrieval(q: str, hist: str) -> str:
@@ -836,187 +1269,109 @@ async def ask_question(request: Request, req: QuestionRequest):
 
         yield f"__STATUS__:{json.dumps({'msg': f'Searching Statutory Database ({domain_label})...'})}__END_STATUS__"
 
-        if _is_draft:
-            # Draft: keyword sub-queries via shared helper (no LLM call)
-            _adv = build_keyword_queries(_retrieval_q, is_draft=True)
-            # Record preprocessing before handing off to retriever
-            _trace.record_preprocessing(
-                original_query=question, refined_query=_retrieval_q,
-                sub_queries=_adv["queries"][1:],
-                topic="General", domain_route=domain_paths,
-                complexity_score=_complexity, response_mode="draft",
-            )
-            # 40-second ceiling matches the non-draft supplement_and_rerank guard.
-            # Without it, a CrossEncoder stall on 1 vCPU Fargate hangs draft
-            # queries indefinitely while non-draft queries have a fallback.
-            try:
-                chunks = await _asyncio.wait_for(
-                    _asyncio.to_thread(
-                        retriever.search, _retrieval_q, _retrieval_top_k,
-                        route["use_sources"], _adv, domain_paths, True,
-                        False, _trace,   # skip_rerank=False, trace=_trace
-                    ),
-                    timeout=40.0,
-                )
-            except _asyncio.TimeoutError:
-                logger.warning(
-                    f"[RERANK_TIMEOUT] Draft retriever.search timed out after 40s | "
-                    f"query_id={query_id} — using empty pool"
-                )
-                chunks = []
+        # Rule-based query topic routing
+        from app.retrieval.query_refiner import classify_topic_rules, extract_query_topic
+        topic_info = classify_topic_rules(question)
+        if topic_info.get("topic") is None:
+            topic_info = await _asyncio.to_thread(extract_query_topic, question, provider=actual_provider, model=actual_model)
 
-        else:
-            # All non-draft queries: run query expansion + fast retrieval IN PARALLEL.
-            # Expansion uses 4 angle-specific sub-queries (statutory/circular/notification/factual)
-            # + a corpus-authentic HyDE document. Parallel execution means the LLM expansion
-            # adds zero latency beyond what retrieval already takes.
+        if _is_draft:
+            # Draft: rule-based sub-queries, no LLM expansion call needed
+            _statute_q  = _retrieval_q + " section rule act provisions conditions eligibility liability"
+            _caselaw_q  = _retrieval_q + " high court supreme court judgment held ruling decision AAR"
+            _circular_q = _retrieval_q + " CBIC circular notification clarification instruction"
+            _adv = {
+                "queries": [_retrieval_q, _statute_q, _caselaw_q, _circular_q],
+                "hyde_document": "",
+                "topic": topic_info.get("topic") or "General",
+                "subtopic": topic_info.get("subtopic"),
+            }
+            chunks = await _asyncio.to_thread(
+                retriever.search, _retrieval_q, _retrieval_top_k,
+                route["use_sources"], _adv, domain_paths, True,
+            )
+
+        elif _complexity >= 0.35:
+            # Complex non-draft: run query expansion + fast retrieval IN PARALLEL.
+            # Fast retrieval uses original query without expansion (skip_rerank for speed).
+            # When expansion arrives, we supplement the pool and do ONE final rerank.
             yield f"__STATUS__:{json.dumps({'msg': 'Expanding Query for Precision Retrieval...'})}__END_STATUS__"
 
             def _fast_retrieve():
-                # Trace is NOT passed here — fast retrieve is skip_rerank=True
-                # and supplement_and_rerank runs the full reranking pass with trace.
                 return retriever.search(
                     _retrieval_q, _retrieval_top_k, route["use_sources"],
                     None, domain_paths, False, skip_rerank=True,
                 )
 
             def _expand():
-                # Keyword-only expansion via shared helper — no LLM call, instant.
-                # Previously inline here; now in rag_helpers.build_keyword_queries()
-                # so /ask and /ask-sync always produce the same sub-query structure.
-                return build_keyword_queries(_retrieval_q, is_draft=False)
+                from app.retrieval.query_refiner import generate_advanced_queries
+                return generate_advanced_queries(_retrieval_q, provider=actual_provider, model=actual_model)
 
+            fast_chunks, advanced_queries = await _asyncio.gather(
+                _asyncio.to_thread(_fast_retrieve),
+                _asyncio.to_thread(_expand),
+            )
+
+            # Override with rule-based topic if matched
+            if topic_info.get("topic") is not None:
+                advanced_queries["topic"] = topic_info["topic"]
+                advanced_queries["subtopic"] = topic_info["subtopic"]
+
+            # Supplement the fast pool with expanded-query FAISS results,
+            # then do ONE FlashRank + LegalReranker pass on the merged pool.
+            chunks = await _asyncio.to_thread(
+                retriever.supplement_and_rerank,
+                fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
+            )
+
+        else:
+            # Simple query: direct retrieval (already fast)
+            _adv = {
+                "queries": [_retrieval_q],
+                "hyde_document": "",
+                "topic": topic_info.get("topic") or "General",
+                "subtopic": topic_info.get("subtopic")
+            }
+            chunks = await _asyncio.to_thread(
+                retriever.search, _retrieval_q, _retrieval_top_k,
+                route["use_sources"], _adv, domain_paths, False,
+            )
+
+        # Check and escalate retrieval coverage
+        chunks, coverage_satisfied, still_missing = check_and_escalate_evidence(
+            question, chunks, allowed_sources=route["use_sources"],
+            domain_paths=domain_paths, is_draft=_is_draft
+        )
+
+        if not coverage_satisfied:
+            yield f"__STATUS__:{json.dumps({'msg': 'Retrieval Escalation failed to recover required evidence.'})}__END_STATUS__"
+            missing_str = ", ".join(still_missing)
+            yield f"\nI cannot sufficiently answer your query because the required statutory evidence for the following provision(s) is missing from the database: **{missing_str}**. Please review the source documents manually."
             try:
-                # ── Parallel: fast keyword retrieve + keyword query expansion ─────────
-                # Both are pure local operations — no Anthropic calls, no network I/O.
-                # 15-second ceiling is a safety net against unexpected thread stalls.
-                try:
-                    fast_chunks, advanced_queries = await _asyncio.wait_for(
-                        _asyncio.gather(
-                            _asyncio.to_thread(_fast_retrieve),
-                            _asyncio.to_thread(_expand),
-                        ),
-                        timeout=15.0,
-                    )
-                except _asyncio.TimeoutError:
-                    logger.warning(
-                        f"[EXPAND_TIMEOUT] Fast retrieval timed out after 15s | "
-                        f"query_id={query_id} — falling back to minimal retrieval"
-                    )
-                    fast_chunks = []
-                    advanced_queries = {
-                        "queries": [_retrieval_q],
-                        "hyde_document": "", "topic": "General", "subtopic": None,
-                    }
-
-                # Record preprocessing now that we have expanded queries
-                _adv_qs = advanced_queries or {}
-                _trace.record_preprocessing(
-                    original_query=question,
-                    refined_query=_retrieval_q,
-                    sub_queries=_adv_qs.get("queries", []),
-                    hyde_doc=_adv_qs.get("hyde_document", ""),
-                    topic=_adv_qs.get("topic", "General"),
-                    subtopic=_adv_qs.get("subtopic"),
-                    domain_route=domain_paths,
-                    complexity_score=_complexity,
-                    response_mode=(
-                        "detailed" if _complexity >= 0.60
-                        else "standard" if _complexity >= 0.25
-                        else "brief"
-                    ),
+                from app.ai_logger import update_ai_log, commit_ai_log
+                update_ai_log(
+                    response_length=150,
+                    citations_count=0
                 )
-
-                # Supplement the fast pool with expanded-query FAISS results,
-                # then do ONE CrossEncoder + LegalReranker pass on the merged pool.
-                # 40-second ceiling — CrossEncoder on 80 chunks takes 2-5s on CPU;
-                # 40s is generous enough to never fire on normal loads but prevents
-                # an infinite stall if the ML thread pool deadlocks.
-                try:
-                    chunks = await _asyncio.wait_for(
-                        _asyncio.to_thread(
-                            retriever.supplement_and_rerank,
-                            fast_chunks, advanced_queries, _retrieval_q, _retrieval_top_k,
-                            _trace,
-                        ),
-                        timeout=40.0,
-                    )
-                except _asyncio.TimeoutError:
-                    logger.warning(
-                        f"[RERANK_TIMEOUT] supplement_and_rerank timed out after 40s | "
-                        f"query_id={query_id} — using fast_chunks directly"
-                    )
-                    chunks = fast_chunks[:_retrieval_top_k] if fast_chunks else []
-            except Exception as _retrieval_exc:
-                import traceback as _tb
-                logger.error(
-                    "[CRASH] rag_pipeline_orchestrator retrieval stage failed | "
-                    f"query_id={query_id} | {_retrieval_exc!r}\n{_tb.format_exc()}"
-                )
-                yield f"__STATUS__:{json.dumps({'msg': 'Retrieval engine error. Please try again.'})}__END_STATUS__"
-                yield "\n\n⚠ **LETA encountered a retrieval error.** The statutory database search failed for this query. Please try again — if the problem persists, try rephrasing your question."
-                return
-
-        # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
-        try:
-            from app.retrieval.evidence_resolver import resolve_evidence
-            chunks = resolve_evidence(chunks, question)
-            citation_block   = build_context(chunks, is_draft=_is_draft)
-            compressed_block = compress_context(chunks, question, is_draft=_is_draft)
-
-            # Build the [S1]→chunk mapping for server-side citation resolution (Phase 2)
-            from app.generation.context_builder import build_marker_map
-            _marker_map = build_marker_map(chunks) if chunks else []
-        except Exception as _ctx_exc:
-            import traceback as _tb
-            logger.error(
-                f"[CRASH] Stage 6 context assembly failed | query_id={query_id} | "
-                f"{_ctx_exc!r}\n{_tb.format_exc()}"
-            )
-            yield (
-                f"\n\n⚠ **LETA encountered a context assembly error.** "
-                f"(`{type(_ctx_exc).__name__}: {str(_ctx_exc)[:120]}`)\n\n"
-                "This is unexpected — please retry. If it persists, contact support."
-            )
+                commit_ai_log(success=False, error_message=f"Missing explicit references: {still_missing}")
+            except:
+                pass
             return
 
-        # Detect if this is a follow-up / correction so the model gets a strong
-        # continuation signal and doesn't restart from first principles.
-        _FOLLOWUP_KW = [
-            "you got me wrong", "you are wrong", "that's wrong", "that is wrong",
-            "off route", "off track", "completely switched", "completely diverted",
-            "stick to our conversation", "stick to the conversation",
-            "take it forward", "taking it forward", "continue the discussion",
-            "as i said", "as i mentioned", "i already said", "i already told",
-            "i replied", "i have said", "i told you", "you mentioned",
-            "building on", "following up", "based on what you said",
-            "not what i asked", "not what i meant", "you missed",
-        ]
-        _is_followup = bool(history_context) and (
-            len(question.split()) < 25
-            or any(k in question.lower() for k in _FOLLOWUP_KW)
-        )
-        _history_label = (
-            "⚠ ACTIVE CONVERSATION — CONTINUE FROM HERE. Do NOT restart with basics already covered. "
-            "Directly continue the specific legal discussion in progress.\n"
-            if _is_followup else "CHAT HISTORY"
-        )
+        # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
+        citation_block   = build_context(chunks, is_draft=_is_draft)
+        compressed_block = compress_context(chunks, question, is_draft=_is_draft)
 
         full_rag_context = (
-            (f"--- MEMORY FROM PREVIOUS SESSIONS ---\n{cross_session_context}\n--- END MEMORY ---\n\n" if cross_session_context else "")
-            + (f"--- {_history_label} ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
+            (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
             + citation_block
             + (f"\n\n{calc_block}" if calc_block else "")
             + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
             + compressed_block
         )
 
-        try:
-            from app.generation.rules_engine import rules_engine
-            truth_rules_text = rules_engine.get_all_rules_as_text()
-        except Exception as _re_exc:
-            logger.warning(f"Rules engine failed (using empty truth rules): {_re_exc}")
-            truth_rules_text = ""
+        from app.generation.rules_engine import rules_engine
+        truth_rules_text = rules_engine.get_all_rules_as_text()
 
         # ── Stage 7: Streaming LLM synthesis ──────────────────────────────────────
         if _is_draft:
@@ -1028,73 +1383,28 @@ async def ask_question(request: Request, req: QuestionRequest):
 
         yield f"__STATUS__:{json.dumps({'msg': _synth_msg})}__END_STATUS__"
 
-        from app.generation.synthesizer import synthesize_answer_stream
-        response_stream = synthesize_answer_stream(
-            question, full_rag_context, session_is_draft=_is_draft
+        context_fingerprint = compute_context_fingerprint(
+            question=question,
+            chunks=chunks,
+            assembled_context=full_rag_context,
+            provider=actual_provider,
+            model=actual_model
         )
 
-        # ── Log and store the retrieval trace ────────────────────────────────
-        # This fires before streaming starts — captures everything up to synthesis.
-        # Answer metadata (latency, model) is captured later in stream_and_save.
-        try:
-            _trace.answer = {
-                "query_id":   query_id,
-                "cache_hit":  False,
-                "complexity": round(_complexity, 3),
-                "mode":       ("draft" if _is_draft else
-                               "detailed" if _complexity >= 0.60 else
-                               "standard" if _complexity >= 0.25 else "brief"),
-            }
-            store_trace(_trace)
-            # Single structured JSON log line — filterable in CloudWatch Logs Insights:
-            #   filter trace_type = "retrieval_trace"
-            #   filter query_id = "LETA-20260810-..."
-            import logging as _log_mod
-            _tlog = _log_mod.getLogger("leta.trace")
-            _tlog.info(
-                "retrieval_trace",
-                extra=_trace.to_log_dict(),
-            )
-        except Exception as _te:
-            logger.debug(f"Trace logging failed (non-fatal): {_te}")
+        from app.generation.synthesizer import synthesize_answer_stream
+        response_stream = synthesize_answer_stream(
+            question, full_rag_context, session_is_draft=_is_draft,
+            provider=actual_provider, model=actual_model
+        )
 
-        _synthesis_yielded_text = False
-        try:
-            async for chunk in stream_and_save(
-                response_stream, session_id, question,
-                chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
-                query_vec=query_vec, is_draft_session=_is_draft,
-                marker_map=_marker_map,
-            ):
-                yield chunk
-                # Track whether any non-control text was produced.
-                # Control tokens (__STATUS__:, __METADATA__:, __CITATIONS__:) are
-                # not "real" answer text; we check for at least one plain text chunk.
-                if chunk and not chunk.startswith("__") and not chunk.startswith("\n\n⚠"):
-                    _synthesis_yielded_text = True
-        except Exception as _synth_exc:
-            import traceback as _tb
-            logger.error(
-                "[CRASH] rag_pipeline_orchestrator synthesis stage failed | "
-                f"query_id={query_id} | {_synth_exc!r}\n{_tb.format_exc()}"
-            )
-            yield "\n\n⚠ **LETA encountered an error while generating the response.** The statutory sources were retrieved successfully but the synthesis step failed. Please try asking again — your question is valid and the answer exists in our database."
-            _synthesis_yielded_text = True  # don't double-emit
-
-        # Safety net: if the entire synthesis pipeline completed without yielding
-        # any answer text, emit a visible diagnostic instead of a silent blank response.
-        if not _synthesis_yielded_text:
-            logger.error(
-                f"[EMPTY_SYNTHESIS] Model stream produced zero text content | "
-                f"query_id={query_id} | complexity={_complexity:.2f} | draft={_is_draft}"
-            )
-            yield (
-                "\n\n⚠ **LETA's language model returned an empty response.**\n\n"
-                "This is an infrastructure issue — not your query. Possible causes: "
-                "model rate-limit, API timeout, or extended-thinking budget exhausted. "
-                "**Please retry in a few seconds.** If this happens repeatedly, "
-                "contact support with query ID `" + query_id + "`."
-            )
+        async for chunk in stream_and_save(
+            response_stream, session_id, question,
+            chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
+            query_vec=query_vec, is_draft_session=_is_draft,
+            answer_provider=actual_provider, answer_model=actual_model,
+            context_fingerprint=context_fingerprint
+        ):
+            yield chunk
 
     async def log_wrapper(generator):
         success = False
@@ -1105,23 +1415,10 @@ async def ask_question(request: Request, req: QuestionRequest):
                 yield chunk
             success = True
         except Exception as e:
-            import traceback as _tb
             success = False
             error_msg = str(e)
             status_code = 500
-            # Log the full crash with traceback so CloudWatch shows the real cause.
-            logger.error(
-                f"[CRASH] rag_pipeline unhandled exception | {e!r}\n{_tb.format_exc()}"
-            )
-            # Yield a visible error message so the user sees something instead of blank.
-            # The raw `raise e` here caused StreamingResponse to abort silently — the
-            # frontend received only status tokens and displayed "unable to generate".
-            yield (
-                f"\n\n⚠ **LETA encountered an unexpected error.**\n\n"
-                f"**Debug info (for support):** `{type(e).__name__}: {str(e)[:200]}`\n\n"
-                "Please screenshot this message and retry. If the issue persists, "
-                "try rephrasing your question."
-            )
+            raise e
         finally:
             try:
                 from app.ai_logger import commit_ai_log
@@ -1140,10 +1437,10 @@ def log_analytics_sync(endpoint_name: str):
         async def wrapper(request: Request, req: QuestionRequest, *args, **kwargs):
             question = req.question.strip()
             session_id = req.session_id
-            
+
             user_id, username = _get_user_info_from_req(request)
             request_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
-            
+
             from app.ai_logger import init_ai_log, commit_ai_log
             init_ai_log(
                 user_id=user_id,
@@ -1154,7 +1451,7 @@ def log_analytics_sync(endpoint_name: str):
                 request_id=request_id,
                 client_ip=request.client.host if request.client else None
             )
-            
+
             success = False
             error_msg = None
             status_code = 200
@@ -1182,50 +1479,66 @@ def log_analytics_sync(endpoint_name: str):
 async def ask_question_sync(request: Request, req: QuestionRequest):
     """Non-streaming version of /ask — returns complete JSON response.
     Required for AWS API Gateway HTTP_PROXY compatibility (no SSE streaming support)."""
-    # Wait up to 50s for warmup (well under the ALB 60s idle timeout) so callers
-    # don't see 503 during ECS rolling-deployment warm-up windows.
-    if not _warmup_complete:
-        import asyncio as _asyncio_w
-        _wt = 0
-        while not _warmup_complete and _wt < 50:
-            await _asyncio_w.sleep(2)
-            _wt += 2
-        if not _warmup_complete:
-            from starlette.responses import JSONResponse as _jr
-            return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
+    import time
+    t_total_start = time.monotonic()
 
     import asyncio as _asyncio
+    import urllib.parse as _urlparse
     from fastapi.responses import JSONResponse as _JSONResponse
     from app.routing.router import route_query as _route_query
-    from app.generation.synthesizer import _estimate_complexity, synthesize_answer_stream as _synth_stream
+    from app.generation.synthesizer import _estimate_complexity, synthesize_answer_stream as _synth_stream, input_tokens_var, output_tokens_var
     from app.generation.calculation_engine import detect_and_calculate, format_for_context
     from app.generation.context_compressor import compress_context
     from app.cache import cache_lookup
     from app.retrieval.retriever import embed_query
 
+    input_tokens_var.set(None)
+    output_tokens_var.set(None)
+
     question = req.question.strip()
     session_id = req.session_id
+
+    # Initialize timing instrumentation metrics
+    cache_lookup_ms = 0.0
+    query_classification_ms = 0.0
+    context_build_ms = 0.0
+    context_compression_ms = 0.0
+    prompt_build_ms = 0.0
+    generation_ms = 0.0
+    validation_ms = 0.0
+    repair_generation_ms = 0.0
+    cache_write_ms = 0.0
+
+    # 1. Validate requested provider & model (Fix 5)
+    actual_provider, actual_model = validate_provider_and_model(req.provider, req.model)
+
+    from app.ai_logger import update_ai_log, commit_ai_log
+    update_ai_log(
+        selected_provider=req.provider or "default",
+        selected_model=req.model or "default",
+        provider=actual_provider,
+        model_used=actual_model
+    )
 
     if session_id:
         collection = get_session_collection()
         if collection is not None:
-            from datetime import timezone as _tz
             collection.update_one(
                 {"session_id": session_id},
-                {
-                    "$push": {"messages": {
+                {"$push": {
+                    "messages": {
                         "message_id": str(uuid.uuid4()),
                         "role": "user",
                         "content": question,
-                        "timestamp": utc_now(),
-                    }},
-                    "$inc": {"message_count": 1},
-                }
+                        "metadata": {},
+                        "citations": [],
+                        "sources": [],
+                        "timestamp": datetime.now()
+                    }
+                }}
             )
 
-    # Offload to thread: _route_query calls classify_intent() which makes a
-    # blocking Haiku network call (5s cap).  Must not run on the event loop.
-    route = await _asyncio.to_thread(_route_query, question)
+    route = _route_query(question)
     domain_paths = route.get("domain_paths", [])
     _q = question.lower()
     _complexity = _estimate_complexity(question)
@@ -1248,37 +1561,107 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
                 _session_is_draft = any(k in history_context.lower() for k in _DRAFT_HIST_KW)
 
     query_vec = embed_query(question)
-    cached_answer = cache_lookup(question, query_vec)
+
+    t_cache_start = time.monotonic()
+    cached_answer = cache_lookup(question, query_vec, provider=actual_provider, model=actual_model)
+    cache_lookup_ms = (time.monotonic() - t_cache_start) * 1000.0
     if cached_answer:
         cached_text, cached_sources = cached_answer
-        try:
-            from app.ai_logger import update_ai_log, commit_ai_log
-            update_ai_log(
-                model_used="cache",
-                cache_hit=True,
-                response_length=len(cached_text),
-                citations_count=len(cached_sources or [])
-            )
-            commit_ai_log(success=True)
-        except Exception:
-            pass
-        return _JSONResponse({"answer": cached_text, "sources": cached_sources or []})
+        update_ai_log(
+            model_used="cache",
+            cache_hit=True,
+            response_length=len(cached_text),
+            citations_count=len(cached_sources or [])
+        )
+        commit_ai_log(success=True)
+        return _JSONResponse({
+            "answer": cached_text,
+            "sources": cached_sources or [],
+            "metrics": {
+                "cache_lookup_ms": round(cache_lookup_ms, 2),
+                "query_classification_ms": 0.0,
+                "statute_retrieval_ms": 0.0,
+                "faiss_ms": 0.0,
+                "bm25_ms": 0.0,
+                "provision_graph_ms": 0.0,
+                "rerank_ms": 0.0,
+                "context_build_ms": 0.0,
+                "context_compression_ms": 0.0,
+                "prompt_build_ms": 0.0,
+                "input_tokens": {"value": len(question) // 4, "estimated": True},
+                "output_tokens": {"value": len(cached_text) // 4, "estimated": True},
+                "generation_ms": 0.0,
+                "validation_ms": 0.0,
+                "repair_generation_ms": 0.0,
+                "cache_write_ms": 0.0,
+                "total_latency_ms": round((time.monotonic() - t_total_start) * 1000.0, 2)
+            }
+        })
 
     calc_result = detect_and_calculate(question)
     calc_block = format_for_context(calc_result) if calc_result else ""
 
-    _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW_CANONICAL)
+    _DRAFT_KW = [
+        "draft", "notice", "reply", "appeal", "submission", "advisory", "scn", "show cause",
+        "drc-01", "drc 01", "asmt-10", "our understanding", "gst implications",
+        "provide opinion", "our comments", "tax position", "advise on",
+    ]
+    _is_draft = _session_is_draft or any(k in _q for k in _DRAFT_KW)
 
-    # Sync mode: keyword 4-angle multi-query via shared helper — no LLM call.
-    # build_keyword_queries() is the single source of truth for sub-query structure;
-    # /ask (streaming) uses the same function so both paths stay in sync.
+    # Skip LLM-based query expansion in sync mode — saves ~10-15s from the extra Sonnet call.
+    # Use rule-based multi-query for drafts only (no LLM needed).
+    # Rule-based query topic routing
+    t_class_start = time.monotonic()
+    from app.retrieval.query_refiner import classify_topic_rules, extract_query_topic
+
+    topic_info = classify_topic_rules(question)
+    classification_method = "rules"
+    classification_model = "rules"
+    cold_start_ms = 0.0
+
+    if topic_info.get("topic") is None:
+        classification_method = "llm"
+        from app.config import CLAUDE_UTILITY_MODEL, LLM_MODEL
+        classification_model = CLAUDE_UTILITY_MODEL if actual_provider == "anthropic" else LLM_MODEL
+
+        from app.generation import clients
+        client_was_none = False
+        if actual_provider == "anthropic":
+            client_was_none = clients._claude_client is None
+        elif actual_provider == "openai":
+            client_was_none = clients._oai_client is None
+
+        t_init_start = time.monotonic()
+        topic_info = extract_query_topic(question, provider=actual_provider, model=None)
+        if client_was_none:
+            cold_start_ms = (time.monotonic() - t_init_start) * 1000.0
+
+    query_classification_ms = (time.monotonic() - t_class_start) * 1000.0
+
     refined_q = question
-    advanced_queries = build_keyword_queries(refined_q, is_draft=_is_draft)
+    if _is_draft:
+        advanced_queries = {
+            "queries": [
+                refined_q,
+                refined_q + " section rule act provisions conditions eligibility liability",
+                refined_q + " high court supreme court judgment held ruling decision AAR",
+                refined_q + " CBIC circular notification clarification instruction",
+            ],
+            "hyde_document": "",
+            "topic": topic_info.get("topic") or "General",
+            "subtopic": topic_info.get("subtopic"),
+        }
+    else:
+        advanced_queries = {
+            "queries": [question],
+            "hyde_document": "",
+            "topic": topic_info.get("topic") or "General",
+            "subtopic": topic_info.get("subtopic")
+        }
 
     retriever = get_retriever()
-    # CrossEncoder reranking enabled: ms-marco-MiniLM-L-6-v2 runs in ~200-400ms
-    # for 50 candidate pairs on CPU — well within the 29s ALB timeout.
-    # The old NLI DeBERTa model was both slow AND broken (returned 3-class arrays).
+    # skip_rerank: FlashRank takes 30-50s on 100+ candidates — bypassed to fit in 29s.
+    # top_k raised now that ALB is in path and Sonnet is used for all queries.
     _top_k = 20 if _is_draft else (18 if _complexity >= 0.60 else 15)
     chunks = retriever.search(
         query=refined_q,
@@ -1287,16 +1670,36 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         advanced_queries=advanced_queries,
         domain_paths=domain_paths,
         is_draft=_is_draft,
-        skip_rerank=False,
+        skip_rerank=True,
     )
 
+    # Check and escalate retrieval coverage
+    chunks, coverage_satisfied, still_missing = check_and_escalate_evidence(
+        question, chunks, allowed_sources=route["use_sources"],
+        domain_paths=domain_paths, is_draft=_is_draft
+    )
+
+    if not coverage_satisfied:
+        missing_str = ", ".join(still_missing)
+        update_ai_log(
+            response_length=150,
+            citations_count=0
+        )
+        commit_ai_log(success=False, error_message=f"Missing explicit references: {still_missing}")
+        return _JSONResponse({
+            "answer": f"I cannot sufficiently answer your query because the required statutory evidence for the following provision(s) is missing from the database: **{missing_str}**. Please review the source documents manually.",
+            "sources": []
+        })
+
+    t_ctx_build_start = time.monotonic()
     citation_block = build_context(chunks, is_draft=_is_draft)
+    context_build_ms = (time.monotonic() - t_ctx_build_start) * 1000.0
+
+    t_ctx_comp_start = time.monotonic()
     compressed_block = compress_context(chunks, question, is_draft=_is_draft)
+    context_compression_ms = (time.monotonic() - t_ctx_comp_start) * 1000.0
 
-    # Build the (S1)→chunk mapping for server-side citation resolution (Phase 2)
-    from app.generation.context_builder import build_marker_map, parse_markers as _parse_markers
-    _marker_map_sync = build_marker_map(chunks) if chunks else []
-
+    t_prompt_start = time.monotonic()
     full_rag_context = (
         (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
         + citation_block
@@ -1304,38 +1707,225 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
         + compressed_block
     )
+    prompt_build_ms = (time.monotonic() - t_prompt_start) * 1000.0
+
+    context_fingerprint = compute_context_fingerprint(
+        question=question,
+        chunks=chunks,
+        assembled_context=full_rag_context,
+        provider=actual_provider,
+        model=actual_model
+    )
 
     # Draft/advisory queries: Haiku + 4000 tokens (~23-27s) — fits API Gateway's 29s limit.
-    # Non-draft Q&A: Sonnet (6000-12000 tokens — Quick Take + Key Extracts + Detailed Advisory).
+    # Non-draft Q&A: Sonnet (responses are 1000-2500 tokens, ~15-25s) — fits and gives full quality.
     t_gen_start = time.monotonic()
-    answer = await _asyncio.to_thread(
-        lambda: "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=_is_draft))
-    )
+
+    is_strict = _is_draft or any(kw in question.lower() for kw in [
+        "draft", "notice", "reply", "appeal", "submission", "advisory", "scn", "show cause"
+    ])
+
+    # Local helper to build concise disclaimers
+    def _build_concise_disclaimer(val_res_obj):
+        unverified_citations = [cit for cit, status in val_res_obj.get("citations_status", {}).items() if status == "UNVERIFIED"]
+        ungrounded_nums = val_res_obj.get("ungrounded_numbers", [])
+
+        disclaimer = (
+            "I cannot sufficiently verify this answer from the available legal sources.\n\n"
+            "**Verification Issues:**\n"
+        )
+        if unverified_citations:
+            disclaimer += f"- Unverified Citations (absent from source files): {', '.join(f'`{c}`' for c in unverified_citations)}\n"
+        if ungrounded_nums:
+            disclaimer += f"- Ungrounded Statutory Parameters/Values: {', '.join(f'`{n}`' for n in ungrounded_nums)}\n"
+
+        other_warnings = []
+        for w in val_res_obj.get("warnings", []):
+            if "Unverified Claim" in w:
+                import re
+                fn_match = re.search(r"in text of '([^']+)'", w)
+                fn = fn_match.group(1) if fn_match else "source file"
+                other_warnings.append(f"Claim under citation could not be verified in `{fn}`")
+            elif "Contradiction" in w:
+                import re
+                fn_match = re.search(r"contradicts source '([^']+)'", w)
+                fn = fn_match.group(1) if fn_match else "source file"
+                other_warnings.append(f"Statement contradicts information in `{fn}`")
+            elif "Authority Mismatch" in w:
+                other_warnings.append(w)
+
+        if other_warnings:
+            for ow in sorted(list(set(other_warnings))):
+                disclaimer += f"- {ow}\n"
+
+        disclaimer += "\nPlease review the source documents manually or refine your query to match the available context."
+        return disclaimer
+
+    usage_initial = {}
+    usage_repair = {}
+    usage_standard = {}
+
+    if is_strict:
+        t_gen_only_start = time.monotonic()
+        def _gen_initial():
+            return "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=_is_draft, provider=actual_provider, model=actual_model, usage_tracker=usage_initial))
+        initial_answer = await _asyncio.to_thread(_gen_initial)
+        generation_ms = (time.monotonic() - t_gen_only_start) * 1000.0
+
+        t_val_start = time.monotonic()
+        from app.generation.validator import validate_answer_integrity
+        val_res = validate_answer_integrity(initial_answer, chunks or [], is_strict=True)
+        validation_ms = (time.monotonic() - t_val_start) * 1000.0
+
+        repair_generation_ms = 0.0
+        if val_res["is_valid"]:
+            answer = initial_answer
+        else:
+            # Check if the validation failure is repairable from existing evidence.
+            # It is NOT repairable if the evidence lacks the cited provisions/citations,
+            # or lacks the statutory parameters/numbers cited in the warnings.
+            is_repairable = True
+
+            unverified_cits = [cit for cit, status in val_res.get("citations_status", {}).items() if status == "UNVERIFIED"]
+            if unverified_cits:
+                is_repairable = False
+
+            if val_res.get("ungrounded_numbers"):
+                is_repairable = False
+
+            if is_repairable:
+                warnings_str = "\n".join(f"- {w}" for w in val_res["warnings"])
+                correction_prompt = f"""
+                [COMPLIANCE CORRECTION REQUIRED]
+                Your previous answer failed legal compliance checks with these errors:
+                {warnings_str}
+
+                Please regenerate the response correcting these errors. Only cite valid facts from sources:
+                Sources:
+                {full_rag_context}
+
+                Previous Answer:
+                {initial_answer}
+                """
+
+                t_repair_start = time.monotonic()
+                def _gen_repair():
+                    return "".join(_synth_stream(correction_prompt, full_rag_context, session_is_draft=_is_draft, force_haiku=_is_draft, provider=actual_provider, model=actual_model, usage_tracker=usage_repair))
+                repaired_answer = await _asyncio.to_thread(_gen_repair)
+                repair_generation_ms = (time.monotonic() - t_repair_start) * 1000.0
+
+                t_val_repair_start = time.monotonic()
+                val_res_repaired = validate_answer_integrity(repaired_answer, chunks or [], is_strict=True)
+                validation_ms += (time.monotonic() - t_val_repair_start) * 1000.0
+                if val_res_repaired["is_valid"]:
+                    answer = repaired_answer
+                else:
+                    answer = _build_concise_disclaimer(val_res_repaired)
+            else:
+                # Fail closed immediately
+                answer = _build_concise_disclaimer(val_res)
+    else:
+        t_gen_only_start = time.monotonic()
+        def _gen_standard():
+            return "".join(_synth_stream(question, full_rag_context, session_is_draft=_is_draft, force_haiku=_is_draft, provider=actual_provider, model=actual_model, usage_tracker=usage_standard))
+        answer = await _asyncio.to_thread(_gen_standard)
+        generation_ms = (time.monotonic() - t_gen_only_start) * 1000.0
+
+        t_val_start = time.monotonic()
+        validation_ms = 0.0
+        repair_generation_ms = 0.0
+        try:
+            from app.generation.validator import validate_answer_integrity, validate_logic
+            val_res = validate_answer_integrity(answer, chunks or [])
+            validation_ms = (time.monotonic() - t_val_start) * 1000.0
+            all_warnings = val_res["warnings"] + validate_logic(answer)
+            if all_warnings:
+                all_warnings = list(set(all_warnings))
+                warning_msg = "\n\n> [!WARNING] **AUTOMATED COMPLIANCE CHECK**\n"
+                warning_msg += "> The following potential issues were detected in this drafted opinion:\n"
+                for w in all_warnings:
+                    warning_msg += f"> - {w}\n"
+                warning_msg += "> \n> *Please verify these points manually before professional use.*"
+                answer += warning_msg
+        except Exception as val_err:
+            logger.warning(f"Post-gen validation failed: {val_err}")
+
     t_gen_end = time.monotonic()
 
-    # Resolve (S1), (S2), … markers in the generated answer → structured citation list
-    _citation_result_sync = _parse_markers(answer, _marker_map_sync)
-
-    unique_sources = build_unique_sources(chunks, max_sources=8)
+    unique_sources: list = []
+    seen_src: set = set()
+    for c in chunks:
+        _dedup_rel = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "") or c.get("source", "")
+        src_key = (_dedup_rel, c.get("page", 0))
+        if src_key not in seen_src:
+            seen_src.add(src_key)
+            _raw_src = c.get("source", "") or c.get("metadata", {}).get("source", "")
+            _rel_path = c.get("rel_path", "") or c.get("metadata", {}).get("rel_path", "")
+            _basename = os.path.basename(_rel_path) if _rel_path else os.path.basename(_raw_src)
+            _enc_path = _urlparse.quote(_rel_path.replace("\\", "/"), safe="") if _rel_path else ""
+            _enc_name = _urlparse.quote(_basename, safe="")
+            _url = (
+                f"/api/documents/view_by_path?path={_enc_path}"
+                if _enc_path else
+                f"/api/documents/view?category=all&filename={_enc_name}"
+            )
+            _snippet = (c.get("text") or "").strip()
+            unique_sources.append({
+                "title": _basename or "Document",
+                "page": c.get("page", 1),
+                "url": _url,
+                "rel_path": _rel_path,
+                "score": float(c.get("_rerank_score", 0)),
+                "snippet": _snippet[:800] if _snippet else "",
+            })
+        if len(unique_sources) >= 8:
+            break
 
     if session_id and answer.strip():
         collection = get_session_collection()
         if collection is not None:
-            from datetime import timezone as _tz
-            _now = utc_now()
             collection.update_one(
                 {"session_id": session_id},
                 {
-                    "$push": {"messages": {
-                        "message_id": str(uuid.uuid4()),
-                        "role": "assistant",
-                        "content": answer,
-                        "timestamp": _now,
-                    }},
-                    "$set": {"updated_at": _now},
-                    "$inc": {"message_count": 1},
+                    "$push": {
+                        "messages": {
+                            "message_id": str(uuid.uuid4()),
+                            "role": "assistant",
+                            "content": answer,
+                            "metadata": {},
+                            "citations": unique_sources,
+                            "sources": unique_sources,
+                            "timestamp": datetime.now()
+                        }
+                    },
+                    "$set": {"updated_at": datetime.now()},
                 }
             )
+
+    # 4-layer/Confidence-gated cache store for sync requests
+    t_cache_write_start = time.monotonic()
+    is_valid = True
+    if 'val_res_repaired' in locals():
+        is_valid = val_res_repaired["is_valid"]
+    elif 'val_res' in locals():
+        is_valid = val_res["is_valid"]
+
+    if answer.strip() and query_vec is not None and is_valid:
+        try:
+            from app.cache import cache_store
+            confidence = 0.95 if is_strict else 0.80
+            cache_store(question, query_vec, answer, confidence, unique_sources if chunks else [])
+        except Exception as ce:
+            logger.warning(f"Cache store error in ask-sync (non-fatal): {ce}")
+    cache_write_ms = (time.monotonic() - t_cache_write_start) * 1000.0
+
+    # Retrieve actual token counts mutably set inside worker thread
+    if is_strict:
+        provider_input_tokens = usage_initial.get("input_tokens", 0) + usage_repair.get("input_tokens", 0)
+        provider_output_tokens = usage_initial.get("output_tokens", 0) + usage_repair.get("output_tokens", 0)
+    else:
+        provider_input_tokens = usage_standard.get("input_tokens", 0)
+        provider_output_tokens = usage_standard.get("output_tokens", 0)
 
     # Commit AI log analytics
     try:
@@ -1350,11 +1940,59 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     except Exception as cle:
         logger.warning(f"AI logger commit error (non-fatal): {cle}")
 
+    input_tokens_data = {"value": provider_input_tokens, "estimated": False}
+    output_tokens_data = {"value": provider_output_tokens, "estimated": False}
+
+    metrics = {
+        "query_classification_ms": round(query_classification_ms, 2),
+        "statute_retrieval_ms": round(getattr(chunks, "metrics", {}).get("statute_retrieval_ms", 0.0), 2),
+        "faiss_ms": round(getattr(chunks, "metrics", {}).get("faiss_ms", 0.0), 2),
+        "bm25_ms": round(getattr(chunks, "metrics", {}).get("bm25_ms", 0.0), 2),
+        "provision_graph_ms": round(getattr(chunks, "metrics", {}).get("provision_graph_ms", 0.0), 2),
+        "rerank_ms": round(getattr(chunks, "metrics", {}).get("rerank_ms", 0.0), 2),
+        "cache_lookup_ms": round(cache_lookup_ms, 2),
+        "context_build_ms": round(context_build_ms, 2),
+        "context_compression_ms": round(context_compression_ms, 2),
+        "prompt_build_ms": round(prompt_build_ms, 2),
+        "provider_input_tokens": provider_input_tokens,
+        "provider_output_tokens": provider_output_tokens,
+        "final_answer_character_count": len(answer),
+        "estimated_visible_answer_tokens": len(answer) // 4,
+        "input_tokens": input_tokens_data,
+        "output_tokens": output_tokens_data,
+        "generation_ms": round(generation_ms, 2),
+        "validation_ms": round(validation_ms, 2),
+        "repair_generation_ms": round(repair_generation_ms, 2),
+        "cache_write_ms": round(cache_write_ms, 2),
+        "total_latency_ms": round((time.monotonic() - t_total_start) * 1000.0, 2),
+        "classification_method": classification_method,
+        "classification_model": classification_model,
+        "classification_cold_start_ms": round(cold_start_ms, 2),
+    }
+
+    val_report = None
+    if 'val_res_repaired' in locals() and not val_res["is_valid"]:
+        val_report = val_res_repaired
+    elif 'val_res' in locals():
+        val_report = val_res
+
+    # Clean retrieved_chunks for JSON serialization
+    serialized_chunks = []
+    for c in chunks:
+        c_copy = c.copy()
+        if "_matched_provisions" in c_copy:
+            c_copy.pop("_matched_provisions", None)
+        serialized_chunks.append(c_copy)
+
     return _JSONResponse({
-        "answer":              answer,
-        "sources":             unique_sources,
-        "citations":           _citation_result_sync["citations"],
-        "unresolved_citations": _citation_result_sync["unresolved"],
+        "answer": answer,
+        "sources": unique_sources,
+        "retrieved_chunks": serialized_chunks,
+        "validation_report": val_report,
+        "metrics": metrics,
+        "answer_provider": actual_provider,
+        "answer_model": actual_model,
+        "context_fingerprint": context_fingerprint
     })
 
 
@@ -1362,25 +2000,15 @@ async def _execute_ask_question_with_file(
     request: Request,
     file: UploadFile,
     question_text: str,
-    session_id: Optional[str]
+    session_id: Optional[str],
+    provider: str = None,
+    model: str = None,
 ):
-    # Same 50s warmup wait as /ask-sync (under ALB 60s idle timeout).
-    if not _warmup_complete:
-        import asyncio as _asyncio_w
-        _wt = 0
-        while not _warmup_complete and _wt < 50:
-            await _asyncio_w.sleep(2)
-            _wt += 2
-        if not _warmup_complete:
-            from starlette.responses import JSONResponse as _jr
-            return _jr(status_code=503, content={"detail": "Service warming up — retry in 30s"}, headers={"Retry-After": "30"})
-
-    question_text = question_text.strip()
 
     # 1. Read the file
     file_bytes = await file.read()
     filename = (file.filename or "").lower()
-    
+
     extracted_text = ""
     # 2. Parse based on extension
     if filename.endswith(".pdf"):
@@ -1391,13 +2019,13 @@ async def _execute_ask_question_with_file(
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
-        
+
         try:
             pages = extract_text_from_scanned_pdf(tmp_path)
             extracted_text = "\n".join(p["text"] for p in pages)
         finally:
             os.remove(tmp_path)
-            
+
     elif filename.endswith((".png", ".jpg", ".jpeg")):
         from app.ingestion.pdf_scanned import extract_text_from_image
         extracted_text = extract_text_from_image(file_bytes)
@@ -1420,23 +2048,24 @@ async def _execute_ask_question_with_file(
             extracted_text = f"[DOCX extraction error: {_e}]"
     else:
         extracted_text = "[Unsupported file format. Please upload PDF, DOCX, TXT, PNG, JPG, or JPEG.]"
-    
+
     # Save User Question
     if session_id:
         collection = get_session_collection()
         if collection is not None:
-            from datetime import timezone as _tz
-            collection.update_one(
+             collection.update_one(
                 {"session_id": session_id},
-                {
-                    "$push": {"messages": {
+                {"$push": {
+                    "messages": {
                         "message_id": str(uuid.uuid4()),
                         "role": "user",
                         "content": question_text,
-                        "timestamp": utc_now(),
-                    }},
-                    "$inc": {"message_count": 1},
-                }
+                        "metadata": {},
+                        "citations": [],
+                        "sources": [],
+                        "timestamp": datetime.now()
+                    }
+                }}
             )
 
     # Fetch history
@@ -1450,15 +2079,13 @@ async def _execute_ask_question_with_file(
                 for msg in recent:
                     history_context += f"{msg['role'].upper()}: {msg['content']}\n"
 
-    # Offload to thread: route_query calls classify_intent() which makes a
-    # blocking Haiku network call (5s cap).  Must not run on the event loop.
-    import asyncio as _asyncio_route
-    route = await _asyncio_route.to_thread(route_query, question_text)
+    # Route + optional query expansion (blocked Haiku call — skip for simple queries)
+    route = route_query(question_text)
     from app.generation.synthesizer import _estimate_complexity
     _file_complexity = _estimate_complexity(question_text)
     if _file_complexity >= 0.80:
         from app.retrieval.query_refiner import generate_advanced_queries
-        advanced_queries = generate_advanced_queries(question_text)
+        advanced_queries = generate_advanced_queries(question_text, provider=provider, model=model)
         refined_q = advanced_queries.get("queries", [question_text])[0]
     else:
         advanced_queries = {"queries": [question_text], "hyde_document": "", "topic": "General", "subtopic": None}
@@ -1472,6 +2099,28 @@ async def _execute_ask_question_with_file(
         advanced_queries=advanced_queries,
         domain_paths=route.get("domain_paths", []),
     )
+    # Check and escalate retrieval coverage
+    chunks, coverage_satisfied, still_missing = check_and_escalate_evidence(
+        question_text, chunks, allowed_sources=route["use_sources"],
+        domain_paths=route.get("domain_paths", []), is_draft=False
+    )
+
+    if not coverage_satisfied:
+        missing_str = ", ".join(still_missing)
+        async def err_generator():
+            yield f"__STATUS__:{json.dumps({'msg': 'Retrieval Escalation failed to recover required evidence.'})}__END_STATUS__"
+            yield f"\nI cannot sufficiently answer your query because the required statutory evidence for the following provision(s) is missing from the database: **{missing_str}**. Please review the source documents manually."
+            try:
+                from app.ai_logger import update_ai_log, commit_ai_log
+                update_ai_log(
+                    response_length=150,
+                    citations_count=0
+                )
+                commit_ai_log(success=False, error_message=f"Missing explicit references: {still_missing}")
+            except:
+                pass
+        return StreamingResponse(err_generator(), media_type="text/event-stream")
+
     from app.generation.context_builder import build_context
     from app.generation.context_compressor import compress_context
     rag_context = (
@@ -1484,7 +2133,7 @@ async def _execute_ask_question_with_file(
     file_context = ""
     if extracted_text.strip():
         file_context = f"\n--- UPLOADED FILE CONTENT ({file.filename}) ---\n{extracted_text}\n--- END UPLOADED FILE ---\n\n"
-    
+
     full_rag_context = file_context + rag_context
     if history_context:
         full_rag_context = f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" + full_rag_context
@@ -1495,12 +2144,16 @@ async def _execute_ask_question_with_file(
 
     # Generate Stream
     from app.generation.synthesizer import synthesize_answer_stream
-    response_stream = synthesize_answer_stream(question_text, full_rag_context)
+    response_stream = synthesize_answer_stream(
+        question_text, full_rag_context,
+        provider=provider, model=model
+    )
 
     from fastapi.responses import StreamingResponse
     wrapped_stream = stream_and_save(
         response_stream, session_id, question_text,
         chunks=chunks, context=rag_context, truth_rules_text=truth_rules_text,
+        answer_provider=provider, answer_model=model
     )
 
     return StreamingResponse(wrapped_stream, media_type="text/event-stream")
@@ -1513,11 +2166,17 @@ async def ask_question_with_file(
     file: UploadFile = File(...),
     question: str = Form(...),
     session_id: Optional[str] = Form(None),
+    provider: Optional[str] = Form(None),
+    model: Optional[str] = Form(None),
 ):
     question_text = question.strip()
+
+    # 1. Validate requested provider & model (Fix 5)
+    actual_provider, actual_model = validate_provider_and_model(provider, model)
+
     user_id, username = _get_user_info_from_req(request)
     request_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
-    
+
     from app.ai_logger import init_ai_log
     init_ai_log(
         user_id=user_id,
@@ -1528,9 +2187,16 @@ async def ask_question_with_file(
         request_id=request_id,
         client_ip=request.client.host if request.client else None
     )
+    from app.ai_logger import update_ai_log
+    update_ai_log(
+        selected_provider=provider or "default",
+        selected_model=model or "default",
+        provider=actual_provider,
+        model_used=actual_model
+    )
 
     try:
-        return await _execute_ask_question_with_file(request, file, question_text, session_id)
+        return await _execute_ask_question_with_file(request, file, question_text, session_id, provider=actual_provider, model=actual_model)
     except Exception as e:
         try:
             from app.ai_logger import commit_ai_log
@@ -1566,7 +2232,7 @@ async def submit_feedback(request: Request, req: FeedbackRequest):
                 "rating": req.rating,
                 "comment": req.comment,
                 "user": "anonymous",
-                "timestamp": utc_now(),
+                "timestamp": datetime.now(),
             })
         _fb_logger.info(f"Feedback recorded | rating={req.rating} | q={req.question[:60]}")
         return {"status": "recorded", "rating": req.rating}
@@ -1587,21 +2253,20 @@ class PDFRequest(BaseModel):
     content: str
 
 @app.post("/generate-pdf")
-@limiter.limit("10/minute")
-def create_pdf(request: Request, req: PDFRequest):
+def create_pdf(req: PDFRequest):
     # Use the class to generate PDF
     # We construct a filename
     import hashlib
     title_hash = hashlib.md5(req.title.encode()).hexdigest()[:8]
     filename = f"Report_{title_hash}.pdf"
     pdf_path = pdf_gen.generate_report(req.content, filename)
-    
+
     if not os.path.exists(pdf_path):
         return Response(status_code=500, content="Error generating PDF")
-        
+
     with open(pdf_path, "rb") as f:
         pdf_bytes = f.read()
-    
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -1620,21 +2285,23 @@ if frontend_dist_path.exists() and frontend_dist_path.is_dir():
     assets_path = frontend_dist_path / "assets"
     if assets_path.exists():
         app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
-    
+
     # Catch-all route for SPA
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         # Ignore API routes
         if full_path.startswith("api/"):
             return Response(status_code=404)
-            
+
         filepath = frontend_dist_path / full_path
         if filepath.exists() and filepath.is_file():
             return FileResponse(filepath)
-            
+
         # Fallback to index.html for React Router
         index_path = frontend_dist_path / "index.html"
         if index_path.exists():
             return FileResponse(index_path)
-            
+
         return Response(status_code=404, content="Frontend not found")
+
+# Trigger reload comment 2

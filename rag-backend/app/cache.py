@@ -89,9 +89,12 @@ def _get_redis():
 
 # ── Key helpers ──────────────────────────────────────────────────────────────
 
-def _exact_key(query: str) -> str:
+def _exact_key(query: str, provider: Optional[str] = None, model: Optional[str] = None) -> str:
     normalized = " ".join(query.lower().strip().split())
-    digest = hashlib.sha256(normalized.encode()).hexdigest()
+    prov_str = f":{provider.lower()}" if provider else ""
+    mod_str = f":{model.lower()}" if model else ""
+    digest_input = f"{normalized}{prov_str}{mod_str}"
+    digest = hashlib.sha256(digest_input.encode()).hexdigest()
     return f"leta:{PROMPT_VERSION}:exact:{digest}"
 
 
@@ -141,57 +144,73 @@ def _sanitize_json_types(obj):
     return obj
 
 
-# ── Layer 1: Exact Hash Cache ────────────────────────────────────────────────
+def get_exact(query: str, provider: str = None, model: str = None):
+    key = _exact_key(query, provider=provider, model=model)
 
-def get_exact(query: str):
-    key = _exact_key(query)
     # Try Redis first
     r = _get_redis()
     if r is not None:
         try:
+            t_start = time.monotonic()
             data = r.get(key)
+            latency = (time.monotonic() - t_start) * 1000.0
             if data:
                 payload = json.loads(data)
-                logger.info(f"Cache L1 HIT (Redis) | q={query[:60]}")
+                logger.info(f"CACHE redis_hit | latency_ms={latency:.2f} | q={query[:60]}")
                 return (payload["answer"], payload.get("sources", []))
+            else:
+                logger.info(f"CACHE redis_miss | latency_ms={latency:.2f} | q={query[:60]}")
+                # Healthy Redis miss — do NOT fall back to DiskCache
+                return None
         except Exception as e:
-            logger.warning(f"Cache L1 Redis get error: {e}")
-    # Fallback to DiskCache
+            logger.warning(f"CACHE redis_error during get: {e}")
+
+    # Fallback to DiskCache ONLY when Redis is unavailable or errors
     dc = _get_disk_cache()
     if dc is not None:
         try:
+            t_start = time.monotonic()
             payload = dc.get(key)
+            latency = (time.monotonic() - t_start) * 1000.0
             if payload:
-                logger.info(f"Cache L1 HIT (DiskCache) | q={query[:60]}")
+                logger.info(f"CACHE disk_hit | latency_ms={latency:.2f} | q={query[:60]}")
                 return (payload["answer"], payload.get("sources", []))
+            else:
+                logger.info(f"CACHE fallback | latency_ms={latency:.2f} | q={query[:60]}")
         except Exception as e:
-            logger.warning(f"Cache L1 DiskCache get error: {e}")
+            logger.warning(f"CACHE disk_error: {e}")
     return None
 
 
-def set_exact(query: str, answer: str, confidence: float, sources: list = None) -> None:
+def set_exact(query: str, answer: str, confidence: float, sources: list = None, provider: str = None, model: str = None) -> None:
     if confidence < CACHE_MIN_CONFIDENCE:
         logger.debug(f"Cache L1 SKIP (low confidence {confidence:.2f}) | q={query[:60]}")
         return
-    key = _exact_key(query)
-    payload = _sanitize_json_types({"answer": answer, "confidence": confidence, "sources": sources or [], "ts": time.time()})
+    key = _exact_key(query, provider=provider, model=model)
+    payload = _sanitize_json_types({"answer": answer, "confidence": confidence, "sources": sources or [], "ts": time.time(), "provider": provider, "model": model})
+
     # Try Redis first
     r = _get_redis()
     if r is not None:
         try:
+            t_start = time.monotonic()
             r.setex(key, CACHE_TTL_SECONDS, json.dumps(payload).encode())
-            logger.debug(f"Cache L1 SET (Redis) | q={query[:60]}")
+            latency = (time.monotonic() - t_start) * 1000.0
+            logger.info(f"CACHE redis_set | latency_ms={latency:.2f} | q={query[:60]}")
             return
         except Exception as e:
-            logger.warning(f"Cache L1 Redis set error: {e}")
-    # Fallback to DiskCache
+            logger.warning(f"CACHE redis_error during set: {e}")
+
+    # Fallback to DiskCache ONLY when Redis is unavailable or errors
     dc = _get_disk_cache()
     if dc is not None:
         try:
+            t_start = time.monotonic()
             dc.set(key, payload, expire=CACHE_TTL_SECONDS)
-            logger.debug(f"Cache L1 SET (DiskCache) | q={query[:60]}")
+            latency = (time.monotonic() - t_start) * 1000.0
+            logger.info(f"CACHE disk_set | latency_ms={latency:.2f} | q={query[:60]}")
         except Exception as e:
-            logger.warning(f"Cache L1 DiskCache set error: {e}")
+            logger.warning(f"CACHE disk_set_error: {e}")
 
 
 # ── Embedding Cache (query text → embedding vector) ─────────────────────────
@@ -238,7 +257,7 @@ def _refresh_faiss_index():
     r = _get_redis()
     if r is None:
         return
-    
+
     try:
         index_key = _semantic_index_key()
         all_entries = r.hgetall(index_key)
@@ -272,20 +291,25 @@ def _refresh_faiss_index():
     except Exception as e:
         logger.error(f"Failed to refresh FAISS cache: {e}")
 
-def verify_cache_hit(query: str, cached_metadata: dict) -> bool:
+def verify_cache_hit(query: str, cached_metadata: dict, provider: str = None, model: str = None) -> bool:
     """
     Accuracy Guard: Ensures the cached answer is truly relevant.
-    Checks for high-priority legal keyword overlap.
+    Checks for high-priority legal keyword overlap and provider/model match (Fix 14).
     """
+    if provider and cached_metadata.get("provider") != provider:
+        return False
+    if model and cached_metadata.get("model") != model:
+        return False
+
     q_lower = query.lower()
     # Extract sections like "Sec 17", "Section 17(5)"
     q_sections = set(re.findall(r'\bsec(?:tion)?\s*\d+', q_lower))
-    
+
     if not q_sections:
         return True # General query, rely on embedding similarity
-    
+
     ans_text = (cached_metadata.get("answer", "") + " " + cached_metadata.get("query_text", "")).lower()
-    
+
     # If the query specifies a section, the answer MUST contain it
     for sec in q_sections:
         # Normalize: "Sec 17" -> "17"
@@ -293,11 +317,11 @@ def verify_cache_hit(query: str, cached_metadata: dict) -> bool:
         if sec_num not in ans_text:
             logger.warning(f"Accuracy Guard REJECTED cache hit: Query mentions Sec {sec_num} but answer does not.")
             return False
-            
+
     return True
 
 
-def get_semantic(query_vec: np.ndarray, query_text: str = ""):
+def get_semantic(query_vec: np.ndarray, query_text: str = "", provider: str = None, model: str = None):
     """
     Returns (answer, sources) tuple if cosine similarity >= threshold and passes accuracy guard.
     """
@@ -319,7 +343,7 @@ def get_semantic(query_vec: np.ndarray, query_text: str = ""):
             if idx != -1 and similarity >= CACHE_SIMILARITY_THRESHOLD:
                 meta = _faiss_metadata[idx]
 
-                if query_text and not verify_cache_hit(query_text, meta):
+                if not verify_cache_hit(query_text, meta, provider=provider, model=model):
                     return None
 
                 logger.info(f"Cache L2 HIT (FAISS) | similarity={similarity:.3f}")
@@ -327,10 +351,10 @@ def get_semantic(query_vec: np.ndarray, query_text: str = ""):
 
     except Exception as e:
         logger.warning(f"Cache L2 (FAISS) search error: {e}")
-        return _get_semantic_slow(query_vec)
+        return _get_semantic_slow(query_vec, provider=provider, model=model)
     return None
 
-def _get_semantic_slow(query_vec: np.ndarray):
+def _get_semantic_slow(query_vec: np.ndarray, provider: str = None, model: str = None):
     """Legacy slow scan as fallback."""
     r = _get_redis()
     if r is None: return None
@@ -339,6 +363,10 @@ def _get_semantic_slow(query_vec: np.ndarray):
         all_entries = r.hgetall(index_key)
         for _, raw in all_entries.items():
             entry = json.loads(raw)
+            if provider and entry.get("provider") != provider:
+                continue
+            if model and entry.get("model") != model:
+                continue
             sim = _cosine_similarity(query_vec, _bytes_to_vec(bytes.fromhex(entry["vec_hex"])))
             if sim >= CACHE_SIMILARITY_THRESHOLD:
                 return (entry["answer"], entry.get("sources", []))
@@ -346,7 +374,7 @@ def _get_semantic_slow(query_vec: np.ndarray):
     return None
 
 
-def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_text: str = "", sources: list = None) -> None:
+def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_text: str = "", sources: list = None, provider: str = None, model: str = None) -> None:
     if confidence < CACHE_MIN_CONFIDENCE:
         return
     r = _get_redis()
@@ -372,6 +400,8 @@ def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_te
             "confidence": confidence,
             "sources": sources or [],
             "ts": time.time(),
+            "provider": provider,
+            "model": model,
         })
         r.hset(index_key, entry_key, json.dumps(entry))
         r.expire(index_key, CACHE_TTL_SECONDS)
@@ -384,6 +414,8 @@ def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_te
                     "query_text": query_text,
                     "confidence": confidence,
                     "sources": sources or [],
+                    "provider": provider,
+                    "model": model,
                 })
 
         logger.debug(f"Cache L2 SET | entries~={current_count + 1}")
@@ -393,18 +425,18 @@ def set_semantic(query_vec: np.ndarray, answer: str, confidence: float, query_te
 
 # ── Combined lookup / store (used by retriever + app.py) ────────────────────
 
-def cache_lookup(query: str, query_vec: Optional[np.ndarray] = None):
+def cache_lookup(query: str, query_vec: Optional[np.ndarray] = None, provider: str = None, model: str = None):
     """
     Check L1 (exact) then L2 (semantic).
     Returns (answer, sources) tuple or None on miss.
     sources is a list of {title, page, url, score} dicts (may be empty list).
     """
-    result = get_exact(query)
+    result = get_exact(query, provider=provider, model=model)
     if result:
         return result
 
     if query_vec is not None:
-        result = get_semantic(query_vec, query_text=query)
+        result = get_semantic(query_vec, query_text=query, provider=provider, model=model)
         if result:
             return result
 
@@ -417,11 +449,13 @@ def cache_store(
     answer: str,
     confidence: float,
     sources: list = None,
+    provider: str = None,
+    model: str = None,
 ) -> None:
     """Store answer + sources in both L1 (exact) and L2 (semantic) if confidence is sufficient."""
-    set_exact(query, answer, confidence, sources=sources or [])
+    set_exact(query, answer, confidence, sources=sources or [], provider=provider, model=model)
     if query_vec is not None:
-        set_semantic(query_vec, answer, confidence, query_text=query, sources=sources or [])
+        set_semantic(query_vec, answer, confidence, query_text=query, sources=sources or [], provider=provider, model=model)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────
@@ -444,3 +478,13 @@ def cache_health() -> dict:
         }
     except Exception as e:
         return {"status": "error", "detail": str(e)}
+
+def close_redis():
+    global _redis_client
+    if _redis_client is not None:
+        logger.info("Closing Redis cache connection pool...")
+        try:
+            _redis_client.close()
+        except Exception as e:
+            logger.warning(f"Error closing Redis: {e}")
+        _redis_client = None

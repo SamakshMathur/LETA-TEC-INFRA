@@ -27,7 +27,10 @@ from app.security import (
     create_refresh_token,
     verify_token,
     get_current_user,
+    get_current_admin,
     is_admin,
+    add_token_to_blocklist,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 
 router = APIRouter()
@@ -41,6 +44,7 @@ DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
 OTP_EXPIRY_MINUTES = 10
 OTP_RATE_LIMIT_PER_HOUR = 3
+MAX_OTP_ATTEMPTS = 5          # Max failed verify attempts before OTP is burned
 
 ADMIN_MASTER_SECRET = os.getenv("ADMIN_MASTER_SECRET", "")
 
@@ -658,6 +662,7 @@ async def send_otp(request: Request, req: SendOTPRequest):
         )
 
     otp = _generate_otp()
+    otp_hash = hashlib.sha256(otp.encode()).hexdigest()
     rate_window_start = rate_window_start or now
     request_count += 1
 
@@ -671,8 +676,9 @@ async def send_otp(request: Request, req: SendOTPRequest):
             "$set": {
                 "contact": req.contact,
                 "method": req.method,
-                "otp": otp,
+                "otp_hash": otp_hash,        # hashed — raw OTP never stored
                 "verified": False,
+                "failed_attempts": 0,         # brute-force counter
                 "created_at": now,
                 "expires_at": expires_at,
                 "rate_window_start": rate_window_start,
@@ -766,50 +772,63 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
             detail="OTP expired",
         )
 
-    if otp_record["method"] == "phone":
-        if not verify_sms_otp(req.contact, req.otp, otp_record["otp"]):
+    # ── OTP Verification (hash-based, brute-force protected) ────────────────────────────────────
+    def _otp_matches() -> bool:
+        """Return True if the submitted OTP matches the stored hash (or legacy plaintext)."""
+        stored_hash = otp_record.get("otp_hash")
+        if stored_hash:
+            submitted_hash = hashlib.sha256(req.otp.encode()).hexdigest()
+            return _secrets.compare_digest(stored_hash, submitted_hash)
+        # Legacy records written before this migration: compare plaintext (migration window only)
+        legacy_otp = otp_record.get("otp", "")
+        return _secrets.compare_digest(legacy_otp, req.otp)
+
+    if DEV_MODE:
+        otp_valid = bool(re.match(r"^\d{6}$", req.otp))  # any valid 6-digit OTP passes in dev
+    else:
+        otp_valid = _otp_matches()
+
+    if not otp_valid:
+        new_attempts = otp_record.get("failed_attempts", 0) + 1
+        if new_attempts >= MAX_OTP_ATTEMPTS:
+            # Burn the OTP — attacker must request a fresh one
+            otp_col.delete_one({"contact": req.contact})
             _log_auth_activity(
                 request=request,
                 started_at=started_at,
                 action="verify_otp",
-                metadata={**_auth_contact_metadata(req.contact, "phone"), "error": "invalid_otp"},
+                metadata={
+                    **_auth_contact_metadata(req.contact, otp_record.get("method")),
+                    "error": "otp_max_attempts_exceeded",
+                },
                 success=False,
             )
             raise HTTPException(
-                status_code=400,
-                detail="Invalid OTP",
+                status_code=429,
+                detail="Too many failed attempts. Please request a new OTP.",
             )
-    else:
-        if DEV_MODE:
-            if not re.match(r"^\d{6}$", req.otp):
-                _log_auth_activity(
-                    request=request,
-                    started_at=started_at,
-                    action="verify_otp",
-                    metadata={**_auth_contact_metadata(req.contact, "email"), "error": "invalid_otp"},
-                    success=False,
-                )
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid OTP",
-                )
-        else:
-            if not _secrets.compare_digest(otp_record["otp"], req.otp):
-                _log_auth_activity(
-                    request=request,
-                    started_at=started_at,
-                    action="verify_otp",
-                    metadata={**_auth_contact_metadata(req.contact, "email"), "error": "invalid_otp"},
-                    success=False,
-                )
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid OTP",
-                )
+        otp_col.update_one(
+            {"contact": req.contact},
+            {"$set": {"failed_attempts": new_attempts}},
+        )
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="verify_otp",
+            metadata={
+                **_auth_contact_metadata(req.contact, otp_record.get("method")),
+                "error": "invalid_otp",
+                "attempts_remaining": MAX_OTP_ATTEMPTS - new_attempts,
+            },
+            success=False,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid OTP",
+        )
 
-    otp_col.delete_one({
-        "contact": req.contact
-    })
+    # OTP correct — consume it immediately to prevent replay
+    otp_col.delete_one({"contact": req.contact})
 
     user = users_col.find_one({
         "$or": [
@@ -1125,9 +1144,23 @@ async def get_me(
 @router.post("/logout")
 async def logout(
     request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     started_at = time.monotonic()
+
+    # Revoke the current access token by adding its jti to the blocklist
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        raw_token = auth_header[len("Bearer "):].strip()
+        try:
+            payload = verify_token(raw_token, "access")
+            jti = payload.get("jti")
+            if jti:
+                # TTL: remainder of the token's 15-minute window (worst case = full window)
+                add_token_to_blocklist(jti, ttl_seconds=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+        except Exception:
+            pass  # expired/invalid token — no need to blocklist
+
     _log_auth_activity(
         request=request,
         started_at=started_at,
@@ -1135,9 +1168,7 @@ async def logout(
         user=current_user,
         metadata={"username": current_user.get("username")},
     )
-    return {
-        "message": "Logged out successfully"
-    }
+    return {"message": "Logged out successfully"}
 
 
 # =============================================================================
@@ -1145,7 +1176,10 @@ async def logout(
 # =============================================================================
 
 @router.post("/make-admin")
-async def make_admin(req: AdminSeedRequest):
+async def make_admin(
+    req: AdminSeedRequest,
+    _admin: dict = Depends(get_current_admin),  # must be authenticated admin
+):
 
     if not _verify_secret(req.master_secret, ADMIN_MASTER_SECRET):
         raise HTTPException(

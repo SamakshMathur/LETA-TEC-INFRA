@@ -9,9 +9,9 @@ from app.config import ai_log_context
 logger = logging.getLogger(__name__)
 
 def init_ai_log(
-    user_id: str, 
-    username: str | None, 
-    query: str, 
+    user_id: str,
+    username: str | None,
+    query: str,
     endpoint: str,
     session_id: str | None = None,
     request_id: str | None = None,
@@ -65,7 +65,7 @@ def commit_ai_log(success: bool = True, http_status: int = 200, error_message: s
     log_data["success"] = success
     log_data["http_status"] = http_status
     log_data["error_message"] = error_message
-    
+
     # Calculate total latency
     start_time = log_data.get("timestamp")
     if start_time:
@@ -86,17 +86,25 @@ def commit_ai_log(success: bool = True, http_status: int = 200, error_message: s
     except Exception as e:
         logger.error(f"Failed to persist AI Query log to MongoDB: {e}", exc_info=True)
 
-    # Structured Logging
+    # Structured Logging (Fix 12)
     try:
         tokens = log_data.get("estimated_prompt_tokens", 0) + log_data.get("estimated_completion_tokens", 0)
         structured_log = {
             "query_id": log_data.get("query_id"),
             "user": log_data.get("username") or log_data.get("user_id"),
+            "selected_provider": log_data.get("selected_provider", "unknown"),
+            "selected_model": log_data.get("selected_model", "unknown"),
+            "provider": log_data.get("provider", "unknown"),
+            "model": log_data.get("model_used", "unknown"),
             "latency_ms": int(log_data.get("total_latency_ms", 0)),
             "retrieval_ms": int(log_data.get("retrieval_time_ms", 0)),
             "generation_ms": int(log_data.get("generation_time_ms", 0)),
             "tokens": tokens,
             "cache_hit": log_data.get("cache_hit", False),
+            "integrity_gate_result": log_data.get("integrity_gate_result", "unknown"),
+            "repair_triggered": log_data.get("repair_triggered", False),
+            "repair_provider": log_data.get("repair_provider"),
+            "repair_model": log_data.get("repair_model"),
             "success": success
         }
         logger.info(json.dumps(structured_log))

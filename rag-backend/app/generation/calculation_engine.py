@@ -8,8 +8,10 @@ Keeps all arithmetic out of the LLM to eliminate hallucinated figures
 and remove thousands of thinking-tokens from the generation budget.
 """
 import re
+import datetime
+import calendar
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List, Tuple
 
 
 @dataclass
@@ -276,3 +278,148 @@ def _gst_amount(query: str) -> CalculationResult:
         result_text=result_text,
         statutory_ref="Section 9, CGST Act 2017 | Section 5, IGST Act 2017",
     )
+
+
+# ─── Generic Date & Duration Math Engine (Phase 13) ───────────────────────────
+
+def add_months(base_date: datetime.date, n: int) -> datetime.date:
+    month = base_date.month - 1 + n
+    year = base_date.year + month // 12
+    month = month % 12 + 1
+    day = min(base_date.day, calendar.monthrange(year, month)[1])
+    return datetime.date(year, month, day)
+
+
+def add_years(base_date: datetime.date, n: int) -> datetime.date:
+    try:
+        return base_date.replace(year=base_date.year + n)
+    except ValueError:
+        return datetime.date(base_date.year + n, 2, 28)
+
+
+def add_days(base_date: datetime.date, n: int) -> datetime.date:
+    return base_date + datetime.timedelta(days=n)
+
+
+def parse_date(date_str: str) -> Optional[datetime.date]:
+    date_str = date_str.strip()
+    for fmt in ("%d-%m-%Y", "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+        try:
+            return datetime.datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def execute_structured_calculation(calc_req: dict, chunks: list) -> dict:
+    """
+    Executes a structured calculation request, verifying inputs verbatim in source text.
+    """
+    base_src_id = calc_req.get("base_src")
+    base_val = calc_req.get("base")
+    if not base_val or not base_src_id:
+        return {"status": "INVALID_REQUEST", "error": "Missing base date or source ID"}
+
+    try:
+        idx = int(base_src_id.replace("SRC-", "")) - 1
+        base_chunk = chunks[idx] if 0 <= idx < len(chunks) else None
+    except (ValueError, TypeError):
+        base_chunk = None
+
+    if not base_chunk:
+        return {"status": "DERIVATION_UNSUPPORTED", "error": f"Source {base_src_id} not found in context"}
+
+    chunk_text = base_chunk.get("text", "").lower()
+    meta = base_chunk.get("metadata", {})
+
+    # Check if base date exists verbatim in chunk text or metadata
+    found_base = base_val.lower() in chunk_text
+    if not found_base:
+        meta_values = [str(v).lower() for v in meta.values()]
+        if any(base_val.lower() in mv for mv in meta_values):
+            found_base = True
+
+    if not found_base:
+        return {"status": "DERIVATION_UNSUPPORTED", "error": f"Base date '{base_val}' not found in source {base_src_id}"}
+
+    rule_src_id = calc_req.get("rule_src")
+    offset_val = calc_req.get("offset")
+    unit_val = calc_req.get("unit", "months")
+    rule_name = calc_req.get("rule", "")
+
+    try:
+        rid = int(rule_src_id.replace("SRC-", "")) - 1
+        rule_chunk = chunks[rid] if 0 <= rid < len(chunks) else None
+    except (ValueError, TypeError):
+        rule_chunk = None
+
+    if not rule_chunk:
+        return {"status": "DERIVATION_UNSUPPORTED", "error": f"Rule source {rule_src_id} not found in context"}
+
+    rule_text = rule_chunk.get("text", "").lower()
+    found_rule = rule_name.lower() in rule_text or rule_name.lower() in str(rule_chunk.get("metadata", {})).lower()
+
+    if not found_rule:
+        return {"status": "DERIVATION_UNSUPPORTED", "error": f"Rule '{rule_name}' not found in source {rule_src_id}"}
+
+    op_type = calc_req.get("type")
+    if op_type == "date_offset":
+        parsed_base = parse_date(base_val)
+        if not parsed_base:
+            return {"status": "CALCULATION_ERROR", "error": f"Unparseable base date '{base_val}'"}
+
+        try:
+            offset_int = int(offset_val)
+        except (ValueError, TypeError):
+            return {"status": "CALCULATION_ERROR", "error": f"Unparseable offset '{offset_val}'"}
+
+        try:
+            if unit_val == "months":
+                res_date = add_months(parsed_base, offset_int)
+            elif unit_val == "years":
+                res_date = add_years(parsed_base, offset_int)
+            elif unit_val == "days":
+                res_date = add_days(parsed_base, offset_int)
+            else:
+                return {"status": "CALCULATION_ERROR", "error": f"Unsupported unit '{unit_val}'"}
+
+            res_str = res_date.strftime("%d-%m-%Y")
+            return {
+                "status": "DERIVED_SUPPORTED",
+                "value": res_str,
+                "provenance": {
+                    "base": base_val,
+                    "operation": f"{offset_val} {unit_val}",
+                    "base_source": base_src_id,
+                    "rule_source": rule_src_id,
+                    "rule": rule_name
+                }
+            }
+        except Exception as e:
+            return {"status": "CALCULATION_ERROR", "error": f"Calculation error: {e}"}
+
+    return {"status": "INVALID_REQUEST", "error": f"Unsupported operation type '{op_type}'"}
+
+
+def process_internal_calculations(text: str, chunks: list) -> Tuple[str, List[dict]]:
+    """
+    Parses and extracts all <calculate> tags from the text, runs them through the verifier,
+    registers the outputs, and strips the tags from the final user-facing text.
+    """
+    calculated_claims = []
+    pattern = r'<calculate\s+([^>]+?)\s*/?>'
+
+    def replace_tag(match):
+        attr_str = match.group(1)
+        attribs = dict(re.findall(r'(\w+)="([^"]*)"', attr_str))
+        if attribs:
+            res = execute_structured_calculation(attribs, chunks)
+            if res.get("status") == "DERIVED_SUPPORTED":
+                calculated_claims.append(res)
+                return res["value"]
+            else:
+                return f"[Calculation Error: {res.get('error')}]"
+        return ""
+
+    cleaned_text = re.sub(pattern, replace_tag, text)
+    return cleaned_text, calculated_claims

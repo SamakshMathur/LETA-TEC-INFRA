@@ -2,27 +2,27 @@
 Embeds only the chunks that are NOT yet in the FAISS index and writes them
 to index_sidecar.faiss. Much gentler than a full rebuild.
 
-Run from: RAG/rag-backend/
+Run from: rag-backend/
     python -X utf8 scripts/embed_new_chunks.py
 
 The server will merge the sidecar into the main index on next startup.
 """
-import sys, io, os, json, time
+import sys
+import io
+import os
+import json
+import time
+from pathlib import Path
+
+# Resolve app root
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.config import EMBEDDING_MODEL, VECTOR_DIM, CHUNKS_PATH, VECTOR_DB_PATH
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from pathlib import Path
-
-CHUNKS_FILE  = Path(r"C:\Users\HP\Desktop\RAG-20260130T152632Z-3-001\RAG\rag-backend\data\chunks\chunks.jsonl")
-INDEX_FILE   = Path(r"C:\Users\HP\Desktop\RAG-20260130T152632Z-3-001\RAG\rag-backend\vectordb\index.faiss")
-SIDECAR_FILE = Path(r"C:\Users\HP\Desktop\RAG-20260130T152632Z-3-001\RAG\rag-backend\vectordb\index_sidecar.faiss")
-VECTOR_DIM   = 1024
-BATCH_SIZE   = 32   # small batches → low CPU spike, keeps system responsive
 
 
 def main():
@@ -31,24 +31,36 @@ def main():
     from sentence_transformers import SentenceTransformer
     import torch
 
+    chunks_file = Path(CHUNKS_PATH)
+    index_file = Path(VECTOR_DB_PATH)
+    sidecar_file = index_file.parent / "index_sidecar.faiss"
+
     # Limit to 2 CPU threads so the machine stays responsive
     torch.set_num_threads(2)
 
-    print("Loading embedding model...", flush=True)
-    model = SentenceTransformer("BAAI/bge-m3")
+    print(f"Loading embedding model ({EMBEDDING_MODEL})...", flush=True)
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    model = SentenceTransformer(EMBEDDING_MODEL, device="cpu")
 
-    print("Reading main FAISS index...", flush=True)
-    main_idx = faiss.read_index(str(INDEX_FILE))
-    main_n   = main_idx.ntotal
+    print(f"Reading main FAISS index from {index_file}...", flush=True)
+    if not index_file.exists():
+        print(f"ERROR: Main index file not found at {index_file}. Run rebuild first.", flush=True)
+        sys.exit(1)
+
+    main_idx = faiss.read_index(str(index_file))
+    main_n = main_idx.ntotal
     print(f"  Main index: {main_n} vectors", flush=True)
     del main_idx  # free RAM immediately
 
-    print("Reading chunks from JSONL...", flush=True)
+    print(f"Reading chunks from {chunks_file}...", flush=True)
     all_texts = []
-    with CHUNKS_FILE.open(encoding="utf-8", errors="ignore") as f:
+    with chunks_file.open(encoding="utf-8", errors="ignore") as f:
         for line in f:
+            line_str = line.strip()
+            if not line_str:
+                continue
             try:
-                c = json.loads(line.strip())
+                c = json.loads(line_str)
                 t = c.get("text", "").strip()
                 if t:
                     all_texts.append(t)
@@ -66,35 +78,35 @@ def main():
         print("Nothing to embed — FAISS is already fully aligned!", flush=True)
         return
 
-    # Create a fresh sidecar (overwrite the old one to avoid duplication)
+    # Create a fresh sidecar
     sidecar_idx = faiss.IndexFlatIP(VECTOR_DIM)
-    print(f"\nEmbedding {len(new_texts)} chunks in batches of {BATCH_SIZE}...", flush=True)
+    batch_size = 32
+    print(f"\nEmbedding {len(new_texts)} chunks in batches of {batch_size}...", flush=True)
     t0 = time.time()
     total_added = 0
 
-    for start in range(0, len(new_texts), BATCH_SIZE):
-        batch = new_texts[start: start + BATCH_SIZE]
-        vecs  = model.encode(batch, normalize_embeddings=True, show_progress_bar=False)
-        vecs  = vecs.astype("float32")
+    for start in range(0, len(new_texts), batch_size):
+        batch = new_texts[start: start + batch_size]
+        vecs = model.encode(batch, normalize_embeddings=True, show_progress_bar=False)
+        vecs = vecs.astype("float32")
         sidecar_idx.add(vecs)
         total_added += len(batch)
 
         elapsed = time.time() - t0
-        rate    = total_added / elapsed if elapsed > 0 else 0
+        rate = total_added / elapsed if elapsed > 0 else 0
         eta_min = (len(new_texts) - total_added) / rate / 60 if rate > 0 else 0
-        print(f"  [{total_added}/{len(new_texts)}]  {rate:.1f} chunks/s  ETA {eta_min:.1f} min",
-              flush=True)
+        print(f"  [{total_added}/{len(new_texts)}]  {rate:.1f} chunks/s  ETA {eta_min:.1f} min", flush=True)
 
-        # Write checkpoint every 500 chunks so progress isn't lost on crash
+        # Write checkpoint every 500 chunks
         if total_added % 500 == 0:
-            faiss.write_index(sidecar_idx, str(SIDECAR_FILE))
-            print(f"  (checkpoint saved — {SIDECAR_FILE.stat().st_size // 1024} KB)", flush=True)
+            faiss.write_index(sidecar_idx, str(sidecar_file))
+            print(f"  (checkpoint saved — {sidecar_file.stat().st_size // 1024} KB)", flush=True)
 
     print(f"\nAll {total_added} new chunks embedded in {(time.time()-t0)/60:.1f} min", flush=True)
-    print(f"Writing sidecar to {SIDECAR_FILE}...", flush=True)
-    faiss.write_index(sidecar_idx, str(SIDECAR_FILE))
+    print(f"Writing sidecar to {sidecar_file}...", flush=True)
+    faiss.write_index(sidecar_idx, str(sidecar_file))
 
-    size_kb = SIDECAR_FILE.stat().st_size // 1024
+    size_kb = sidecar_file.stat().st_size // 1024
     print(f"\nDONE.", flush=True)
     print(f"  Sidecar vectors : {sidecar_idx.ntotal}", flush=True)
     print(f"  Sidecar size    : {size_kb} KB", flush=True)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime, timezone
@@ -47,6 +47,7 @@ class MessageInput(BaseModel):
     content: str
     metadata: Optional[Dict[str, Any]] = None
     citations: Optional[List[Dict[str, Any]]] = None
+    sources: Optional[List[Dict[str, Any]]] = None
 
     @field_validator("content")
     @classmethod
@@ -70,6 +71,7 @@ class Message(BaseModel):
     content: str
     metadata: Optional[Dict[str, Any]] = None
     citations: Optional[List[Dict[str, Any]]] = None
+    sources: Optional[List[Dict[str, Any]]] = None
     timestamp: datetime
 
 
@@ -344,11 +346,113 @@ def get_session(
 
 
 # =============================================================================
-# RENAME SESSION
+# ADD MESSAGE
+# =============================================================================
+
+@router.post(
+    "/{session_id}/message",
+    status_code=status.HTTP_201_CREATED
+)
+def add_message(
+    session_id: str,
+    data: MessageInput,
+    current_user: dict = Depends(get_current_user)
+):
+
+    collection = get_session_collection()
+
+    if collection is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Database connection failed"
+        )
+
+    session = collection.find_one({
+        "session_id": session_id,
+        "user_id": current_user["username"],
+    })
+
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found"
+        )
+
+    current_message_count = session.get("message_count", 0)
+
+    if current_message_count >= MAX_MESSAGES_PER_SESSION:
+        raise HTTPException(
+            status_code=400,
+            detail="Session message limit reached"
+        )
+
+    now = utc_now()
+
+    message = {
+        "message_id": str(uuid.uuid4()),
+        "role": data.role,
+        "content": data.content,
+        "metadata": data.metadata or {},
+        "citations": data.citations or [],
+        "sources": data.sources or data.citations or [],
+        "timestamp": now,
+    }
+
+    result = collection.update_one(
+        {
+            "session_id": session_id,
+            "user_id": current_user["username"],
+        },
+        {
+            "$push": {
+                "messages": message
+            },
+            "$set": {
+                "updated_at": now
+            },
+            "$inc": {
+                "message_count": 1
+            }
+        }
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save message"
+        )
+
+    logger.info(
+        f"Message added | user={current_user['username']} "
+        f"| session={session_id} "
+        f"| role={data.role}"
+    )
+
+    return {
+        "status": "success",
+        "message": message,
+        "session_id": session_id,
+    }
+
+
+# =============================================================================
+# RENAME / UPDATE SESSION TITLE
 # =============================================================================
 
 class SessionRename(BaseModel):
     title: str
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("Title cannot be empty")
+        return v[:120]
+
+
+UpdateSessionTitle = SessionRename
+
 
 @router.patch("/{session_id}/rename")
 def rename_session(session_id: str, data: SessionRename, current_user: dict = Depends(get_current_user)):
@@ -363,6 +467,11 @@ def rename_session(session_id: str, data: SessionRename, current_user: dict = De
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"session_id": session_id, "title": data.title}
+
+
+@router.patch("/{session_id}/title")
+def update_session_title(session_id: str, data: UpdateSessionTitle, current_user: dict = Depends(get_current_user)):
+    return rename_session(session_id, data, current_user)
 
 
 # =============================================================================

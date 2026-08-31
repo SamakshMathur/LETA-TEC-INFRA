@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { 
-  UploadCloud, FileText, CheckCircle, AlertCircle, Trash2, 
+import {
+  UploadCloud, FileText, CheckCircle, AlertCircle, Trash2,
   RefreshCw, Archive, Search, Filter, History, Eye, BookOpen, AlertTriangle, Cpu, Database,
   Users, Key, Webhook, CreditCard, Settings, Terminal, Compass, Activity, Server, HardDrive, BarChart3, BellRing
 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { useKnowledgePolling } from '../hooks/useKnowledgePolling';
 import { KnowledgeDocument, AuditLog, SystemStatus, IngestionJob } from '../types/admin';
 import { hasRole, getActiveRole } from '../lib/permissions';
 import { AXIOS_INSTANCE } from '../utils/api';
+import SelectSwitcher from '../components/ui/SelectSwitcher';
 
 const CATEGORIES = [
   { key: 'acts', label: 'Acts' },
@@ -108,10 +109,10 @@ interface HealthInfo {
 
 const AdminUploadPortal: React.FC = () => {
   const { session, isLoggedIn } = useAuth();
-  
+
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<'overview' | 'kb' | 'upload' | 'jobs' | 'team' | 'analytics' | 'health' | 'keys' | 'billing' | 'settings'>('overview');
-  
+
   // Command Palette & Assistant States
   const [showPalette, setShowPalette] = useState<boolean>(false);
   const [paletteQuery, setPaletteQuery] = useState<string>('');
@@ -120,20 +121,20 @@ const AdminUploadPortal: React.FC = () => {
   const [assistantReplies, setAssistantReplies] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([
     { sender: 'ai', text: 'LETA Administrative Console active. How can I help you query operational data today?' }
   ]);
-  
+
   // Data States
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [jobs, setJobs] = useState<IngestionJob[]>([]);
   const [sysStatus, setSysStatus] = useState<SystemStatus | null>(null);
-  
+
   // Team Management States
   const [members, setMembers] = useState<any[]>([]);
   const [invitations, setInvitations] = useState<any[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [inviteEmail, setInviteEmail] = useState<string>('');
   const [inviteRole, setInviteRole] = useState<string>('viewer');
-  
+
   // Health & System Metrics
   const [healthInfo, setHealthInfo] = useState<HealthInfo | null>(null);
   const [analyticsInfo, setAnalyticsInfo] = useState<any>(null);
@@ -141,13 +142,13 @@ const AdminUploadPortal: React.FC = () => {
   const [webhooks, setWebhooks] = useState<any[]>([]);
   const [billingInfo, setBillingInfo] = useState<any>(null);
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
-  
+
   // Input fields for Keys / Webhooks / Settings
   const [newKeyName, setNewKeyName] = useState<string>('');
   const [newKeyRole, setNewKeyRole] = useState<string>('viewer');
   const [newWebhookName, setNewWebhookName] = useState<string>('');
   const [newWebhookUrl, setNewWebhookUrl] = useState<string>('');
-  
+
   // Settings States
   const [chunkSize, setChunkSize] = useState<number>(1000);
   const [chunkOverlap, setChunkOverlap] = useState<number>(200);
@@ -158,14 +159,14 @@ const AdminUploadPortal: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
-  
+
   // Upload States
   const [selectedCategory, setSelectedCategory] = useState<string>('circulars');
   const [uploadQueue, setUploadQueue] = useState<Array<{ id: string; file: File; hash: string; duplicateDoc?: any; status: 'ready' | 'duplicate' | 'uploading' | 'success' | 'failed'; progress: number }>>([]);
   const [error, setError] = useState<string>('');
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [dragging, setDragging] = useState<boolean>(false);
-  
+
   // Detail Modals
   const [previewDoc, setPreviewDoc] = useState<KnowledgeDocument | null>(null);
   const [versionHistoryDoc, setVersionHistoryDoc] = useState<string | null>(null);
@@ -184,7 +185,7 @@ const AdminUploadPortal: React.FC = () => {
       if (categoryFilter) queryParams.append('category', categoryFilter);
       if (statusFilter) queryParams.append('status', statusFilter);
       if (searchTerm) queryParams.append('search', searchTerm);
-      
+
       const res = await AXIOS_INSTANCE.get(`/api/admin/knowledge/list?${queryParams.toString()}`);
       setDocuments(res.data);
     } catch (e) {
@@ -223,25 +224,25 @@ const AdminUploadPortal: React.FC = () => {
     try {
       const hRes = await AXIOS_INSTANCE.get('/api/admin/control-center/health');
       setHealthInfo(hRes.data);
-      
+
       const aRes = await AXIOS_INSTANCE.get('/api/admin/control-center/analytics');
       setAnalyticsInfo(aRes.data);
-      
+
       const tRes = await AXIOS_INSTANCE.get('/api/admin/control-center/team');
       const teamData = tRes.data;
       setMembers(teamData.members || []);
       setInvitations(teamData.invitations || []);
       setOrganizations(teamData.organizations || []);
-      
+
       const kRes = await AXIOS_INSTANCE.get('/api/admin/control-center/keys');
       setApiKeys(kRes.data);
-      
+
       const wRes = await AXIOS_INSTANCE.get('/api/admin/control-center/webhooks');
       setWebhooks(wRes.data);
-      
+
       const bRes = await AXIOS_INSTANCE.get('/api/admin/control-center/billing');
       setBillingInfo(bRes.data);
-      
+
       setLastRefreshed(new Date().toLocaleTimeString());
     } catch (err) {
       console.error("Failed to load control center stats", err);
@@ -265,7 +266,7 @@ const AdminUploadPortal: React.FC = () => {
 
   // Run polling
   useKnowledgePolling(fetchDocuments, fetchStatus, fetchAuditLogs, fetchJobs, hasActiveJobs, isLoggedIn);
-  
+
   const prevActiveRef = useRef(hasActiveJobs);
   useEffect(() => {
     if (prevActiveRef.current && !hasActiveJobs) {
@@ -319,7 +320,7 @@ const AdminUploadPortal: React.FC = () => {
         setError(`File extension ${ext} not supported.`);
         continue;
       }
-      
+
       const hash = await getFileSHA256(file);
       let duplicateDoc = undefined;
       try {
@@ -484,7 +485,7 @@ const AdminUploadPortal: React.FC = () => {
     { name: 'Billing subscriptions & Usage', path: 'billing', tab: 'billing' },
     { name: 'Retriever Settings & Parameters', path: 'settings', tab: 'settings' }
   ];
-  const filteredPaletteItems = paletteItems.filter(item => 
+  const filteredPaletteItems = paletteItems.filter(item =>
     item.name.toLowerCase().includes(paletteQuery.toLowerCase())
   );
 
@@ -498,7 +499,7 @@ const AdminUploadPortal: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#07070A] text-[#A1AAB8] pt-[100px] pb-16 px-6 font-sans">
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8">
-        
+
         {/* Left Sidebar Navigation */}
         <aside className="w-full lg:w-64 shrink-0 flex flex-col gap-2">
           <div className="px-3 py-4 border-b border-white/[0.05] mb-2 flex items-center gap-2">
@@ -559,15 +560,15 @@ const AdminUploadPortal: React.FC = () => {
                 {lastRefreshed && <span className="text-[10px] text-white/30 font-mono">| Updated: {lastRefreshed}</span>}
               </p>
             </div>
-            
+
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => setAssistantOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-[#67E8F9]/10 hover:bg-[#67E8F9]/20 border border-[#67E8F9]/20 hover:border-[#67E8F9]/40 rounded-xl text-xs font-semibold text-[#67E8F9] transition-all"
               >
                 <Terminal size={14} /> AI Assistant
               </button>
-              <button 
+              <button
                 onClick={() => { fetchDocuments(); fetchStatus(); fetchControlCenterData(); }}
                 className="flex items-center gap-2 px-4 py-2 bg-secondary border border-white/[0.05] hover:bg-hover rounded-xl text-xs font-semibold text-white transition-all"
               >
@@ -590,7 +591,7 @@ const AdminUploadPortal: React.FC = () => {
 
               {/* Ingestion progress, latest uploads queue, alerts */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                
+
                 {/* Active documents block */}
                 <div className="lg:col-span-2 bg-[#0F1722] border border-white/[0.05] rounded-2xl p-6 shadow-xl space-y-6">
                   <div>
@@ -680,9 +681,9 @@ const AdminUploadPortal: React.FC = () => {
               <div className="bg-[#0F1722] rounded-2xl border border-white/[0.05] p-4 shadow-md flex flex-wrap gap-4 items-center justify-between">
                 <div className="flex gap-3 items-center flex-1 min-w-[240px]">
                   <Search size={18} className="text-[#9a9a9a]" />
-                  <input 
-                    type="text" 
-                    placeholder="Search filename or title..." 
+                  <input
+                    type="text"
+                    placeholder="Search filename or title..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="bg-transparent text-sm text-white placeholder-[#9a9a9a]/40 border-none outline-none w-full"
@@ -691,8 +692,8 @@ const AdminUploadPortal: React.FC = () => {
                 <div className="flex gap-3">
                   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#07070A] border border-white/[0.05] rounded-lg">
                     <Filter size={12} className="text-[#67E8F9]" />
-                    <select 
-                      value={categoryFilter} 
+                    <select
+                      value={categoryFilter}
                       onChange={(e) => setCategoryFilter(e.target.value)}
                       className="bg-transparent text-xs text-white border-none outline-none cursor-pointer font-mono"
                     >
@@ -701,8 +702,8 @@ const AdminUploadPortal: React.FC = () => {
                     </select>
                   </div>
                   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#07070A] border border-white/[0.05] rounded-lg">
-                    <select 
-                      value={statusFilter} 
+                    <select
+                      value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
                       className="bg-transparent text-xs text-white border-none outline-none cursor-pointer font-mono"
                     >
@@ -759,14 +760,14 @@ const AdminUploadPortal: React.FC = () => {
                               </td>
                               <td className="px-6 py-4 text-right">
                                 <div className="flex gap-2 justify-end opacity-80 group-hover:opacity-100 transition-opacity">
-                                  <button 
+                                  <button
                                     onClick={() => setPreviewDoc(doc)}
                                     className="p-1.5 bg-[#07070A] hover:bg-hover border border-white/[0.05] rounded-lg text-[#67E8F9]"
                                     title="Preview document"
                                   >
                                     <Eye size={13} />
                                   </button>
-                                  <button 
+                                  <button
                                     onClick={() => setVersionHistoryDoc(doc.filename)}
                                     className="p-1.5 bg-[#07070A] hover:bg-hover border border-white/[0.05] rounded-lg text-indigo-400"
                                     title="Version history"
@@ -775,14 +776,14 @@ const AdminUploadPortal: React.FC = () => {
                                   </button>
                                   {doc.is_active && (
                                     <>
-                                      <button 
+                                      <button
                                         onClick={() => reindexAction(doc.document_id)}
                                         className="p-1.5 bg-[#07070A] hover:bg-hover border border-white/[0.05] rounded-lg text-amber-400"
                                         title="Reindex document"
                                       >
                                         <RefreshCw size={13} />
                                       </button>
-                                      <button 
+                                      <button
                                         onClick={() => archiveAction(doc.document_id)}
                                         className="p-1.5 bg-[#07070A] hover:bg-hover border border-white/[0.05] rounded-lg text-red-400"
                                         title="Archive (Soft Delete)"
@@ -813,13 +814,13 @@ const AdminUploadPortal: React.FC = () => {
                     <h3 className="text-sm font-bold text-white">Database Ingestion Inbound</h3>
                     <p className="text-[11px] text-[#9a9a9a]">Select category and trigger ingestion parser tasks.</p>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <label className="text-[11px] font-semibold text-[#9a9a9a] uppercase tracking-wider font-mono">Category</label>
                     <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto custom-scrollbar border border-white/[0.05] p-1 bg-[#07070A] rounded-xl">
                       {CATEGORIES.map(({ key, label }) => (
-                        <button 
-                          key={key} 
+                        <button
+                          key={key}
                           onClick={() => setSelectedCategory(key)}
                           className={`py-1.5 px-2 rounded-lg text-left text-[11px] font-medium transition-all truncate ${
                             selectedCategory === key
@@ -833,21 +834,21 @@ const AdminUploadPortal: React.FC = () => {
                     </div>
                   </div>
 
-                  <div 
-                    onDragOver={handleDragOver} 
-                    onDragLeave={handleDragLeave} 
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
                     className={`border-2 border-dashed border-white/[0.05] hover:border-[#67E8F9] rounded-xl p-8 text-center cursor-pointer transition-all space-y-3 ${
                       dragging ? 'bg-[#67E8F9]/5 border-[#67E8F9]' : 'bg-[#07070A]/50'
                     }`}
                   >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="hidden" 
-                      onChange={handleFileChange} 
-                      multiple 
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      onChange={handleFileChange}
+                      multiple
                       accept=".pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.xls"
                     />
                     <UploadCloud size={36} className="mx-auto text-[#67E8F9]" />
@@ -874,14 +875,14 @@ const AdminUploadPortal: React.FC = () => {
                   </div>
                   {uploadQueue.length > 0 && (
                     <div className="flex gap-2">
-                      <button 
+                      <button
                         onClick={processUploadAll}
                         disabled={isUploading}
                         className="px-3 py-1.5 bg-[#67E8F9] text-[#07070A] hover:bg-[#67E8F9]/90 disabled:opacity-50 text-xs font-bold rounded-lg transition-all"
                       >
                         Upload All
                       </button>
-                      <button 
+                      <button
                         onClick={() => setUploadQueue([])}
                         className="px-3 py-1.5 bg-[#07070A] hover:bg-hover text-xs font-medium border border-white/[0.05] rounded-lg text-white"
                       >
@@ -907,12 +908,12 @@ const AdminUploadPortal: React.FC = () => {
                               <p className="text-[9px] text-[#9a9a9a]/40 font-mono mt-0.5">Hash: {item.hash.substring(0, 16)}...</p>
                             </div>
                           </div>
-                          
+
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[10px] font-semibold text-[#9a9a9a] uppercase font-mono">
                               {item.status}
                             </span>
-                            <button 
+                            <button
                               onClick={() => setUploadQueue(prev => prev.filter(q => q.id !== item.id))}
                               className="text-[#9a9a9a]/40 hover:text-red-400 p-1"
                             >
@@ -931,13 +932,13 @@ const AdminUploadPortal: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex gap-2">
-                              <button 
+                              <button
                                 onClick={() => handleUploadQueueItem(item.id, 'force')}
                                 className="px-2.5 py-1 bg-amber-500 text-black hover:bg-amber-400 font-bold rounded text-[10px]"
                               >
                                 Force Upload
                               </button>
-                              <button 
+                              <button
                                 onClick={() => handleUploadQueueItem(item.id, 'replace')}
                                 className="px-2.5 py-1 bg-cyan-400 text-black hover:bg-cyan-300 font-bold rounded text-[10px]"
                               >
@@ -952,9 +953,9 @@ const AdminUploadPortal: React.FC = () => {
                             <div className="h-full bg-[#67E8F9] animate-pulse" style={{ width: '40%' }} />
                           </div>
                         )}
-                        
+
                         {item.status === 'ready' && (
-                          <button 
+                          <button
                             onClick={() => handleUploadQueueItem(item.id)}
                             className="w-full py-1.5 bg-[#0F1722] hover:bg-hover border border-white/[0.05] hover:border-[#67E8F9] text-xs font-semibold rounded-lg text-white transition-all"
                           >
@@ -1023,14 +1024,14 @@ const AdminUploadPortal: React.FC = () => {
           {activeTab === 'team' && (
             <div className="space-y-8 animate-in fade-in duration-200">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                
+
                 {/* Directory panel */}
                 <div className="lg:col-span-2 bg-[#0F1722] border border-white/[0.05] rounded-2xl p-6 shadow-xl space-y-6">
                   <div>
                     <h3 className="text-sm font-bold text-white">Member Directory</h3>
                     <p className="text-[11px] text-[#9a9a9a]">Manage active administrative users and capability credentials.</p>
                   </div>
-                  
+
                   <div className="space-y-3">
                     {members.map((m, idx) => (
                       <div key={idx} className="bg-[#07070A] rounded-xl p-4 border border-white/[0.03] flex items-center justify-between gap-4 text-xs">
@@ -1068,18 +1069,18 @@ const AdminUploadPortal: React.FC = () => {
                   <form onSubmit={inviteMemberAction} className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-mono font-semibold text-[#9a9a9a] uppercase tracking-wider">Email Address</label>
-                      <input 
-                        type="email" 
-                        placeholder="e.g. counsel@letatec.com" 
+                      <input
+                        type="email"
+                        placeholder="e.g. counsel@letatec.com"
                         value={inviteEmail}
                         onChange={(e) => setInviteEmail(e.target.value)}
                         className="w-full bg-[#07070A] border border-white/[0.05] rounded-xl px-4 py-2.5 text-xs text-white placeholder-[#9a9a9a]/20 outline-none focus:border-[#67E8F9]"
                       />
                     </div>
-                    
+
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-mono font-semibold text-[#9a9a9a] uppercase tracking-wider">Default Role</label>
-                      <select 
+                      <select
                         value={inviteRole}
                         onChange={(e) => setInviteRole(e.target.value)}
                         className="w-full bg-[#07070A] border border-white/[0.05] rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#67E8F9] cursor-pointer font-mono"
@@ -1091,7 +1092,7 @@ const AdminUploadPortal: React.FC = () => {
                       </select>
                     </div>
 
-                    <button 
+                    <button
                       type="submit"
                       className="w-full py-2.5 bg-[#67E8F9] text-[#07070A] hover:bg-[#67E8F9]/90 font-bold rounded-xl text-xs transition-all shadow-lg"
                     >
@@ -1254,7 +1255,7 @@ const AdminUploadPortal: React.FC = () => {
           {/* API KEYS & WEBHOOKS TAB */}
           {activeTab === 'keys' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-200">
-              
+
               {/* API Keys Panel */}
               <div className="bg-[#0F1722] border border-white/[0.05] rounded-2xl p-6 shadow-xl space-y-6">
                 <div>
@@ -1265,14 +1266,14 @@ const AdminUploadPortal: React.FC = () => {
                 </div>
 
                 <form onSubmit={createApiKeyAction} className="flex gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Gateway Token" 
+                  <input
+                    type="text"
+                    placeholder="e.g. Gateway Token"
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}
                     className="flex-grow bg-[#07070A] border border-white/[0.05] rounded-xl px-4 py-2 text-xs text-white placeholder-[#9a9a9a]/20 outline-none focus:border-[#67E8F9]"
                   />
-                  <button 
+                  <button
                     type="submit"
                     className="px-4 py-2 bg-[#67E8F9] text-[#07070A] hover:bg-[#67E8F9]/90 font-bold rounded-xl text-xs transition-all shrink-0"
                   >
@@ -1287,7 +1288,7 @@ const AdminUploadPortal: React.FC = () => {
                         <p className="font-bold text-white">{k.name}</p>
                         <p className="text-[9px] text-[#9a9a9a] font-mono mt-0.5">{k.prefix}</p>
                       </div>
-                      <button 
+                      <button
                         onClick={async () => {
                           try {
                             await AXIOS_INSTANCE.delete(`/api/admin/control-center/keys/${k.id}`);
@@ -1315,22 +1316,22 @@ const AdminUploadPortal: React.FC = () => {
                 </div>
 
                 <form onSubmit={createWebhookAction} className="space-y-3">
-                  <input 
-                    type="text" 
-                    placeholder="Webhook Name" 
+                  <input
+                    type="text"
+                    placeholder="Webhook Name"
                     value={newWebhookName}
                     onChange={(e) => setNewWebhookName(e.target.value)}
                     className="w-full bg-[#07070A] border border-white/[0.05] rounded-xl px-4 py-2 text-xs text-white placeholder-[#9a9a9a]/20 outline-none focus:border-[#67E8F9]"
                   />
                   <div className="flex gap-2">
-                    <input 
-                      type="url" 
-                      placeholder="https://your-domain.com/webhook" 
+                    <input
+                      type="url"
+                      placeholder="https://your-domain.com/webhook"
                       value={newWebhookUrl}
                       onChange={(e) => setNewWebhookUrl(e.target.value)}
                       className="flex-grow bg-[#07070A] border border-white/[0.05] rounded-xl px-4 py-2 text-xs text-white placeholder-[#9a9a9a]/20 outline-none focus:border-[#67E8F9]"
                     />
-                    <button 
+                    <button
                       type="submit"
                       className="px-4 py-2 bg-[#67E8F9] text-[#07070A] hover:bg-[#67E8F9]/90 font-bold rounded-xl text-xs transition-all shrink-0"
                     >
@@ -1426,8 +1427,8 @@ const AdminUploadPortal: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono font-semibold text-[#9a9a9a] uppercase tracking-wider">Semantic Chunk Size (chars)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={chunkSize}
                     onChange={(e) => setChunkSize(Number(e.target.value))}
                     className="w-full bg-[#07070A] border border-white/[0.05] rounded-xl px-4 py-2.5 text-white outline-none focus:border-[#67E8F9]"
@@ -1435,8 +1436,8 @@ const AdminUploadPortal: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono font-semibold text-[#9a9a9a] uppercase tracking-wider">Chunk Overlap</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={chunkOverlap}
                     onChange={(e) => setChunkOverlap(Number(e.target.value))}
                     className="w-full bg-[#07070A] border border-white/[0.05] rounded-xl px-4 py-2.5 text-white outline-none focus:border-[#67E8F9]"
@@ -1444,8 +1445,8 @@ const AdminUploadPortal: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono font-semibold text-[#9a9a9a] uppercase tracking-wider">Retriever Top K Matches</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={retrieverTopK}
                     onChange={(e) => setRetrieverTopK(Number(e.target.value))}
                     className="w-full bg-[#07070A] border border-white/[0.05] rounded-xl px-4 py-2.5 text-white outline-none focus:border-[#67E8F9]"
@@ -1453,8 +1454,8 @@ const AdminUploadPortal: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono font-semibold text-[#9a9a9a] uppercase tracking-wider">LLM Temperature</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.1"
                     value={temperature}
                     onChange={(e) => setTemperature(Number(e.target.value))}
@@ -1464,7 +1465,7 @@ const AdminUploadPortal: React.FC = () => {
               </div>
 
               <div className="flex justify-end pt-4 border-t border-white/[0.03]">
-                <button 
+                <button
                   onClick={() => alert('Operational parameter configurations updated successfully!')}
                   className="px-5 py-2.5 bg-[#67E8F9] text-[#07070A] hover:bg-[#67E8F9]/90 font-bold rounded-xl text-xs transition-all shadow-lg"
                 >
@@ -1486,7 +1487,7 @@ const AdminUploadPortal: React.FC = () => {
             </span>
             <button onClick={() => setAssistantOpen(false)} className="text-[#9a9a9a]/40 hover:text-white transition-colors">✕</button>
           </div>
-          
+
           <div className="flex-grow p-4 overflow-y-auto space-y-3 custom-scrollbar text-xs">
             {assistantReplies.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -1502,9 +1503,9 @@ const AdminUploadPortal: React.FC = () => {
           </div>
 
           <form onSubmit={queryAdminAssistant} className="p-3 bg-[#07070A] border-t border-white/[0.05] flex gap-2">
-            <input 
-              type="text" 
-              placeholder="Ask anything about database states..." 
+            <input
+              type="text"
+              placeholder="Ask anything about database states..."
               value={assistantPrompt}
               onChange={(e) => setAssistantPrompt(e.target.value)}
               className="flex-grow bg-[#0F1722] border border-white/[0.05] rounded-xl px-4 py-2 text-xs text-white placeholder-[#9a9a9a]/20 outline-none focus:border-[#67E8F9]"
@@ -1522,9 +1523,9 @@ const AdminUploadPortal: React.FC = () => {
           <div className="bg-[#0F1722] w-full max-w-lg rounded-2xl border border-white/[0.08] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-4 bg-[#07070A] border-b border-white/[0.05] flex items-center gap-3">
               <Search className="text-[#9a9a9a]" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search navigational shortcuts..." 
+              <input
+                type="text"
+                placeholder="Search navigational shortcuts..."
                 value={paletteQuery}
                 onChange={(e) => setPaletteQuery(e.target.value)}
                 className="bg-transparent text-sm text-white placeholder-[#9a9a9a]/30 border-none outline-none w-full"
@@ -1532,7 +1533,7 @@ const AdminUploadPortal: React.FC = () => {
               />
               <button onClick={() => setShowPalette(false)} className="text-[#9a9a9a]/40 hover:text-white font-mono text-[10px]">ESC</button>
             </div>
-            
+
             <div className="p-2 max-h-64 overflow-y-auto custom-scrollbar text-xs">
               {filteredPaletteItems.length === 0 ? (
                 <p className="text-center text-[#9a9a9a]/30 py-6">No matching actions or navigation shortcuts</p>
@@ -1610,7 +1611,7 @@ const AdminUploadPortal: React.FC = () => {
               )}
             </div>
             <div className="px-6 py-4 bg-[#07070A] border-t border-white/[0.05] flex justify-end">
-              <button 
+              <button
                 onClick={() => setPreviewDoc(null)}
                 className="px-4 py-2 bg-secondary border border-white/[0.05] hover:bg-hover text-xs font-semibold rounded-lg transition-all text-white"
               >
@@ -1648,14 +1649,14 @@ const AdminUploadPortal: React.FC = () => {
                   <p className="text-[10px] text-[#9a9a9a] font-mono">Uploaded: {new Date(doc.uploaded_at).toLocaleString()}</p>
                   <p className="text-[10px] text-[#9a9a9a] font-mono">By: {doc.uploader}</p>
                   <div className="flex gap-2 justify-end pt-2">
-                    <button 
+                    <button
                       onClick={() => setPreviewDoc(doc)}
                       className="px-2.5 py-1 bg-secondary border border-white/[0.05] hover:bg-hover rounded text-[10px] font-semibold text-white"
                     >
                       Details
                     </button>
                     {!doc.is_active && (
-                      <button 
+                      <button
                         onClick={async () => {
                           if (confirm(`Are you sure you want to promote Version ${doc.version} back to active?`)) {
                             try {

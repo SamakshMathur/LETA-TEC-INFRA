@@ -8,9 +8,15 @@ from app.config import (
     CLAUDE_THINKING_BUDGET, CLAUDE_MAX_TOKENS, MAX_RESPONSE_POINTS,
     HAIKU_COMPLEXITY_THRESHOLD,
     BRIEF_RESPONSE_THRESHOLD, STANDARD_RESPONSE_THRESHOLD, SONNET_THINKING_THRESHOLD,
+    # Answer evaluation
+    ANSWER_LLM_PROVIDER, ANSWER_LLM_MODEL,
 )
 from app.generation.prompt import SYSTEM_PROMPT, BRIEF_PROMPT, STANDARD_PROMPT, DRAFTING_PROMPT
 from app.generation.rules_engine import rules_engine
+import contextvars
+
+input_tokens_var = contextvars.ContextVar("input_tokens", default=None)
+output_tokens_var = contextvars.ContextVar("output_tokens", default=None)
 
 logger = logging.getLogger(__name__)
 
@@ -90,54 +96,23 @@ def _select_response_mode(complexity: float) -> tuple:
     """
     Maps complexity score to (mode_name, prompt_template, max_tokens).
 
-    All tiers now follow LETATEC master prompt v2 structure:
-      Quick Take (≤300w) + Key Extracts + Detailed Advisory (500–3000w)
-      → minimum viable response is ~1200 tokens; generous headroom given.
-
-    brief    (< BRIEF_RESPONSE_THRESHOLD)    → Quick Take + KE + DA,  ~6000 tokens
-    standard (< STANDARD_RESPONSE_THRESHOLD) → Quick Take + KE + DA,  ~8000 tokens
-    detailed (>= STANDARD_RESPONSE_THRESHOLD)→ Quick Take + KE + DA, ~12000 tokens
+    brief    (< BRIEF_RESPONSE_THRESHOLD)    → prose, 150–300 words,  ~800 tokens
+    standard (< STANDARD_RESPONSE_THRESHOLD) → prose, 400–700 words,  ~2000 tokens
+    detailed (>= STANDARD_RESPONSE_THRESHOLD)→ prose, 700–1200 words, ~3500 tokens
     """
     if complexity < BRIEF_RESPONSE_THRESHOLD:
-        return "brief", BRIEF_PROMPT, 6000
+        return "brief", BRIEF_PROMPT, 800
     elif complexity < STANDARD_RESPONSE_THRESHOLD:
-        return "standard", STANDARD_PROMPT, 8000
+        return "standard", STANDARD_PROMPT, 2000
     else:
-        return "detailed", SYSTEM_PROMPT, 12000
+        return "detailed", SYSTEM_PROMPT, 3500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Client initialisation
 # ─────────────────────────────────────────────────────────────────────────────
 
-_claude_client = None
-_oai_client = None
-
-if LLM_PROVIDER == "anthropic":
-    if not ANTHROPIC_API_KEY:
-        logger.warning("ANTHROPIC_API_KEY not found — answer generation will fail")
-    from app.utils.anthropic_client import get_anthropic_client, TIMEOUT_SYNTHESIS
-    # 45-second read timeout — covers the longest non-thinking draft answers
-    # (typically 5-15s).  Reduced from 900s which caused invisible 15-minute hangs
-    # when the Anthropic API was slow from ECS; the retry loop (3 attempts with
-    # Haiku fallback) handles transient failures.
-    _claude_client = get_anthropic_client(timeout=TIMEOUT_SYNTHESIS, connect=10.0)
-    logger.info(f"LLM Provider: Anthropic Claude ({CLAUDE_MAIN_MODEL}) with extended thinking")
-
-elif LLM_PROVIDER == "ollama":
-    import openai as _openai
-    _oai_client = _openai.OpenAI(
-        api_key=OLLAMA_API_KEY if OLLAMA_API_KEY else "ollama",
-        base_url=f"http://localhost:11434/v1",
-    )
-    logger.info(f"LLM Provider: Local Ollama ({LLM_MODEL})")
-
-else:  # openai
-    import openai as _openai
-    if not OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY not found — answer generation will fail")
-    _oai_client = _openai.OpenAI(api_key=OPENAI_API_KEY)
-    logger.info(f"LLM Provider: OpenAI ({LLM_MODEL})")
+import app.generation.clients as _clients
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -184,6 +159,8 @@ def _stream_claude(
     use_thinking: bool = False,
     max_tokens_override: int = None,
     is_draft: bool = False,
+    model_override: str = None,
+    usage_tracker: dict = None,
 ):
     """
     3-tier model routing:
@@ -193,7 +170,7 @@ def _stream_claude(
 
     Only visible text deltas are yielded; thinking tokens stay internal.
     """
-    model = CLAUDE_UTILITY_MODEL if use_haiku else CLAUDE_MAIN_MODEL
+    model = model_override if model_override else (CLAUDE_UTILITY_MODEL if use_haiku else CLAUDE_MAIN_MODEL)
 
     messages = [{"role": "user", "content": question}]
 
@@ -211,7 +188,7 @@ def _stream_claude(
         system_blocks = [
             {
                 "type": "text",
-                "text": static_part,
+                 "text": static_part,
                 "cache_control": {"type": "ephemeral"},
             },
             {
@@ -231,25 +208,30 @@ def _stream_claude(
     resolved_max_tokens = max_tokens_override if max_tokens_override is not None else (
         4000 if use_haiku else CLAUDE_MAX_TOKENS
     )
-    # Claude 4 models (claude-sonnet-4-6, claude-haiku-4-5) do not accept a
-    # `temperature` parameter — omit it entirely and let the API use its default.
+    # Anthropic requires temperature=1 when extended thinking is enabled.
+    # For regular (non-thinking) calls, temperature=0 produces more precise
+    # and consistent legal answers, which is critical for a compliance tool.
     stream_kwargs = dict(
         model=model,
         max_tokens=resolved_max_tokens,
         system=system_blocks,
         messages=messages,
         stop_sequences=["[TERMINATE]"],
+        temperature=1 if use_thinking else 0,
     )
 
     # Extended thinking: Sonnet only, and only when complexity warrants it
     if not use_haiku and use_thinking:
+        thinking_budget = max(1024, min(CLAUDE_THINKING_BUDGET, resolved_max_tokens))
         stream_kwargs["thinking"] = {
             "type": "enabled",
-            "budget_tokens": CLAUDE_THINKING_BUDGET,
+            "budget_tokens": thinking_budget,
         }
-        # Anthropic requirement: max_tokens must be strictly greater than thinking budget
-        if stream_kwargs["max_tokens"] <= CLAUDE_THINKING_BUDGET:
-            stream_kwargs["max_tokens"] = CLAUDE_THINKING_BUDGET + 4000
+        # Anthropic's max_tokens parameter must be strictly greater than budget_tokens.
+        # Set it to thinking_budget + resolved_max_tokens.
+        # This keeps the output tokens budget (visible text) strictly bounded by resolved_max_tokens.
+        stream_kwargs["max_tokens"] = thinking_budget + resolved_max_tokens
+        logger.info(f"Claude thinking configured: budget={thinking_budget} | max_tokens={stream_kwargs['max_tokens']}")
 
     def _is_retryable(exc: Exception) -> bool:
         return type(exc).__name__ in {
@@ -262,7 +244,8 @@ def _stream_claude(
     for attempt in range(max_attempts):
         full_content = ""
         try:
-            with _claude_client.messages.stream(**stream_kwargs) as stream:
+            client = _clients.get_claude_client()
+            with client.messages.stream(**stream_kwargs) as stream:
                 for event in stream:
                     try:
                         if (
@@ -278,33 +261,33 @@ def _stream_claude(
                     except (AttributeError, TypeError):
                         continue
 
+            try:
+                final_msg = stream.get_final_message()
+                if final_msg and getattr(final_msg, "usage", None):
+                    input_tokens_var.set(final_msg.usage.input_tokens)
+                    output_tokens_var.set(final_msg.usage.output_tokens)
+                    if usage_tracker is not None:
+                        usage_tracker["input_tokens"] = final_msg.usage.input_tokens
+                        usage_tracker["output_tokens"] = final_msg.usage.output_tokens
+            except Exception as ue:
+                logger.warning(f"Failed to retrieve final token usage from stream: {ue}")
+
+            # Fallback token estimation if not set
+            if input_tokens_var.get() is None:
+                input_tokens_var.set((len(system_prompt) + len(question)) // 4)
+            if output_tokens_var.get() is None:
+                output_tokens_var.set(len(full_content) // 4)
+            if usage_tracker is not None:
+                if usage_tracker.get("input_tokens") is None:
+                    usage_tracker["input_tokens"] = input_tokens_var.get()
+                if usage_tracker.get("output_tokens") is None:
+                    usage_tracker["output_tokens"] = output_tokens_var.get()
+
             logger.info(
                 f"Claude stream complete | model={'haiku' if use_haiku else 'sonnet'} "
                 f"| thinking={use_thinking} | attempt={attempt + 1} | chars={len(full_content)}"
             )
-            if full_content:
-                return  # success — exit generator
-
-            # Stream completed but produced 0 text tokens. This happens when extended
-            # thinking consumes the full context window before emitting visible text,
-            # or when the API silently rejects the thinking parameter on this model.
-            # Retry without thinking (next attempt or immediate Haiku fallback).
-            logger.error(
-                f"[EMPTY_STREAM] Anthropic stream returned 0 text tokens | "
-                f"model={'haiku' if use_haiku else 'sonnet'} | thinking={use_thinking} | "
-                f"attempt={attempt + 1} | max_tokens={stream_kwargs.get('max_tokens')} | "
-                f"thinking_budget={stream_kwargs.get('thinking', {}).get('budget_tokens', 0)}"
-            )
-            if use_thinking and attempt < max_attempts - 1:
-                # Retry without thinking — most likely cause is thinking eating all tokens
-                logger.warning("Retrying without extended thinking...")
-                stream_kwargs.pop("thinking", None)
-                # temperature not accepted by Claude 4 models — leave unset
-                use_thinking = False
-                continue  # retry immediately
-
-            # All attempts exhausted or not a thinking issue — fall through to Haiku
-            raise RuntimeError("Empty stream: 0 text tokens after all attempts")
+            return  # success — exit generator
 
         except Exception as e:
             if attempt < max_attempts - 1 and _is_retryable(e):
@@ -321,17 +304,17 @@ def _stream_claude(
             if not use_haiku:
                 logger.warning("Attempting emergency fallback to Haiku...")
                 yield "\n[System: Falling back to fast-drafting mode...]\n\n"
-                yield from _stream_claude(question, system_prompt, use_haiku=True)
+                yield from _stream_claude(question, system_prompt, use_haiku=True, usage_tracker=usage_tracker)
             else:
                 yield "Error generating answer. Please try again."
             return
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# OpenAI / Ollama streaming generator (kept as fallback)
+# OpenAI-Compatible streaming generator (shared helper)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _stream_openai(question: str, system_prompt: str, response_mode: str = "detailed"):
+def _stream_openai_compatible(client, question: str, system_prompt: str, response_mode: str = "detailed", model_override: str = None, usage_tracker: dict = None):
     if response_mode == "draft":
         messages = [{"role": "user", "content": question}]
     elif response_mode == "detailed":
@@ -344,15 +327,18 @@ def _stream_openai(question: str, system_prompt: str, response_mode: str = "deta
     else:
         messages = [{"role": "user", "content": question}]
 
+    model_to_use = model_override if model_override else (ANSWER_LLM_MODEL if ANSWER_LLM_MODEL else LLM_MODEL)
+
     api_params = {
-        "model": LLM_MODEL,
+        "model": model_to_use,
         "messages": messages,
         "max_completion_tokens": 3000,
         "stream": True,
         "stop": ["[TERMINATE]"],
+        "stream_options": {"include_usage": True},
     }
 
-    if "o1" not in LLM_MODEL.lower() and "gpt-5" not in LLM_MODEL.lower():
+    if "o1" not in model_to_use.lower() and "gpt-5" not in model_to_use.lower():
         api_params["temperature"] = 0.0
         api_params["extra_body"] = {
             "frequency_penalty": 0.3,
@@ -361,20 +347,64 @@ def _stream_openai(question: str, system_prompt: str, response_mode: str = "deta
 
     full_content = ""
     try:
-        response_stream = _oai_client.chat.completions.create(**api_params)
+        response_stream = client.chat.completions.create(**api_params)
         for chunk in response_stream:
-            content = chunk.choices[0].delta.content
-            if content:
-                if full_content.count("[POINT") > MAX_RESPONSE_POINTS:
-                    break
-                full_content += content
-                yield content
+            if hasattr(chunk, "usage") and chunk.usage:
+                try:
+                    input_tokens_var.set(chunk.usage.prompt_tokens)
+                    output_tokens_var.set(chunk.usage.completion_tokens)
+                    if usage_tracker is not None:
+                        usage_tracker["input_tokens"] = chunk.usage.prompt_tokens
+                        usage_tracker["output_tokens"] = chunk.usage.completion_tokens
+                except Exception:
+                    pass
+            if chunk.choices:
+                content = chunk.choices[0].delta.content
+                if content:
+                    if full_content.count("[POINT") > MAX_RESPONSE_POINTS:
+                        break
+                    full_content += content
+                    yield content
 
-        logger.debug(f"OpenAI stream complete | chars={len(full_content)}")
+        logger.debug(f"OpenAI-compatible stream complete | chars={len(full_content)}")
 
     except Exception as e:
-        logger.error(f"OpenAI stream error: {e}", exc_info=True)
-        yield f"Error generating answer: {str(e)}"
+        logger.error(f"OpenAI-compatible stream error: {e}", exc_info=True)
+        # Raise explicit error for A/B testing instead of silent recovery
+        raise RuntimeError(f"OpenAI-compatible generation error: {str(e)}")
+
+    finally:
+        # Fallback token estimation if usage wasn't received in the stream
+        if input_tokens_var.get() is None:
+            input_tokens_var.set(len(system_prompt + question) // 4)
+        if output_tokens_var.get() is None:
+            output_tokens_var.set(len(full_content) // 4)
+        if usage_tracker is not None:
+            if usage_tracker.get("input_tokens") is None:
+                usage_tracker["input_tokens"] = input_tokens_var.get()
+            if usage_tracker.get("output_tokens") is None:
+                usage_tracker["output_tokens"] = output_tokens_var.get()
+
+
+def _stream_openai(question: str, system_prompt: str, response_mode: str = "detailed", model_override: str = None, usage_tracker: dict = None):
+    try:
+        client = _clients.get_openai_client()
+    except Exception as e:
+        logger.error(f"OpenAI routing failed: {e}")
+        # Return a clear provider configuration error as requested
+        yield f"\n[Provider Configuration Error: {str(e)}]"
+        return
+    yield from _stream_openai_compatible(client, question, system_prompt, response_mode, model_override, usage_tracker=usage_tracker)
+
+
+def _stream_ollama(question: str, system_prompt: str, response_mode: str = "detailed", model_override: str = None, usage_tracker: dict = None):
+    try:
+        client = _clients.get_ollama_client()
+    except Exception as e:
+        logger.error(f"Ollama routing failed: {e}")
+        yield f"\n[Provider Configuration Error: {str(e)}]"
+        return
+    yield from _stream_openai_compatible(client, question, system_prompt, response_mode, model_override, usage_tracker=usage_tracker)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -386,6 +416,9 @@ def synthesize_answer_stream(
     context: str,
     session_is_draft: bool = False,
     force_haiku: bool = False,
+    provider: str = None,
+    model: str = None,
+    usage_tracker: dict = None,
 ):
     """
     Public API: Generates a streaming answer.
@@ -400,10 +433,6 @@ def synthesize_answer_stream(
     force_haiku: force Haiku model regardless of complexity (used by /ask-sync
     to stay within API Gateway's 29-second integration timeout).
     """
-    logger.info(
-        f"synthesize_answer_stream: starting | q_len={len(question)} | "
-        f"ctx_len={len(context)} | draft={session_is_draft}"
-    )
     complexity = _estimate_complexity(question)
     # Keywords that route through DRAFTING_PROMPT (notices, drafts, and advisory opinions)
     _DRAFT_KW = [
@@ -429,17 +458,6 @@ def synthesize_answer_stream(
         r'\b(provide|give|state|share)\s+(the\s+)?(definition|meaning|explanation|rate|provision)',
         r'\b(relevant\s+circular|applicable\s+circular|circular\s+on)\b',
         r'\b(full\s+form|abbreviation)\b',
-        # Correction / continuation signals — never reroute these to advisory mode
-        r'you\s+got\s+me\s+(all\s+)?wrong',
-        r'(that\'s|that\s+is)\s+(wrong|incorrect|not\s+right|off\s+route|off\s+track)',
-        r'completely\s+(switched|diverted|changed)\s+to',
-        r'stick\s+to\s+(our|the|this)\s+conversation',
-        r'take\s+it\s+forward|taking\s+(it|this)\s+forward',
-        r'continue\s+(the|our|this)\s+(discussion|conversation|analysis|thread|topic)',
-        r'\bi\s+(already|have\s+already)\s+(said|told|replied|mentioned)',
-        r'\bi\s+replied\s+to\s+you',
-        r'as\s+(i|we)\s+(said|mentioned|discussed|told|replied)',
-        r'not\s+what\s+(i|we)\s+(asked|said|meant)',
     ]
     _is_never_draft = any(_re.search(p, question.lower()) for p in _NEVER_DRAFT_PATTERNS)
 
@@ -449,27 +467,49 @@ def synthesize_answer_stream(
         session_is_draft or any(kw in question.lower() for kw in _DRAFT_KW)
     )
 
+    mode_name = None
     if is_draft:
         prompt_template = DRAFTING_PROMPT
         use_haiku = force_haiku  # allow override even for draft in sync mode
         use_thinking = False  # Thinking disabled — DRAFTING_PROMPT is self-sufficient; all tokens go to output
-        max_tokens = 4000 if force_haiku else 16000
+        max_tokens = 4000 if force_haiku else 5000
     else:
         mode_name, prompt_template, max_tokens = _select_response_mode(complexity)
         use_haiku = force_haiku or (complexity < HAIKU_COMPLEXITY_THRESHOLD)
         use_thinking = (not use_haiku) and (complexity >= SONNET_THINKING_THRESHOLD)
         if force_haiku:
-            # Haiku 4.5 max output is 8192; cap at 6000 to leave headroom
-            max_tokens = min(max_tokens, 6000)
+            max_tokens = min(max_tokens, 2200)
+
+    # Determine intent instruction for prompt steering
+    intent_instruction = ""
+    if is_draft:
+        intent_instruction = "\n\n[INTENT]\nGenerate a complete, high-quality, professional draft notice reply or representation. Maintain rigor and statutory anchors, but avoid duplication, unnecessary circularity, or verbose phrasing. Keep the generation focused and concise."
+    else:
+        if mode_name == "brief":
+            intent_instruction = "\n\n[INTENT]\nProvide a short, direct, factual answer. Keep it within 150-250 words. Do not include detailed explanations or non-essential background."
+        elif mode_name == "standard":
+            intent_instruction = "\n\n[INTENT]\nProvide a standard legal analysis. Keep it within 300-500 words. Balance detail with conciseness."
+        else:
+            intent_instruction = "\n\n[INTENT]\nProvide a detailed legal opinion. Walk through all provisions and arguments clearly, but keep it within 700-1000 words. Avoid repetition."
 
     truth_rules_text = rules_engine.get_all_rules_as_text()
-    system_prompt = prompt_template.format(context=context, truth_rules=truth_rules_text)
+    system_prompt = prompt_template.format(context=context, truth_rules=truth_rules_text) + intent_instruction
+
+    # Scoped target provider and model overrides (Fix 4)
+    active_provider = provider if provider else ANSWER_LLM_PROVIDER
+    if active_provider == "claude":
+        active_provider = "anthropic"
+
+    active_model = model if model else ANSWER_LLM_MODEL
 
     model_name = "unknown"
-    if LLM_PROVIDER == "anthropic":
-        model_name = CLAUDE_UTILITY_MODEL if use_haiku else CLAUDE_MAIN_MODEL
+    if active_provider == "anthropic":
+        if active_model:
+            model_name = active_model
+        else:
+            model_name = CLAUDE_UTILITY_MODEL if use_haiku else CLAUDE_MAIN_MODEL
     else:
-        model_name = LLM_MODEL
+        model_name = active_model if active_model else LLM_MODEL
 
     from app.ai_logger import update_ai_log
     update_ai_log(
@@ -478,9 +518,9 @@ def synthesize_answer_stream(
         estimated_prompt_tokens=(len(system_prompt) + len(question)) // 4
     )
 
-    if LLM_PROVIDER == "anthropic":
+    if active_provider == "anthropic":
         logger.info(
-            f"Routing to Claude: complexity={complexity:.2f} | draft={is_draft} | "
+            f"Routing to Claude: model={model_name} | complexity={complexity:.2f} | draft={is_draft} | "
             f"haiku={use_haiku} | thinking={use_thinking}"
         )
         yield from _stream_claude(
@@ -490,23 +530,41 @@ def synthesize_answer_stream(
             use_thinking=use_thinking,
             max_tokens_override=max_tokens,
             is_draft=is_draft,
+            model_override=model_name,
+            usage_tracker=usage_tracker,
         )
-    else:
+    elif active_provider == "openai":
         logger.info(
-            f"Routing to OpenAI/Ollama: model={LLM_MODEL} | complexity={complexity:.2f} | draft={is_draft}"
+            f"Routing to OpenAI: model={model_name} | complexity={complexity:.2f} | draft={is_draft}"
         )
         yield from _stream_openai(
             question=question,
             system_prompt=system_prompt,
             response_mode="draft" if is_draft else "detailed",
+            model_override=model_name,
+            usage_tracker=usage_tracker,
         )
+    elif active_provider == "ollama":
+        logger.info(
+            f"Routing to Ollama: model={model_name} | complexity={complexity:.2f} | draft={is_draft}"
+        )
+        yield from _stream_ollama(
+            question=question,
+            system_prompt=system_prompt,
+            response_mode="draft" if is_draft else "detailed",
+            model_override=model_name,
+            usage_tracker=usage_tracker,
+        )
+    else:
+        logger.error(f"Unsupported provider specified: {active_provider}")
+        yield f"\n[System Error: Unsupported provider {active_provider}]"
 
 
-def synthesize_answer(question: str, context: str) -> str:
+def synthesize_answer(question: str, context: str, provider: str = None, model: str = None) -> str:
     """
     Public API: Synchronous answer generation wrapper.
     """
     chunks = []
-    for chunk in synthesize_answer_stream(question, context):
+    for chunk in synthesize_answer_stream(question, context, provider=provider, model=model):
         chunks.append(chunk)
     return "".join(chunks)

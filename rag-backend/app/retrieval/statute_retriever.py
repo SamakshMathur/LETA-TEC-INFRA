@@ -3,6 +3,8 @@ import logging
 import os
 from typing import List, Dict, Any
 
+from app.retrieval.quarantine import _is_quarantined
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,12 +42,12 @@ class StatuteRetriever:
         if not self._loaded:
             return []
 
-        # Try exact match first, then case-insensitive
+        # Try exact match first, then case-insensitive and space-normalized
         topic_data = self.index.get(topic)
         if topic_data is None:
-            topic_lower = topic.lower()
+            topic_norm = topic.lower().replace("_", " ").strip()
             for key, val in self.index.items():
-                if key.lower() == topic_lower:
+                if key.lower().replace("_", " ").strip() == topic_norm:
                     topic_data = val
                     break
 
@@ -101,12 +103,22 @@ class StatuteRetriever:
         normalized_targets = []
         for p in priority_provisions:
             try:
+                is_igst = "IGST" in p
                 if "Section" in p:
-                    normalized_targets.append(LegalParser.normalize_citation("section", p.replace("Section", "").strip()))
+                    val = p.replace("Section", "").strip()
+                    normalized_targets.append((LegalParser.normalize_citation("section", val), is_igst))
+                    if is_igst:
+                        normalized_targets.append((LegalParser.normalize_citation("section", val.replace("IGST", "").strip()), is_igst))
                 elif "Rule" in p:
-                    normalized_targets.append(LegalParser.normalize_citation("rule", p.replace("Rule", "").strip()))
+                    val = p.replace("Rule", "").strip()
+                    normalized_targets.append((LegalParser.normalize_citation("rule", val), is_igst))
+                    if is_igst:
+                        normalized_targets.append((LegalParser.normalize_citation("rule", val.replace("IGST", "").strip()), is_igst))
                 elif "Schedule" in p:
-                    normalized_targets.append(LegalParser.normalize_citation("schedule", p.replace("Schedule", "").strip()))
+                    val = p.replace("Schedule", "").strip()
+                    normalized_targets.append((LegalParser.normalize_citation("schedule", val), is_igst))
+                    if is_igst:
+                        normalized_targets.append((LegalParser.normalize_citation("schedule", val.replace("IGST", "").strip()), is_igst))
             except Exception as e:
                 logger.warning(f"Failed to normalize provision '{p}': {e}")
 
@@ -145,10 +157,16 @@ class StatuteRetriever:
         # ── Slow path: linear scan (fallback when index not yet built) ────────────
         matched_chunks = []
         for chunk in chunks:
+            # Phase 3: quarantine gate — never return quarantined chunks from statute path
+            if _is_quarantined(chunk):
+                continue
             metadata = chunk.get("metadata", {})
             chunk_citations = metadata.get("citations", [])
+            rel_path = metadata.get("rel_path", "").lower()
 
-            for target in normalized_targets:
+            for target, require_igst in normalized_targets:
+                if require_igst and "igst" not in rel_path:
+                    continue
                 if any(_provision_matches(cit, target) for cit in chunk_citations):
                     chunk_copy = chunk.copy()
                     chunk_copy["_is_statute_first"] = True
