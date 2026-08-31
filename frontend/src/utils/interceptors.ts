@@ -5,6 +5,9 @@ import { Tokens } from '../types/auth';
 
 const AUTH_ENDPOINTS = [
   '/api/auth/login',
+  '/api/auth/send-otp',
+  '/api/auth/verify-otp',
+  '/api/auth/register',
   '/api/auth/refresh',
   '/api/auth/reset-password',
   '/invites',

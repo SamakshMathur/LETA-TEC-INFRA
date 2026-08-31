@@ -1202,7 +1202,7 @@ const AdminUploadPortal: React.FC = () => {
                       {Object.entries(healthInfo.startup_checks).map(([chk, val]: [string, any]) => (
                         <div key={chk} className="bg-[#07070A] border border-white/[0.03] rounded-xl p-3 flex flex-col justify-between">
                           <span className="text-[9px] font-mono text-[#9a9a9a] uppercase truncate">{chk.replace('_', ' ')}</span>
-                          <span className={`text-[10px] font-bold mt-1 ${val === 'passed' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          <span className={`text-[10px] font-bold mt-1 ${val === 'passed' ? 'text-emerald-400' : val === 'optional' ? 'text-amber-400' : 'text-rose-400'}`}>
                             {val.toUpperCase()}
                           </span>
                         </div>

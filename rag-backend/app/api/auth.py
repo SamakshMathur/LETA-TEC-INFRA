@@ -294,36 +294,45 @@ def send_sms_otp(phone: str, otp: str) -> None:
         logger.info(f"[DEV MODE] SMS OTP {otp} for {phone} (Fast2SMS/SNS call bypassed)")
         return
 
-    # Try AWS SNS first (from main)
+    sns_error: Exception | None = None
+
+    # Try AWS SNS first
     try:
         _send_sms_otp(phone, otp)
         return
     except Exception as e:
+        sns_error = e
         logger.warning(f"AWS SNS failed: {e}. Trying Fast2SMS fallback...")
 
-    # Fallback to Fast2SMS (from aditya-does)
-    if not FAST2SMS_API_KEY:
-        logger.warning("FAST2SMS_API_KEY missing — SMS not sent")
-        return
+    # Fallback to Fast2SMS
+    if FAST2SMS_API_KEY:
+        try:
+            response = _requests.post(
+                "https://www.fast2sms.com/dev/bulkV2",
+                headers={
+                    "authorization": FAST2SMS_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "route": "otp",
+                    "variables_values": otp,
+                    "numbers": phone,
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            logger.info(f"SMS OTP sent via Fast2SMS to ***{phone[-4:]}")
+            return
+        except Exception as err:
+            logger.error(f"Fast2SMS sending failed: {err}")
+            raise RuntimeError(
+                f"All SMS providers failed — SNS: {sns_error}; Fast2SMS: {err}"
+            )
 
-    try:
-        response = _requests.post(
-            "https://www.fast2sms.com/dev/bulkV2",
-            headers={
-                "authorization": FAST2SMS_API_KEY,
-                "Content-Type": "application/json",
-            },
-            json={
-                "route": "otp",
-                "variables_values": otp,
-                "numbers": phone,
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        logger.info(f"SMS OTP sent via Fast2SMS to ***{phone[-4:]}")
-    except Exception as err:
-        logger.error(f"Fast2SMS sending failed: {err}")
+    # No fallback key available — surface as an error, not a silent no-op
+    raise RuntimeError(
+        f"SMS delivery failed: SNS error ({sns_error}); no Fast2SMS key configured"
+    )
 
 
 def verify_sms_otp(phone: str, submitted_otp: str, expected_otp: str) -> bool:
@@ -682,10 +691,28 @@ async def send_otp(request: Request, req: SendOTPRequest):
         upsert=True,
     )
 
-    if req.method == "phone":
-        send_sms_otp(req.contact, otp)
-    else:
-        _send_email_otp(req.contact, otp)
+    try:
+        if req.method == "phone":
+            send_sms_otp(req.contact, otp)
+        else:
+            _send_email_otp(req.contact, otp)
+    except Exception as sms_err:
+        # Roll back the OTP record so the rate counter doesn't increment
+        # for a delivery failure the user couldn't control.
+        otp_col.delete_one({"contact": req.contact})
+        logger.error(f"OTP delivery failed for ***{req.contact[-4:]}: {sms_err}")
+        _log_auth_activity(
+            request=request,
+            started_at=started_at,
+            action="send_otp",
+            user=user,
+            metadata={**_auth_contact_metadata(req.contact, req.method), "error": "sms_delivery_failed"},
+            success=False,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to send OTP. Please try again in a moment.",
+        )
 
     response = {
         "message": "OTP sent successfully",
@@ -864,6 +891,17 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
     )
 
     session_end_ms = user.get("session_end_ms")
+    # Don't return a session_end_ms that's already expired — SessionClock would
+    # immediately fire logout() on mount, throwing the user back to /login before
+    # they even see the dashboard.  Clear it from the response (not the DB) so
+    # the user gets a normal session; they can start a fresh session via payment.
+    if session_end_ms and session_end_ms <= now_ms:
+        logger.info(
+            f"verify_otp: session_end_ms expired for user={user_info['username']} "
+            f"— omitting from auth response to prevent immediate logout loop"
+        )
+        session_end_ms = None
+
     return _build_auth_response(user_info, session_end_ms=session_end_ms)
 
 
