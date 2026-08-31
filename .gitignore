@@ -63,6 +63,9 @@ rag-backend/__pycache__/
 rag-backend/.diskcache_v5/
 .diskcache_v5/
 rag-backend/.flashrank_cache/
+rag-backend/.cache/
+rag-backend/backup/
+*.bak
 *.pem
 *accessKeys*
 *_accessKeys*

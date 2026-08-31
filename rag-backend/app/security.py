@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import os
 import logging
+import uuid as _uuid
 import jwt
 
 from fastapi.security import OAuth2PasswordBearer
@@ -46,7 +47,8 @@ def create_access_token(
 
     to_encode.update({
         "exp": expire,
-        "type": "access"
+        "type": "access",
+        "jti": _uuid.uuid4().hex,   # unique token ID for revocation
     })
 
     return jwt.encode(
@@ -66,7 +68,8 @@ def create_refresh_token(data: dict) -> str:
 
     to_encode.update({
         "exp": expire,
-        "type": "refresh"
+        "type": "refresh",
+        "jti": _uuid.uuid4().hex,   # unique token ID for revocation
     })
 
     return jwt.encode(
@@ -74,6 +77,53 @@ def create_refresh_token(data: dict) -> str:
         SECRET_KEY,
         algorithm=ALGORITHM
     )
+
+# ───────────────────────────────────────────────────────────────────────────────
+# TOKEN BLOCKLIST (logout / revocation)
+# ───────────────────────────────────────────────────────────────────────────────
+
+_BLOCKLIST_PREFIX = "leta:blocklist:jti:"
+
+def _get_blocklist_redis():
+    """Return Redis client for blocklist, or None if Redis is unavailable."""
+    try:
+        import redis
+        _redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        client = redis.from_url(_redis_url, decode_responses=True, socket_connect_timeout=1)
+        client.ping()
+        return client
+    except Exception:
+        return None
+
+
+def add_token_to_blocklist(jti: str, ttl_seconds: int) -> None:
+    """Mark a token jti as revoked. Silently no-ops if Redis is unavailable."""
+    if not jti:
+        return
+    client = _get_blocklist_redis()
+    if client is None:
+        logger.warning("Token blocklist: Redis unavailable — logout will not revoke token server-side")
+        return
+    try:
+        key = f"{_BLOCKLIST_PREFIX}{jti}"
+        client.setex(key, ttl_seconds, "1")
+    except Exception as e:
+        logger.warning(f"Token blocklist write failed: {e}")
+
+
+def is_token_revoked(jti: str) -> bool:
+    """Return True if the jti is in the blocklist. Returns False on any Redis error."""
+    if not jti:
+        return False
+    client = _get_blocklist_redis()
+    if client is None:
+        return False
+    try:
+        return bool(client.exists(f"{_BLOCKLIST_PREFIX}{jti}"))
+    except Exception:
+        return False
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOKEN VERIFICATION

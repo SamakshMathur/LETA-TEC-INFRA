@@ -15,8 +15,14 @@ from app.config import (
 from app.retrieval.reranker import LegalReranker
 from app.retrieval.statute_retriever import StatuteRetriever
 from app.retrieval.provision_graph import ProvisionGraphRetriever
+from app.retrieval.quarantine import _is_quarantined
 
 logger = logging.getLogger(__name__)
+
+class RAGList(list):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.metrics = {}
 
 # ─── Pool classification — folder patterns per document category ───────────
 _CASE_LAW_FOLDERS  = {"high court case laws", "supreme court case laws", "aar", "other app result"}
@@ -38,7 +44,8 @@ def _chunk_category(chunk: dict) -> str:
             return "statute"
     return "other"
 
-# ─── Thread-safe embedding model singleton ─────────────────────────────────
+
+
 _model = None
 _model_lock = threading.Lock()
 _model_device = "auto"   # tracks where the model was loaded; "cpu" after GPU fallback
@@ -55,6 +62,12 @@ def get_model(force_cpu: bool = False):
     if _model is None or force_cpu:
         with _model_lock:
             if _model is None or force_cpu:
+                from app.config import HF_TOKEN
+                import os
+                os.environ["HF_HUB_OFFLINE"] = "1"
+                os.environ["TRANSFORMERS_OFFLINE"] = "1"
+                if HF_TOKEN:
+                    os.environ["HF_TOKEN"] = HF_TOKEN
                 from sentence_transformers import SentenceTransformer
                 device = "cpu" if force_cpu else None   # None = auto-detect
                 device_label = "CPU (fallback)" if force_cpu else "auto"
@@ -181,58 +194,9 @@ def _extract_query_refs(query: str) -> list:
     Called before FAISS search so that explicitly-cited sections are pinned at
     the top of the retrieval pool, bypassing ranking uncertainty.
     """
-    q = query.lower()
-    refs = []
-    seen: set = set()
-
-    def _act_codes(ctx: str) -> list:
-        found = [code for kw, code in _ACT_CODE_MAP if kw in ctx]
-        # Remove duplicates while preserving order
-        seen_codes: set = set()
-        deduped = []
-        for c in found:
-            if c not in seen_codes:
-                seen_codes.add(c)
-                deduped.append(c)
-        return deduped if deduped else ["CGST", "IGST"]  # try both when no act named
-
-    # Section references: "section 16", "sec 16", "section 2(13)", "sec.16"
-    for m in re.finditer(r'\bsec(?:tion)?\s*\.?\s*(\d+)(?:\s*\([^)]{0,12}\))*', q):
-        sec = m.group(1)
-        ctx = q[max(0, m.start() - 40): m.end() + 40]
-        for code in _act_codes(ctx):
-            key = f"{code}_SEC_{sec}"
-            if key not in seen:
-                seen.add(key)
-                refs.append(key)
-
-    # Rule references: "rule 89", "rule 42(2)"
-    for m in re.finditer(r'\brule\s+(\d+)(?:\s*\([^)]{0,12}\))*', q):
-        rule = m.group(1)
-        ctx = q[max(0, m.start() - 40): m.end() + 40]
-        for code in _act_codes(ctx):
-            key = f"{code}_RUL_{rule}"
-            if key not in seen:
-                seen.add(key)
-                refs.append(key)
-
-    # Schedule references: "schedule ii", "schedule iii", "schedule 1"
-    for m in re.finditer(r'\bschedule\s+([ivxlcdm]+|\d+)\b', q):
-        sch = m.group(1).upper()
-        key = f"CGST_SCH_{sch}"
-        if key not in seen:
-            seen.add(key)
-            refs.append(key)
-
-    # Circular references: "Circular No. 183", "Circular 183/15/2022", "CBIC Circular 183"
-    for m in re.finditer(r'\bcircular\s+(?:no\.?\s*)?(\d{2,3})\b', q):
-        cir_num = m.group(1)
-        key = f"CIRCULAR_{cir_num}"
-        if key not in seen:
-            seen.add(key)
-            refs.append(key)
-
-    return refs
+    from app.retrieval.reference_resolver import ReferenceResolver
+    resolved = ReferenceResolver.resolve_references(query)
+    return [ref["canonical_key"] for ref in resolved]
 
 
 def _expand_context_window(
@@ -361,20 +325,36 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
 
     while remaining and len(selected) < top_k:
         best_item = None
-        best_mmr = -1.0
+        best_mmr = -9999.0
 
         for candidate in remaining:
             relevance = candidate.get("_final_legal_score", 0) / max_score
 
             if selected:
-                max_sim = max(
+                text_sim = max(
                     jaccard(candidate.get("text", ""), s.get("text", ""))
                     for s in selected
                 )
+                cand_path = (candidate.get("rel_path") or candidate.get("metadata", {}).get("rel_path", "")).lower()
+                same_doc = any(
+                    cand_path == (s.get("rel_path") or s.get("metadata", {}).get("rel_path", "")).lower()
+                    for s in selected
+                )
+                max_sim = max(text_sim, 0.7) if same_doc else text_sim
             else:
                 max_sim = 0.0
 
-            mmr_score = lambda_param * relevance - (1 - lambda_param) * max_sim
+            # Provenance-Aware MMR protection:
+            # Pinned direct references are exempt from similarity penalty to prevent
+            # near-duplicate circular text from pushing them out of the context.
+            if candidate.get("_pinned_by_ref", False):
+                # No diversity penalty for explicit citations
+                mmr_score = lambda_param * relevance
+                # Boost primary canonical authorities to ensure they get selected first
+                if candidate.get("_pinned_tier", "") == "PRIMARY":
+                    mmr_score += 5.0
+            else:
+                mmr_score = lambda_param * relevance - (1 - lambda_param) * max_sim
 
             if mmr_score > best_mmr:
                 best_mmr = mmr_score
@@ -405,23 +385,13 @@ class Retriever:
         self.index = faiss.read_index(str(index_path))
         logger.info(f"FAISS index loaded: {self.index.ntotal} vectors, dim={self.index.d}")
 
-        # Merge sidecar index if it exists (produced by incremental ingest scripts)
+        # Treat sidecar index as stale/unverified if it exists. DO NOT automatically merge.
         sidecar_path = index_path.parent / "index_sidecar.faiss"
         if sidecar_path.exists():
-            try:
-                sidecar = faiss.read_index(str(sidecar_path))
-                if sidecar.d == self.index.d and sidecar.ntotal > 0:
-                    # Merge: extract all vectors from sidecar and add to main index
-                    all_vecs = faiss.rev_swig_ptr(sidecar.get_xb(), sidecar.ntotal * sidecar.d)
-                    import numpy as _np
-                    all_vecs = _np.array(all_vecs).reshape(sidecar.ntotal, sidecar.d).astype('float32')
-                    self.index.add(all_vecs)
-                    # Persist merged index and remove sidecar
-                    faiss.write_index(self.index, str(index_path))
-                    sidecar_path.unlink()
-                    logger.info(f"Sidecar merged: +{sidecar.ntotal} vectors → main index now {self.index.ntotal}")
-            except Exception as e:
-                logger.warning(f"Sidecar merge failed (non-fatal): {e}")
+            logger.warning(
+                f"Sidecar index found at {sidecar_path}. "
+                "DO NOT automatically merge sidecars. Treat sidecar as stale/unverified."
+            )
 
         # Validate dimension
         if self.index.d != VECTOR_DIM:
@@ -435,6 +405,7 @@ class Retriever:
                 for line_num, line in enumerate(f, 1):
                     try:
                         chunk = json.loads(line)
+                        chunk["_db_index"] = line_num - 1
                         self.chunks.append(chunk)
                         self.metadata.append(chunk.get("metadata", {}))
                         tokenized_corpus.append(tokenize_text(chunk.get("text", "")))
@@ -602,44 +573,143 @@ class Retriever:
     def _direct_ref_lookup(self, refs: list) -> list:
         """
         Returns chunks that explicitly cite any of the given provision keys,
-        using the pre-built provision index for O(1) lookup per key.
-        CIRCULAR_N keys are resolved via _circular_index (filename-based).
-        These chunks are pinned at the top of combined_results with
-        _statute_priority=1.0 so they survive FlashRank and LegalReranker.
-        Capped at 20 to avoid flooding the reranker with pinned chunks.
+        using the pre-built provision index for O(1) lookup.
+        Pushes canonical primary authorities (e.g. Act chunk for sections) to the top,
+        followed by secondary matches (rules, circulars, case laws mentioning the provision).
+        Allocates pinned budget dynamically across all query references.
         """
         if not refs or not hasattr(self, "_provision_index"):
             return []
+
+        from app.config import MAX_PINNED_BUDGET, PINNED_TYPE_BUDGETS
+
         seen_ids: set = set()
         pinned = []
 
-        def _pin(idx: int) -> bool:
-            if idx >= len(self.chunks):
-                return False
-            chunk = self.chunks[idx]
-            cid = chunk.get("chunk_id")
-            if cid and cid not in seen_ids:
-                c = chunk.copy()
-                c["_pinned_by_ref"] = True
-                c["_statute_priority"] = 1.0
-                pinned.append(c)
-                seen_ids.add(cid)
-                return True
+        # Calculate budget per reference dynamically
+        ref_budget = max(6, MAX_PINNED_BUDGET // len(refs))
+
+        def _is_primary_authority(chunk, ref: str) -> bool:
+            import os
+            meta = chunk.get("metadata", {})
+            doc_type = meta.get("canonical_document_type", meta.get("document_type", "REFERENCE")).upper()
+            rel_path_lower = (chunk.get("rel_path") or meta.get("rel_path", "")).lower()
+            filename = os.path.basename(rel_path_lower)
+
+            in_acts_folder = any(k in rel_path_lower for k in ["acts/", "act/", "cgst acts", "igst acts"])
+            in_rules_folder = any(k in rel_path_lower for k in ["rules/", "rule/", "cgst rules", "igst rules"])
+
+            if "_SEC_" in ref:
+                sec_part = ref.split("_SEC_")[-1]
+                m_num = re.search(r'\d+', sec_part)
+                if m_num:
+                    target_sec = int(m_num.group(0))
+                    range_match = re.search(r'\b(?:sections?|secs?\.?)\s*(\d+)(?:\s*[\–\-]\s*(\d+))?', filename, re.IGNORECASE)
+                    if range_match:
+                        start = int(range_match.group(1))
+                        end = int(range_match.group(2)) if range_match.group(2) else start
+                        return start <= target_sec <= end
+                return in_acts_folder or (doc_type == "PRIMARY_LAW" and any(k in rel_path_lower for k in ["acts", "act"]))
+
+            if "_RUL_" in ref:
+                rule_part = ref.split("_RUL_")[-1]
+                if in_rules_folder:
+                    if rule_part.lower() in filename:
+                        return True
+                return doc_type == "RULES" and any(k in rel_path_lower for k in ["rules", "rule"])
+
+            if "_NOT_" in ref:
+                return doc_type == "NOTIFICATION" or "notification" in rel_path_lower
+            if "CIRCULAR_" in ref:
+                return doc_type == "CIRCULAR" or "circular" in rel_path_lower
             return False
 
         for ref in refs:
-            # Statutory provisions (CGST_SEC_16, CGST_RUL_89, etc.)
-            for idx in self._provision_index.get(ref, []):
-                _pin(idx)
-                if len(pinned) >= 20:
-                    return pinned
-            # Circular number keys (CIRCULAR_183) — resolved from filename-based index
+            ref_candidates = []
+
+            # Fetch all candidate indices from provision index
+            indices = self._provision_index.get(ref, [])
+            # Fetch all candidate indices from circular index if circular
             if ref.startswith("CIRCULAR_") and hasattr(self, "_circular_index"):
-                for idx in self._circular_index.get(ref, []):
-                    _pin(idx)
-                    if len(pinned) >= 20:
-                        return pinned
-        return pinned
+                indices = list(set(indices + self._circular_index.get(ref, [])))
+
+            for idx in indices:
+                if idx >= len(self.chunks):
+                    continue
+                chunk = self.chunks[idx]
+                if _is_quarantined(chunk):
+                    continue
+                rel_path = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
+                if rel_path in self.inactive_paths:
+                    continue
+
+                ref_candidates.append(chunk)
+
+            if not ref_candidates:
+                continue
+
+            # Separate into primary vs secondary authorities
+            primary_pool = []
+            secondary_pool = []
+
+            for c in ref_candidates:
+                if _is_primary_authority(c, ref):
+                    primary_pool.append(c)
+                else:
+                    secondary_pool.append(c)
+
+            # Sort both pools by page/chunk position as a fallback for quality stability
+            primary_pool.sort(key=lambda x: (x.get("metadata", {}).get("page", 0), x.get("chunk_id", "")))
+
+            # For secondary pool, sort by authority type weight
+            from app.config import AUTHORITY_WEIGHTS
+            def secondary_weight(c):
+                meta = c.get("metadata", {})
+                doc_type = meta.get("canonical_document_type", meta.get("document_type", "REFERENCE")).upper()
+                weight = AUTHORITY_WEIGHTS.get(doc_type, 0.5)
+                # Prioritize active chunks
+                if meta.get("is_active", True):
+                    weight += 10.0
+                return weight
+
+            secondary_pool.sort(key=secondary_weight, reverse=True)
+
+            # Dynamically fill ref-level slots
+            selected_count = 0
+
+            # 1. Pull canonical primary law chunks first (up to type budget)
+            primary_limit = PINNED_TYPE_BUDGETS.get("PRIMARY_LAW", 6)
+            for c in primary_pool:
+                if selected_count >= ref_budget:
+                    break
+                cid = c.get("chunk_id")
+                if cid and cid not in seen_ids:
+                    c_copy = c.copy()
+                    c_copy["_pinned_by_ref"] = True
+                    c_copy["_statute_priority"] = 1.0
+                    c_copy["_pinned_tier"] = "PRIMARY"
+                    pinned.append(c_copy)
+                    seen_ids.add(cid)
+                    selected_count += 1
+                    if selected_count >= primary_limit:
+                        break
+
+            # 2. Fill remaining slot budget with secondary supporting authorities
+            for c in secondary_pool:
+                if selected_count >= ref_budget:
+                    break
+                cid = c.get("chunk_id")
+                if cid and cid not in seen_ids:
+                    c_copy = c.copy()
+                    c_copy["_pinned_by_ref"] = True
+                    c_copy["_statute_priority"] = 0.8  # Direct secondary reference
+                    c_copy["_pinned_tier"] = "SECONDARY"
+                    pinned.append(c_copy)
+                    seen_ids.add(cid)
+                    selected_count += 1
+
+        # Truncate final overall pinned list to global budget cap if necessary
+        return pinned[:MAX_PINNED_BUDGET]
 
     def search(self, query: str, top_k: int = 50, allowed_sources=None, advanced_queries=None, domain_paths=None, is_draft: bool = False, skip_rerank: bool = False):
         if not query or not query.strip():
@@ -661,6 +731,33 @@ class Retriever:
             topic = advanced_queries.get("topic", "General")
             subtopic = advanced_queries.get("subtopic")
 
+        # Precompute BM25 scores for graph results sorting and BM25 search
+        tokenized_query = tokenize_text(_expand_for_bm25(query))
+        bm25_scores = self.bm25.get_scores(tokenized_query) if self.bm25 else None
+
+        # Resolve query-topic provisions and Provision Graph neighbors
+        from app.retrieval.provision_graph import _provision_matches
+        from app.ingestion.legal_parser import LegalParser
+        from app.retrieval.reranker import _normalize_topic
+
+        topic_provisions = self.statute_retriever.get_provisions(topic)
+        normalized_targets = []
+        for p in topic_provisions:
+            is_igst = "IGST" in p
+            if "Section" in p:
+                val = p.replace("Section", "").strip()
+                normalized_targets.append((LegalParser.normalize_citation("section", val), is_igst))
+                if is_igst:
+                    normalized_targets.append((LegalParser.normalize_citation("section", val.replace("IGST", "").strip()), is_igst))
+            elif "Rule" in p:
+                val = p.replace("Rule", "").strip()
+                normalized_targets.append((LegalParser.normalize_citation("rule", val), is_igst))
+                if is_igst:
+                    normalized_targets.append((LegalParser.normalize_citation("rule", val.replace("IGST", "").strip()), is_igst))
+
+        starting_targets = [t[0] for t in normalized_targets]
+        related_targets = self.graph_retriever.get_related_provisions(starting_targets) if self.graph_retriever else set()
+
         # --- Direct section/rule reference lookup (pinned, bypasses FAISS ranking) ---
         # Extracts explicit citations from query (e.g. "Section 16 CGST") and pins
         # matching chunks at priority 1.0 so they always reach the top of the pool.
@@ -670,9 +767,12 @@ class Retriever:
             logger.info(f"Direct ref lookup: {_query_refs} → {len(_pinned)} pinned chunks")
 
         # --- Layer 1: Statute-First Retrieval (Deterministic) ---
+        t_stat_start = time.monotonic()
         statute_results = self.statute_retriever.search_statutes(self.chunks, topic, subtopic)
+        statute_retrieval_ms = (time.monotonic() - t_stat_start) * 1000.0
 
         # --- Provision Graph Expansion ---
+        t_graph_start = time.monotonic()
         graph_results = []
         if statute_results:
             matched_provisions = []
@@ -684,6 +784,9 @@ class Retriever:
                 for res in graph_results:
                     res["_is_graph_expanded"] = True
                     res["_statute_priority"] = 0.8
+                if graph_results and bm25_scores is not None:
+                    graph_results.sort(key=lambda x: bm25_scores[x["_db_index"]] if "_db_index" in x else 0, reverse=True)
+        provision_graph_ms = (time.monotonic() - t_graph_start) * 1000.0
 
         # --- Layer 2: Broad Semantic Retrieval (Vector + BM25) ---
         candidate_pool = []
@@ -693,6 +796,9 @@ class Retriever:
             """Add chunk by index if not already in pool and index is valid."""
             if 0 <= idx < len(self.chunks):
                 chunk = self.chunks[idx]
+                # Phase 3: quarantine gate — exclude quarantined chunks from all paths
+                if _is_quarantined(chunk):
+                    return
                 rel_path = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
                 if rel_path in self.inactive_paths:
                     return
@@ -702,6 +808,7 @@ class Retriever:
                     candidate_pool.append(chunk.copy())
 
         # 1. Vector Search — primary query
+        t_faiss_start = time.monotonic()
         query_vec = embed_query(query)
         if self.index and query_vec is not None:
             D, I = self.index.search(np.array([query_vec]).astype('float32'), VECTOR_SEARCH_TOP_K)
@@ -723,15 +830,16 @@ class Retriever:
                     D2, I2 = self.index.search(np.array([eq_vec]).astype('float32'), VECTOR_EXPANDED_TOP_K)
                     for idx in I2[0]:
                         _add_to_pool(idx)
+        faiss_ms = (time.monotonic() - t_faiss_start) * 1000.0
 
         # 2. BM25 Search — expand abbreviations before tokenizing so "ITC" matches
         # chunks that say "Input Tax Credit", "sec 16" matches "Section 16", etc.
-        if self.bm25:
-            tokenized_query = tokenize_text(_expand_for_bm25(query))
-            bm25_scores = self.bm25.get_scores(tokenized_query)
+        t_bm25_start = time.monotonic()
+        if self.bm25 and bm25_scores is not None:
             top_bm25_idxs = np.argsort(bm25_scores)[::-1][:BM25_TOP_K]
             for idx in top_bm25_idxs:
                 _add_to_pool(idx)
+        bm25_ms = (time.monotonic() - t_bm25_start) * 1000.0
 
         # Filter by allowed_sources (file extension)
         if allowed_sources:
@@ -772,12 +880,60 @@ class Retriever:
         )
         candidate_pool = self._enforce_pool_quotas(candidate_pool, query, _quotas)
 
-        # Merge layers: Pinned (explicit citation) > Statute-First > Graph > Semantic
-        combined_results = _pinned + statute_results[:50] + graph_results[:30]
-        existing_ids = {r.get("chunk_id") for r in combined_results}
-        for r in candidate_pool:
-            if r.get("chunk_id") not in existing_ids:
-                combined_results.append(r)
+        # Merge layers with ceilings: Pinned (max 15) > Statute-First (max 20) > Graph (max 15) > Semantic (fill to 80)
+        pinned_selected = _pinned[:15]
+
+        statute_selected = []
+        for r in statute_results:
+            if len(statute_selected) >= 20:
+                break
+            if r.get("chunk_id") not in {c.get("chunk_id") for c in pinned_selected}:
+                statute_selected.append(r)
+
+        graph_selected = []
+        for r in graph_results:
+            if len(graph_selected) >= 15:
+                break
+            already_selected_ids = {c.get("chunk_id") for c in pinned_selected + statute_selected}
+            if r.get("chunk_id") not in already_selected_ids:
+                graph_selected.append(r)
+
+        combined_priority = pinned_selected + statute_selected + graph_selected
+        priority_ids = {c.get("chunk_id") for c in combined_priority}
+
+        # Multi-pass semantic selection prioritizing exact topic + citation match candidates
+        semantic_selected = []
+        remaining_capacity = 80 - len(combined_priority)
+        if remaining_capacity > 0:
+            # Pass 1: Prioritize direct topic matching AND provision matching chunks
+            for r in candidate_pool:
+                if len(semantic_selected) >= remaining_capacity:
+                    break
+                citations = r.get("metadata", {}).get("citations", [])
+                has_target_match = any(_provision_matches(cit, t) for cit in citations for t in starting_targets) or any(_provision_matches(cit, t) for cit in citations for t in related_targets)
+                chunk_topic = r.get("topic") or r.get("metadata", {}).get("topic", "")
+                is_on_topic = _normalize_topic(chunk_topic) == _normalize_topic(topic)
+
+                if is_on_topic and has_target_match and r.get("chunk_id") not in priority_ids and r.get("chunk_id") not in {c.get("chunk_id") for c in semantic_selected}:
+                    semantic_selected.append(r)
+
+            # Pass 2: Prioritize matching provision chunks and targeted fill chunks
+            for r in candidate_pool:
+                if len(semantic_selected) >= remaining_capacity:
+                    break
+                citations = r.get("metadata", {}).get("citations", [])
+                has_target_match = any(_provision_matches(cit, t) for cit in citations for t in starting_targets) or any(_provision_matches(cit, t) for cit in citations for t in related_targets)
+                if (r.get("_targeted_fill") or has_target_match) and r.get("chunk_id") not in priority_ids and r.get("chunk_id") not in {c.get("chunk_id") for c in semantic_selected}:
+                    semantic_selected.append(r)
+
+            # Pass 3: Fill remaining capacity with other candidates
+            for r in candidate_pool:
+                if len(semantic_selected) >= remaining_capacity:
+                    break
+                if r.get("chunk_id") not in priority_ids and r.get("chunk_id") not in {c.get("chunk_id") for c in semantic_selected}:
+                    semantic_selected.append(r)
+
+        combined_results = combined_priority + semantic_selected
 
         # Cap total candidates for reranker (FlashRank OOM above ~300)
         RERANK_MAX = 80
@@ -808,6 +964,16 @@ class Retriever:
                 logger.warning(f"FlashRank reranking failed (falling back to unranked): {e}")
                 reranked_results = reranker_input
 
+        # Dynamically resolve statute and graph matching priority boosts for all reranked candidates
+        for c in reranked_results:
+            citations = c.get("metadata", {}).get("citations", [])
+            has_statute_match = any(_provision_matches(cit, target) for cit in citations for target in starting_targets)
+            has_graph_match = any(_provision_matches(cit, target) for cit in citations for target in related_targets)
+            if has_statute_match:
+                c["_statute_priority"] = max(c.get("_statute_priority", 0), 1.0)
+            elif has_graph_match:
+                c["_statute_priority"] = max(c.get("_statute_priority", 0), 0.8)
+
         # --- Layer 3: Legal Reranking (Composite Scoring) ---
         reranked_results = LegalReranker.rerank(query, reranked_results, query_topic=topic, is_draft=is_draft)
 
@@ -829,7 +995,12 @@ class Retriever:
                         res[key] = val
             final_results.append(res)
 
-        final_results = [r for r in final_results if r.get("rel_path") not in self.inactive_paths]
+        # Phase 3: final quarantine + inactive-path boundary — catches any quarantined chunks
+        # that entered via statute-first or graph-expansion paths (which bypass _add_to_pool).
+        final_results = [
+            r for r in final_results
+            if not _is_quarantined(r) and r.get("rel_path") not in self.inactive_paths
+        ]
 
         logger.debug(
             f"search() complete: query='{query[:60]}' | "
@@ -842,7 +1013,16 @@ class Retriever:
             retrieval_time_ms=(t_retrieval_end - t_start) * 1000.0,
             reranker_time_ms=(t_end - t_rerank_start) * 1000.0
         )
-        return final_results[:top_k]
+
+        sliced_results = RAGList(final_results[:top_k])
+        sliced_results.metrics = {
+            "statute_retrieval_ms": statute_retrieval_ms,
+            "faiss_ms": faiss_ms,
+            "bm25_ms": bm25_ms,
+            "provision_graph_ms": provision_graph_ms,
+            "rerank_ms": (t_end - t_rerank_start) * 1000.0
+        }
+        return sliced_results
 
     def supplement_and_rerank(self, base_chunks: list, advanced_queries: dict, query: str, top_k: int) -> list:
         """
@@ -924,3 +1104,147 @@ class Retriever:
             f"reranked={len(reranked)} final={len(final)}"
         )
         return final
+
+
+def validate_vector_store() -> bool:
+    """
+    Synchronously validates the vector database and manifest integrity.
+    Raises SystemExit or fatal errors on mismatch to fail-fast on startup.
+    """
+    import sys
+    import hashlib
+    from app.config import EMBEDDING_MODEL, VECTOR_DIM, CHUNKS_PATH, VECTOR_DB_PATH
+
+    chunks_file = Path(CHUNKS_PATH)
+    index_file = Path(VECTOR_DB_PATH)
+    manifest_file = index_file.parent / "index_manifest.json"
+    sidecar_file = index_file.parent / "index_sidecar.faiss"
+
+    logger.info("Running vector store validation gate...")
+
+    # 1. Verify index_manifest.json, index.faiss, and chunks.jsonl exist
+    if not chunks_file.exists():
+        logger.critical(f"FATAL: Chunks file not found at {chunks_file}")
+        sys.exit(1)
+    if not index_file.exists():
+        logger.critical(f"FATAL: FAISS index file not found at {index_file}")
+        sys.exit(1)
+    if not manifest_file.exists():
+        logger.critical(f"FATAL: Manifest file not found at {manifest_file}")
+        sys.exit(1)
+
+    # Warn if sidecar exists
+    if sidecar_file.exists():
+        logger.warning(
+            f"WARNING: index_sidecar.faiss exists at {sidecar_file}. "
+            "It will not be merged automatically. Treat it as stale/unverified."
+        )
+
+    # 2. Read manifest
+    try:
+        with manifest_file.open("r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    except Exception as e:
+        logger.critical(f"FATAL: Failed to read manifest file: {e}")
+        sys.exit(1)
+
+    # Assert configuration parameters
+    manifest_model = manifest.get("embedding_model")
+    manifest_dim = manifest.get("embedding_dimension")
+    manifest_norm = manifest.get("normalize_embeddings")
+
+    if manifest_model != EMBEDDING_MODEL:
+        logger.critical(f"FATAL: Manifest embedding model '{manifest_model}' does not match configuration '{EMBEDDING_MODEL}'")
+        sys.exit(1)
+    if manifest_dim != VECTOR_DIM:
+        logger.critical(f"FATAL: Manifest dimension '{manifest_dim}' does not match configuration '{VECTOR_DIM}'")
+        sys.exit(1)
+    if manifest_norm is not True:
+        logger.critical(f"FATAL: Manifest normalize_embeddings is {manifest_norm}, expected True")
+        sys.exit(1)
+
+    # 3. Read the actual FAISS index to verify ntotal and dimension
+    try:
+        index = faiss.read_index(str(index_file))
+    except Exception as e:
+        logger.critical(f"FATAL: Failed to read FAISS index: {e}")
+        sys.exit(1)
+
+    index_ntotal = index.ntotal
+    index_dim = index.d
+
+    if index_dim != VECTOR_DIM:
+        logger.critical(f"FATAL: Actual FAISS index dimension {index_dim} does not match configuration {VECTOR_DIM}")
+        sys.exit(1)
+
+    # 4. Load chunks to verify ntotal alignment
+    texts = []
+    chunk_ids = []
+    try:
+        with chunks_file.open(encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                c = json.loads(line_str)
+                text = c.get("text", "").strip()
+                cid = c.get("chunk_id", "").strip()
+                if text and cid:
+                    texts.append(text)
+                    chunk_ids.append(cid)
+    except Exception as e:
+        logger.critical(f"FATAL: Failed to read chunks file: {e}")
+        sys.exit(1)
+
+    chunk_count = len(texts)
+
+    # Verify ntotal == chunk_count == manifest chunk_count/index_count
+    manifest_chunk_count = manifest.get("chunk_count")
+    manifest_index_count = manifest.get("index_count")
+
+    if index_ntotal != chunk_count:
+        logger.critical(f"FATAL: FAISS index count ({index_ntotal}) does not match JSONL chunk count ({chunk_count})")
+        sys.exit(1)
+    if index_ntotal != manifest_chunk_count:
+        logger.critical(f"FATAL: FAISS index count ({index_ntotal}) does not match manifest chunk count ({manifest_chunk_count})")
+        sys.exit(1)
+    if index_ntotal != manifest_index_count:
+        logger.critical(f"FATAL: FAISS index count ({index_ntotal}) does not match manifest index count ({manifest_index_count})")
+        sys.exit(1)
+
+    # 5. Compute SHA-256 of chunks.jsonl
+    sha = hashlib.sha256()
+    try:
+        with chunks_file.open("rb") as f:
+            while chunk_bytes := f.read(8192):
+                sha.update(chunk_bytes)
+        chunks_sha = sha.hexdigest()
+    except Exception as e:
+        logger.critical(f"FATAL: Failed to compute chunks SHA-256: {e}")
+        sys.exit(1)
+
+    manifest_chunks_sha = manifest.get("chunks_sha256")
+    if chunks_sha != manifest_chunks_sha:
+        logger.critical(f"FATAL: Chunks SHA-256 '{chunks_sha}' does not match manifest '{manifest_chunks_sha}'")
+        sys.exit(1)
+
+    # 6. Compute SHA-256 of concatenated chunk IDs
+    sha_ids = hashlib.sha256()
+    sha_ids.update("".join(chunk_ids).encode("utf-8"))
+    ids_sha = sha_ids.hexdigest()
+
+    manifest_ids_sha = manifest.get("chunk_ids_sha256")
+    if ids_sha != manifest_ids_sha:
+        logger.critical(f"FATAL: Chunk IDs SHA-256 '{ids_sha}' does not match manifest '{manifest_ids_sha}'")
+        sys.exit(1)
+
+    # 7. Assert FAISS index is readable (reconstruct vector at 0 and ntotal - 1)
+    try:
+        index.reconstruct(0)
+        index.reconstruct(index_ntotal - 1)
+    except Exception as e:
+        logger.critical(f"FATAL: FAISS vector reconstruction failed: {e}")
+        sys.exit(1)
+
+    logger.info("Vector store validation passed successfully.")
+    return True

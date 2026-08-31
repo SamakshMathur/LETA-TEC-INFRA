@@ -12,6 +12,10 @@ def _is_case_law(rel_path: str) -> bool:
     path = rel_path.lower().replace("\\", "/")
     return any(f"/{folder}/" in path or path.startswith(folder + "/") for folder in _CASE_LAW_FOLDERS)
 
+def _is_circular_or_notification(rel_path: str) -> bool:
+    path = rel_path.lower().replace("\\", "/")
+    return "circular" in path or "notification" in path
+
 # Topic aliases for fuzzy matching (common variations → canonical name)
 _TOPIC_ALIASES = {
     "input tax credit": "itc",
@@ -86,14 +90,15 @@ def _year_recency(chunk: dict) -> float:
 class LegalReranker:
     """
     Stage-2 Reranking for Legal RAG.
-    Composite Score = (0.40 * Semantic) + (0.18 * Legal Weight) + (0.18 * KW Match)
-                    + (0.14 * Topic Match) + (0.10 * Year Recency) + Layer1 Boost
+    Scoring weights are configurable in app/retrieval/scoring_policy.py.
     """
 
     @staticmethod
     def rerank(query: str, chunks: List[Dict[str, Any]], query_topic: Optional[str] = None, is_draft: bool = False) -> List[Dict[str, Any]]:
         if not chunks:
             return []
+
+        from app.retrieval.scoring_policy import scoring_policy
 
         # Min-max normalization for semantic scores (with epsilon to avoid division by zero)
         scores = [c.get("_rerank_score", c.get("_debug_score", 0)) for c in chunks]
@@ -112,24 +117,31 @@ class LegalReranker:
             semantic_raw = chunk.get("_rerank_score", chunk.get("_debug_score", 0))
             semantic_score = (semantic_raw - min_semantic) / score_range
 
-            # 2. Legal authority weight (1-5 scale → 0-1)
+            # 2. Configurable Legal authority weight (scale → 0-1)
             metadata = chunk.get("metadata", {})
             rel_path = chunk.get("rel_path", metadata.get("rel_path", chunk.get("source", metadata.get("source", ""))))
-            legal_weight_raw = source_priority(rel_path)
+
+            doc_type = metadata.get("canonical_document_type", metadata.get("document_type", "REFERENCE"))
+            legal_weight_raw = scoring_policy.get_weight(doc_type, query)
             legal_weight = legal_weight_raw / 5.0
 
             # 3. Topic match (fuzzy-normalized comparison)
+            _RELATED_TOPICS = {
+                "place_of_supply": {"export", "itc"},
+                "export": {"place_of_supply", "refund"},
+                "refund": {"export", "itc"},
+                "itc": {"place_of_supply", "valuation", "refund"},
+            }
             topic_match = 0.0
-            chunk_topic = chunk.get("topic", metadata.get("topic", ""))
+            chunk_topic = chunk.get("topic") or metadata.get("topic") or ""
             if normalized_query_topic and chunk_topic:
                 normalized_chunk_topic = _normalize_topic(str(chunk_topic))
                 if normalized_chunk_topic == normalized_query_topic:
                     topic_match = 1.0
+                elif normalized_chunk_topic in _RELATED_TOPICS.get(normalized_query_topic, set()):
+                    topic_match = 0.5
 
             # 4. Keyword overlap: fraction of query terms present in chunk text.
-            # Provides a direct term-matching signal that's independent of semantic
-            # similarity — critical when a user references a specific section number
-            # or form code that may not embed well.
             chunk_text_lower = chunk.get("text", "").lower()
             kw_hits = sum(1 for t in _query_kw if t in chunk_text_lower)
             kw_match = min(kw_hits / max(len(_query_kw), 1), 1.0)
@@ -138,30 +150,40 @@ class LegalReranker:
             layer1_boost = 0.5 if chunk.get("_is_statute_first", False) else 0.0
 
             # 6. Year recency — boosts recent circulars/notifications over older ones;
-            # returns neutral 0.6 for Acts/Rules/case-law (no recency concept there).
             recency = _year_recency(chunk)
 
-            # Composite scoring:
-            # 0.40 semantic  — FlashRank cross-encoder relevance (primary signal)
-            # 0.18 legal     — Authority hierarchy (Acts > Rules > Circulars > AARs)
-            # 0.18 kw_match  — Direct keyword overlap (query terms in chunk text)
-            # 0.14 topic     — Topic/subtopic alignment
-            # 0.10 recency   — Year recency for circulars/notifications
-            # +layer1_boost  — Additive boost for Statute-First Layer 1 results
+            # Composite scoring loaded from ScoringPolicy:
+            w_semantic = scoring_policy.weights.get("semantic", 0.40)
+            w_authority = scoring_policy.weights.get("authority", 0.18)
+            w_keyword = scoring_policy.weights.get("keyword", 0.18)
+            w_topic = scoring_policy.weights.get("topic", 0.14)
+            w_recency = scoring_policy.weights.get("recency", 0.10)
+
             final_score = (
-                (0.40 * semantic_score)
-                + (0.18 * legal_weight)
-                + (0.18 * kw_match)
-                + (0.14 * topic_match)
-                + (0.10 * recency)
+                (w_semantic * semantic_score)
+                + (w_authority * legal_weight)
+                + (w_keyword * kw_match)
+                + (w_topic * topic_match)
+                + (w_recency * recency)
                 + layer1_boost
             )
 
-            # Draft mode: boost case law so judgments compete with statutes
-            if is_draft and _is_case_law(rel_path):
+            # Generic Legal Evidence Protection Boost Tiers
+            ref_boost = 0.0
+            if chunk.get("_pinned_by_ref", False):
+                pinned_tier = chunk.get("_pinned_tier", "SECONDARY")
+                if pinned_tier == "PRIMARY":
+                    ref_boost = 2.5   # Tier 1: Canonical explicit primary authority
+                else:
+                    ref_boost = 1.2   # Tier 2: Strong direct secondary reference
+            elif chunk.get("_statute_priority", 0) > 0:
+                ref_boost = 0.6 * chunk.get("_statute_priority", 0)  # Tier 3: Related statutory matches
+
+            final_score += ref_boost
+
+            # Draft mode: boost case laws, circulars, and notifications so they compete with statutes
+            if is_draft and (_is_case_law(rel_path) or _is_circular_or_notification(rel_path)):
                 final_score *= 1.3
-            # Q&A: no penalty — legal_weight (30% of score) already naturally
-            # ranks Acts/Circulars above AARs; let semantic relevance decide
 
             chunk["_is_statute_first"] = chunk.get("_is_statute_first", False)
             chunk["_final_legal_score"] = final_score
@@ -172,10 +194,12 @@ class LegalReranker:
                 "topic": topic_match,
                 "recency": round(recency, 4),
                 "layer1_boost": layer1_boost,
+                "ref_boost": ref_boost
             }
             reranked_chunks.append(chunk)
 
         reranked_chunks.sort(key=lambda x: x["_final_legal_score"], reverse=True)
+
 
         logger.debug(
             f"Reranked {len(reranked_chunks)} chunks | "

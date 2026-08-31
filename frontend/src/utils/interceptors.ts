@@ -79,7 +79,7 @@ export const setupInterceptors = () => {
     (response: AxiosResponse) => response,
     async (error) => {
       const originalRequest = error.config;
-      
+
       // 4. Handle 401
       if (error.response?.status === 401 && !originalRequest._retry) {
         if (AUTH_ENDPOINTS.some(url => originalRequest.url?.includes(url))) {
@@ -87,6 +87,15 @@ export const setupInterceptors = () => {
         }
 
         originalRequest._retry = true;
+
+        // Check if token in storage is already different/refreshed by another concurrent request
+        const session = getStoredAuthSession();
+        const currentToken = session?.tokens.accessToken;
+        const sentToken = originalRequest.headers.Authorization?.replace('Bearer ', '');
+        if (currentToken && sentToken && currentToken !== sentToken) {
+          originalRequest.headers.Authorization = `Bearer ${currentToken}`;
+          return AXIOS_INSTANCE(originalRequest);
+        }
 
         if (!refreshPromise) {
           refreshPromise = doTokenRefresh().finally(() => {

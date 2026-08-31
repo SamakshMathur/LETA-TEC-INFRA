@@ -1,6 +1,9 @@
 import os
 import re
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Character caps — tuned for TITAN sub-5s target.
 # Q&A mode: 15 000 chars. Draft mode: 30 000 chars (needed for 5000-word replies).
@@ -158,19 +161,49 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
 
     base_url = "/api/documents/view"
 
+    # ── Step 0: Exact & Normalized Deduplication + Jaccard evaluation ──
+    seen_texts = set()
+    unique_chunks = []
+    import os
+    pid = os.getpid()
+
+    for c in chunks:
+        raw_text = c.get("text", "")
+        norm_text = " ".join(raw_text.lower().strip().split())
+
+        # Deduplicate exact / normalized texts
+        if norm_text in seen_texts:
+            logger.info(f"DEDUPLICATION: Skipped exact/normalized duplicate chunk in context builder: {c.get('chunk_id')}")
+            continue
+
+        # Jaccard evaluation check (measure and log only, do not skip)
+        w_current = set(re.findall(r'\b[a-z]{3,}\b', norm_text))
+        for existing in unique_chunks:
+            existing_text = " ".join(existing.get("text", "").lower().strip().split())
+            w_existing = set(re.findall(r'\b[a-z]{3,}\b', existing_text))
+            if w_current and w_existing:
+                jaccard = len(w_current & w_existing) / max(len(w_current | w_existing), 1)
+                if jaccard > 0.85:
+                    logger.info(
+                        f"DEDUPLICATION_MEASURE process={pid} "
+                        f"source1={c.get('chunk_id')} "
+                        f"source2={existing.get('chunk_id')} "
+                        f"jaccard={jaccard:.4f}"
+                    )
+
+        seen_texts.add(norm_text)
+        unique_chunks.append(c)
+
     # ── Step 1: Build the Citation Registry ──────────────────
-    registry = build_citation_registry(chunks, is_draft=is_draft)
+    registry = build_citation_registry(unique_chunks, is_draft=is_draft)
 
     # ── Step 2: Build Quotable Source Blocks ─────────────────
     context_blocks = []
-    for i, c in enumerate(chunks):
+    for i, c in enumerate(unique_chunks):
         raw_source = c.get('source', '') or c.get('metadata', {}).get('source', 'Unknown')
         rel_path = c.get('rel_path', '') or c.get('metadata', {}).get('rel_path', '')
-        # Use rel_path for the display filename — it holds the real file name.
-        # Fall back to basename(raw_source) only when rel_path is absent.
         filename = os.path.basename(rel_path) if rel_path else (os.path.basename(raw_source) or 'Unknown')
 
-        # For path classification use rel_path when available (it has folder info)
         classify_path = rel_path if rel_path else raw_source
         source_type = _classify_source(classify_path)
         authority_rank = _get_authority_rank(classify_path)
@@ -178,26 +211,34 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
         safe_filename = filename.replace(" ", "%20")
         link = f"{base_url}?category=all&filename={safe_filename}"
 
-        rerank_score = c.get('_rerank_score', None)
-        relevance_tag = f" | Relevance: {rerank_score:.3f}" if rerank_score is not None else ""
+        rerank_score = c.get('_rerank_score', 0.0) or 0.0
+        relevance_tag = f" | Relevance: {rerank_score:.3f}" if rerank_score else ""
 
-        # Use context_text (enriched with adjacent-page neighbors) when available
         chunk_text = (c.get('context_text') or c['text']).strip()
         if len(chunk_text) > max_chunk:
             chunk_text = chunk_text[:max_chunk] + "... [truncated]"
 
-        # Include DOCUMENT LINK in the source block so the LLM can output clickable links.
-        # The frontend renders markdown hyperlinks; the model is instructed to use this URL.
-        year_tag = ""
-        doc_year = c.get("year") or c.get("metadata", {}).get("year")
-        if doc_year:
-            year_tag = f" | Year: {doc_year}"
+        # Structured packet metadata assembly
+        source_id = f"SRC-{i+1}"
+        chunk_id = c.get("chunk_id", "N/A")
+        doc_num = c.get("document_number", c.get("metadata", {}).get("document_number", "N/A"))
+        doc_date = c.get("date", c.get("metadata", {}).get("date", "N/A"))
+        provisions_str = ", ".join(c.get("provisions", c.get("metadata", {}).get("provisions", []))) or "N/A"
+
+        pinned_tier = c.get("_pinned_tier", "N/A")
+        retrieval_reason = f"EXPLICIT_REFERENCE ({pinned_tier})" if c.get("_pinned_by_ref", False) else "SEMANTIC"
 
         context_blocks.append(
             f"════════════════════════════════════════\n"
-            f"SOURCE: «{filename}» | {authority_rank} | {source_type}{year_tag}\n"
+            f"SOURCE_ID: {source_id} | CHUNK_ID: {chunk_id}\n"
+            f"DOCUMENT_TITLE: {filename}\n"
+            f"DOCUMENT_TYPE: {source_type} | AUTHORITY_RANK: {authority_rank}\n"
+            f"DOCUMENT_NUMBER: {doc_num} | DATE/YEAR: {doc_date}\n"
+            f"PROVISIONS/SECTIONS: {provisions_str}\n"
+            f"RETRIEVAL_REASON: {retrieval_reason}\n"
+            f"RELEVANCE_SCORE: {c.get('score', 0.0):.4f} | RERANK_SCORE: {rerank_score:.4f}\n"
             f"DOCUMENT LINK: {link}\n"
-            f"Page: {c.get('page', 'N/A')}{relevance_tag}\n"
+            f"Page: {c.get('page', 'N/A')}\n"
             f"════════════════════════════════════════\n"
             f"[QUOTABLE TEXT — cite «{filename}» verbatim and include its DOCUMENT LINK as [📄 View]({link})]\n"
             f"\"\"\"\n"
@@ -221,7 +262,7 @@ def build_context(chunks: list[dict], is_draft: bool = False) -> str:
     )
 
     if len(full_context) > max_context:
-        full_context = full_context[:max_context] + "\n\n[Context truncated to stay within token limits]"
+        full_context = full_context[:max_context] + "\n\n[Context truncated]"
 
     return full_context
 

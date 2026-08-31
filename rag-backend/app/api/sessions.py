@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime, timezone
@@ -47,6 +47,7 @@ class MessageInput(BaseModel):
     content: str
     metadata: Optional[Dict[str, Any]] = None
     citations: Optional[List[Dict[str, Any]]] = None
+    sources: Optional[List[Dict[str, Any]]] = None
 
     @field_validator("content")
     @classmethod
@@ -70,6 +71,7 @@ class Message(BaseModel):
     content: str
     metadata: Optional[Dict[str, Any]] = None
     citations: Optional[List[Dict[str, Any]]] = None
+    sources: Optional[List[Dict[str, Any]]] = None
     timestamp: datetime
 
 
@@ -268,6 +270,7 @@ def add_message(
         "content": data.content,
         "metadata": data.metadata or {},
         "citations": data.citations or [],
+        "sources": data.sources or data.citations or [],
         "timestamp": now,
     }
 

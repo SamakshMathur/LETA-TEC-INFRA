@@ -8,6 +8,10 @@ import urllib.parse
 router = APIRouter()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent / "RAG_INFORMATION_DATABASE"
+UPLOADS_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
+
+def register_new_file_in_cache(file_path: Path, metadata: Dict = None):
+    pass
 
 S3_BUCKET = os.getenv("S3_DATA_BUCKET", "")
 S3_DOCS_PREFIX = "documents"
@@ -80,14 +84,20 @@ def _serve_local(target: Path, filename: str, download: bool) -> Response:
 
 
 def _find_local(filename: str, folder: Path = None) -> Path | None:
-    search_root = folder if folder else BASE_DIR
-    if not search_root.exists():
-        return None
-    direct = search_root / filename
-    if direct.exists():
-        return direct
-    found = list(search_root.rglob(filename))
-    return found[0] if found else None
+    filename = filename.replace("\\", "/")
+    search_roots = [folder] if folder else [BASE_DIR, UPLOADS_DIR]
+    for root in search_roots:
+        if not root.exists():
+            continue
+        direct = root / filename
+        if direct.exists():
+            return direct
+        # Handle nested glob searching if direct lookup fails
+        target_name = filename.split("/")[-1]
+        found = list(root.rglob(target_name))
+        if found:
+            return found[0]
+    return None
 
 
 def _find_s3_key(filename: str, folder_name: str = None) -> str | None:
@@ -126,8 +136,8 @@ def health():
 @router.get("/view_by_path")
 def view_by_path(path: str, download: bool = False):
     decoded = urllib.parse.unquote(path)
-    normalised = os.path.normpath(decoded.replace("\\", "/"))
-    if normalised.startswith("..") or ".." in normalised.split(os.sep):
+    normalised = decoded.replace("\\", "/")
+    if normalised.startswith("..") or ".." in normalised.split("/") or "%2e%2e" in normalised.lower():
         raise HTTPException(status_code=400, detail="Invalid path")
 
     filename = Path(normalised).name
@@ -139,6 +149,13 @@ def view_by_path(path: str, download: bool = False):
             found = list(BASE_DIR.rglob(filename))
             local = found[0] if found else None
         if local and Path(local).exists():
+            resolved_local = Path(local).resolve()
+            resolved_base = BASE_DIR.resolve()
+            resolved_uploads = UPLOADS_DIR.resolve()
+            is_inside_base = resolved_base in resolved_local.parents or resolved_local == resolved_base
+            is_inside_uploads = resolved_uploads in resolved_local.parents or resolved_local == resolved_uploads
+            if not (is_inside_base or is_inside_uploads):
+                raise HTTPException(status_code=400, detail="Access denied: outside allowed directories")
             return _serve_local(Path(local), filename, download)
 
     # Production: redirect to S3 presigned URL
@@ -161,7 +178,11 @@ def view_by_path(path: str, download: bool = False):
 @router.get("/view")
 def view_document(category: str, filename: str, download: bool = False):
     filename = urllib.parse.unquote(filename)
-    safe_filename = os.path.basename(filename)
+    filename_normalized = filename.replace("\\", "/")
+    if ".." in filename_normalized or "%2e%2e" in filename_normalized.lower():
+        raise HTTPException(status_code=400, detail="Directory traversal attempt detected")
+
+    safe_filename = os.path.basename(filename_normalized)
 
     # Try local filesystem only in dev (S3_BUCKET not set)
     if not S3_BUCKET and BASE_DIR.exists():
@@ -172,6 +193,13 @@ def view_document(category: str, filename: str, download: bool = False):
             folder = (BASE_DIR / folder_name) if folder_name else None
             local = _find_local(safe_filename, folder)
         if local:
+            resolved_local = Path(local).resolve()
+            resolved_base = BASE_DIR.resolve()
+            resolved_uploads = UPLOADS_DIR.resolve()
+            is_inside_base = resolved_base in resolved_local.parents or resolved_local == resolved_base
+            is_inside_uploads = resolved_uploads in resolved_local.parents or resolved_local == resolved_uploads
+            if not (is_inside_base or is_inside_uploads):
+                raise HTTPException(status_code=400, detail="Access denied: outside allowed directories")
             return _serve_local(local, safe_filename, download)
 
     # Production: S3 presigned URL

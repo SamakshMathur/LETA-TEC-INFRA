@@ -15,8 +15,45 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OLLAMA_API_KEY = ""  # Not used — Anthropic only
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")  # "openai" | "anthropic" | "ollama"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower()
+if LLM_PROVIDER == "claude":
+    LLM_PROVIDER = "anthropic"
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")           # used only when provider=openai/ollama
+
+ANSWER_LLM_PROVIDER = os.getenv("ANSWER_LLM_PROVIDER", LLM_PROVIDER).lower()
+if ANSWER_LLM_PROVIDER == "claude":
+    ANSWER_LLM_PROVIDER = "anthropic"
+ANSWER_LLM_MODEL = os.getenv("ANSWER_LLM_MODEL", None)
+
+# Centralized provider registry with display names and availability status (Fix 7)
+LLM_PROVIDER_REGISTRY = {
+    "anthropic": {
+        "display_name": "Claude",
+        "default_model": os.getenv("CLAUDE_MAIN_MODEL", "claude-sonnet-4-6"),
+        "models": {
+            os.getenv("CLAUDE_MAIN_MODEL", "claude-sonnet-4-6"): {
+                "display_name": "Claude Sonnet",
+                "enabled": True
+            },
+            os.getenv("CLAUDE_UTILITY_MODEL", "claude-haiku-4-5-20251001"): {
+                "display_name": "Claude Haiku",
+                "enabled": True
+            }
+        },
+        "enabled": bool(ANTHROPIC_API_KEY)
+    },
+    "openai": {
+        "display_name": "OpenAI",
+        "default_model": os.getenv("LLM_MODEL", "gpt-4o"),
+        "models": {
+            os.getenv("LLM_MODEL", "gpt-4o"): {
+                "display_name": "OpenAI GPT-4o",
+                "enabled": True
+            }
+        },
+        "enabled": bool(OPENAI_API_KEY)
+    }
+}
 
 # Claude Models (used when LLM_PROVIDER=anthropic)
 CLAUDE_MAIN_MODEL = os.getenv("CLAUDE_MAIN_MODEL", "claude-sonnet-4-6")
@@ -32,9 +69,9 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
 VECTOR_DIM = 1024 if EMBEDDING_PROVIDER == "local" else 3072
 
 # ─── Retrieval Tuning (externalized magic numbers) ─────────────────────────
-VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "40"))
+VECTOR_SEARCH_TOP_K = int(os.getenv("VECTOR_SEARCH_TOP_K", "65"))
 VECTOR_EXPANDED_TOP_K = int(os.getenv("VECTOR_EXPANDED_TOP_K", "20"))
-BM25_TOP_K = int(os.getenv("BM25_TOP_K", "35"))
+BM25_TOP_K = int(os.getenv("BM25_TOP_K", "65"))
 MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.72"))
 MAX_RESPONSE_POINTS = int(os.getenv("MAX_RESPONSE_POINTS", "15"))
 
@@ -92,17 +129,57 @@ S3_BUCKET_NAME = "gst-rag-documents"
 LOCAL_DATA_ROOT = str(_APP_ROOT)
 
 
+# ─── Legal Taxonomy & Priorities (Externalized from code logic) ─────────────
+SUBSTANTIVE_SECTIONS = ["7", "8", "9", "10", "11", "12", "13", "15", "16", "17", "54"]
+PROCEDURAL_SECTIONS = ["97", "98", "100", "101", "107", "112"]
+
+# Extensible Authority Weights (Registry config)
+AUTHORITY_WEIGHTS = {
+    "PRIMARY_LAW": 5.0,
+    "RULES": 4.0,
+    "CIRCULAR": 3.0,
+    "NOTIFICATION": 3.0,
+    "CASE_LAW": 2.0,
+    "ADVANCE_RULING": 2.0,
+    "ICAI_GUIDANCE": 1.0,
+    "REFERENCE": 0.5,
+    "OTHER": 0.5
+}
+
+# Direct reference lookup maximum budget (total pinned chunks)
+MAX_PINNED_BUDGET = 25
+
+# Base preference limits per document type under explicit references
+PINNED_TYPE_BUDGETS = {
+    "PRIMARY_LAW": 6,
+    "RULES": 6,
+    "CIRCULAR": 4,
+    "NOTIFICATION": 4,
+    "CASE_LAW": 4,
+    "ADVANCE_RULING": 4
+}
+
+
 # ─── Startup Validation ───────────────────────────────────────────────────
+_INSECURE_JWT_DEFAULT = "dev-only-insecure-key-do-not-use-in-production"
 def validate_config():
     """Run at app startup to catch misconfigurations early."""
     warnings = []
     errors = []
 
     # API key checks
-    if LLM_PROVIDER == "anthropic" and not ANTHROPIC_API_KEY:
+    if (LLM_PROVIDER == "anthropic" or ANSWER_LLM_PROVIDER == "anthropic") and not ANTHROPIC_API_KEY:
         warnings.append("ANTHROPIC_API_KEY not set — answer generation will fail")
-    if LLM_PROVIDER == "openai" and not OPENAI_API_KEY:
+    if (LLM_PROVIDER == "openai" or ANSWER_LLM_PROVIDER == "openai") and not OPENAI_API_KEY:
         warnings.append("OPENAI_API_KEY not set — answer generation will fail")
+
+    # JWT secret key check
+    _secret_key = os.getenv("SECRET_KEY", _INSECURE_JWT_DEFAULT)
+    if _secret_key == _INSECURE_JWT_DEFAULT:
+        warnings.append(
+            "SECRET_KEY is using the insecure built-in default — "
+            "set a strong random value in production (e.g. openssl rand -hex 32)"
+        )
 
     # File existence checks
     if not Path(VECTOR_DB_PATH).exists():
@@ -119,6 +196,9 @@ def validate_config():
 
     return len(errors) == 0
 
+
+# ─── Hugging Face Config ──────────────────────────────────────────────────
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 
 import contextvars
 ai_log_context = contextvars.ContextVar("ai_log_context", default=None)

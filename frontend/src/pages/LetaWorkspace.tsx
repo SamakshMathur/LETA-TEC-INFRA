@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Send, Sparkles, Menu, Paperclip,
-  ChevronLeft, Folder, Star, Landmark, FileCheck,
+  ChevronLeft, ChevronDown, Folder, Star, Landmark, FileCheck,
   Bookmark, BookmarkCheck, Trash2, Calendar, ShieldCheck, Plus, Square, Upload,
   ArrowLeft, Eye, Mic, MicOff, FileText
 } from 'lucide-react';
@@ -187,6 +187,10 @@ const LetaWorkspace: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  const [selectedProvider, setSelectedProvider] = useState<string>('anthropic');
+  const [selectedModel, setSelectedModel] = useState<string>('claude-sonnet-4-6');
+  const [modelRegistry, setModelRegistry] = useState<any>({});
+  const [isModelPopoverOpen, setIsModelPopoverOpen] = useState<boolean>(false);
 
   // Document Viewer splits
   const [openDocuments, setOpenDocuments] = useState<OpenDoc[]>([]);
@@ -368,6 +372,53 @@ const LetaWorkspace: React.FC = () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(savedItems));
     } catch {}
   }, [savedItems]);
+
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/config/models`, { headers: getAuthHeaders() })
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error();
+      })
+      .then(data => {
+        setModelRegistry(data);
+        const defaultProv = Object.keys(data)[0] || 'anthropic';
+        setSelectedProvider(defaultProv);
+        if (data[defaultProv]) {
+          setSelectedModel(data[defaultProv].default_model);
+        }
+      })
+      .catch(() => {
+        // Safe offline fallback
+        setModelRegistry({
+          anthropic: {
+            display_name: 'Claude',
+            default_model: 'claude-sonnet-4-6',
+            models: {
+              'claude-sonnet-4-6': { display_name: 'Claude Sonnet' },
+              'claude-haiku-4-5-20251001': { display_name: 'Claude Haiku' }
+            }
+          },
+          openai: {
+            display_name: 'OpenAI',
+            default_model: 'gpt-4o',
+            models: {
+              'gpt-4o': { display_name: 'OpenAI GPT-4o' }
+            }
+          }
+        });
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!isModelPopoverOpen) return;
+    const handleGlobalClick = () => {
+      setIsModelPopoverOpen(false);
+    };
+    window.addEventListener('click', handleGlobalClick);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+    };
+  }, [isModelPopoverOpen]);
 
   // ─── Repository helpers ───────────────────────────────────────────────────────
 
@@ -696,6 +747,8 @@ const LetaWorkspace: React.FC = () => {
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
+        if (selectedProvider) formData.append('provider', selectedProvider);
+        if (selectedModel) formData.append('model', selectedModel);
         const fileRes = await fetch(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
         if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
@@ -721,7 +774,12 @@ const LetaWorkspace: React.FC = () => {
             const next = [...prev];
             const last = next[next.length - 1];
             if (last.role === 'assistant') {
-              next[next.length - 1] = { ...last, content: last.content + text };
+              let newContent = last.content + text;
+              newContent = newContent.replace(/__METADATA__:(.*?)__END_METADATA__/g, '');
+              newContent = newContent.replace(/__STATUS__:(.*?)__END_STATUS__/g, '');
+              newContent = newContent.replace(/__METADATA__:([\s\S]*?)$/g, '');
+              newContent = newContent.replace(/__STATUS__:([\s\S]*?)$/g, '');
+              next[next.length - 1] = { ...last, content: newContent };
             }
             return next;
           });
@@ -795,6 +853,22 @@ const LetaWorkspace: React.FC = () => {
                 safePoint = Math.min(safePoint, li);
               }
             }
+
+            // Check if buffer ends with a partial prefix of any trigger
+            const fullTriggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__'];
+            let prefixLenToWithhold = 0;
+            for (const trigger of fullTriggers) {
+              for (let len = 1; len < trigger.length; len++) {
+                const prefix = trigger.substring(0, len);
+                if (buffer.endsWith(prefix)) {
+                  prefixLenToWithhold = Math.max(prefixLenToWithhold, len);
+                }
+              }
+            }
+            if (prefixLenToWithhold > 0) {
+              safePoint = Math.min(safePoint, buffer.length - prefixLenToWithhold);
+            }
+
             if (safePoint > 0) {
               appendChunk(buffer.substring(0, safePoint));
               buffer = buffer.substring(safePoint);
@@ -809,7 +883,13 @@ const LetaWorkspace: React.FC = () => {
         const streamRes = await fetch(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({ question: userMsg.content, session_id: activeSessionId, intent: 'general' }),
+          body: JSON.stringify({
+            question: userMsg.content,
+            session_id: activeSessionId,
+            intent: 'general',
+            provider: selectedProvider,
+            model: selectedModel
+          }),
           signal: controller.signal,
         });
 
@@ -836,7 +916,12 @@ const LetaWorkspace: React.FC = () => {
             const next = [...prev];
             const last = next[next.length - 1];
             if (last.role === 'assistant') {
-              next[next.length - 1] = { ...last, content: last.content + text };
+              let newContent = last.content + text;
+              newContent = newContent.replace(/__METADATA__:(.*?)__END_METADATA__/g, '');
+              newContent = newContent.replace(/__STATUS__:(.*?)__END_STATUS__/g, '');
+              newContent = newContent.replace(/__METADATA__:([\s\S]*?)$/g, '');
+              newContent = newContent.replace(/__STATUS__:([\s\S]*?)$/g, '');
+              next[next.length - 1] = { ...last, content: newContent };
             }
             return next;
           });
@@ -910,6 +995,22 @@ const LetaWorkspace: React.FC = () => {
                 safePoint = Math.min(safePoint, li);
               }
             }
+
+            // Check if buffer ends with a partial prefix of any trigger
+            const fullTriggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__'];
+            let prefixLenToWithhold = 0;
+            for (const trigger of fullTriggers) {
+              for (let len = 1; len < trigger.length; len++) {
+                const prefix = trigger.substring(0, len);
+                if (buffer.endsWith(prefix)) {
+                  prefixLenToWithhold = Math.max(prefixLenToWithhold, len);
+                }
+              }
+            }
+            if (prefixLenToWithhold > 0) {
+              safePoint = Math.min(safePoint, buffer.length - prefixLenToWithhold);
+            }
+
             if (safePoint > 0) {
               appendChunk(buffer.substring(0, safePoint));
               buffer = buffer.substring(safePoint);
@@ -1056,7 +1157,6 @@ const LetaWorkspace: React.FC = () => {
             </span>
           </div>
         </div>
-
       </header>
 
       {/* ── WORKSPACE BODY ────────────────────────────────────────────────────────── */}
@@ -1720,6 +1820,89 @@ const LetaWorkspace: React.FC = () => {
                 }}
               />
 
+              {/* Generation Engine Popover (Fix 10) */}
+              <AnimatePresence>
+                {isModelPopoverOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                    className="absolute bottom-16 right-4 w-[280px] bg-[#0A0A0A]/95 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-4 shadow-2xl z-40"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-[#6B7280] mb-3">
+                      Generation Engine
+                    </div>
+
+                    {/* Provider cards */}
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      {Object.keys(modelRegistry).map((provKey) => {
+                        const prov = modelRegistry[provKey];
+                        const isSelected = selectedProvider === provKey;
+                        return (
+                          <button
+                            key={provKey}
+                            type="button"
+                            onClick={() => {
+                              setSelectedProvider(provKey);
+                              setSelectedModel(prov.default_model);
+                            }}
+                            className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#4FB7C5]/10 border-[#4FB7C5] text-white shadow-[0_0_12px_rgba(79,183,197,0.15)]'
+                                : 'bg-[#141414] border-white/[0.04] text-[#A1AAB8] hover:border-white/[0.12] hover:bg-[#1C1C1C]'
+                            }`}
+                          >
+                            <span className="text-[11px] font-sans font-semibold">
+                              {provKey === 'anthropic' ? 'Anthropic' : 'OpenAI'}
+                            </span>
+                            <span className="text-[9px] font-mono text-[#6B7280] mt-0.5">
+                              {provKey === 'anthropic' ? 'Claude' : 'GPT'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Model options list */}
+                    {selectedProvider && modelRegistry[selectedProvider] && (
+                      <div className="border-t border-white/[0.06] pt-3 flex flex-col gap-1.5">
+                        <div className="text-[9px] font-mono uppercase tracking-wider text-[#6B7280] mb-1">
+                          Available Models
+                        </div>
+                        {Object.keys(modelRegistry[selectedProvider].models).map((modelKey) => {
+                          const modelInfo = modelRegistry[selectedProvider].models[modelKey];
+                          const isSelected = selectedModel === modelKey;
+                          return (
+                            <button
+                              key={modelKey}
+                              type="button"
+                              onClick={() => {
+                                setSelectedModel(modelKey);
+                                setIsModelPopoverOpen(false);
+                              }}
+                              className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-left transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-white/[0.06] text-white font-medium'
+                                  : 'text-[#A1AAB8] hover:bg-white/[0.02] hover:text-white'
+                              }`}
+                            >
+                              <span className="text-xs font-sans">
+                                {modelInfo.display_name}
+                              </span>
+                              {isSelected && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#4FB7C5] shadow-[0_0_6px_#4FB7C5]" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Session time remaining — bottom-left of input box */}
               <div className="absolute bottom-4 left-4 pointer-events-none select-none">
                 <SessionClock />
@@ -1733,6 +1916,29 @@ const LetaWorkspace: React.FC = () => {
                   className="hidden"
                   accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
                 />
+                {/* Compact Model Selector Trigger (Fix 10) */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsModelPopoverOpen(!isModelPopoverOpen);
+                    }}
+                    disabled={isLoading || isRecording}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] hover:border-[#4FB7C5]/40 bg-white/[0.02] text-xs text-[#F4F7FA] font-sans font-medium transition-all hover:bg-white/[0.04] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#4FB7C5]" />
+                    <span>
+                      {selectedProvider === 'anthropic' ? 'Claude' : 'OpenAI'} · {
+                        selectedProvider && modelRegistry[selectedProvider] && modelRegistry[selectedProvider].models[selectedModel]
+                          ? modelRegistry[selectedProvider].models[selectedModel].display_name.replace('OpenAI ', '').replace('Claude ', '')
+                          : selectedModel
+                      }
+                    </span>
+                    <ChevronDown size={12} className={`text-[#4FB7C5] transition-transform duration-200 ${isModelPopoverOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLoading || isRecording}
