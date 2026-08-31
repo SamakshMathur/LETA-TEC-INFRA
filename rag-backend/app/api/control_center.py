@@ -71,10 +71,7 @@ async def get_health(request: Request, current_admin: dict = Depends(get_current
     redis_keys = c_health.get("keys_count", 0)
     # If REDIS_URL was never set (still the localhost default), treat it as
     # "optional" rather than "failed" — DiskCache fallback is active.
-    from app.config import REDIS_URL as _REDIS_URL
-    _redis_configured = bool(import_module_env("REDIS_URL")) if False else (
-        "REDIS_URL" in __import__("os").environ
-    )
+    _redis_configured = "REDIS_URL" in os.environ
     redis_optional = not _redis_configured and not redis_ok
     
     # 3. FAISS Checks
