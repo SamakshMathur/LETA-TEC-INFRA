@@ -16,6 +16,7 @@ from app.config import (
     VECTOR_SEARCH_TOP_K, VECTOR_EXPANDED_TOP_K, BM25_TOP_K, MMR_LAMBDA,
 )
 from app.retrieval.reranker import LegalReranker
+from app.retrieval.quarantine import _is_quarantined
 from app.retrieval.statute_retriever import StatuteRetriever
 from app.retrieval.provision_graph import ProvisionGraphRetriever
 from app.retrieval.source_priority import source_priority
@@ -2504,7 +2505,7 @@ class Retriever:
                         res[key] = val
             final_results.append(res)
 
-        final_results = [r for r in final_results if r.get("rel_path") not in self.inactive_paths]
+        final_results = [r for r in final_results if r.get("rel_path") not in self.inactive_paths and not _is_quarantined(r)]
 
         logger.debug(
             f"search() complete: query='{query[:60]}' | "
