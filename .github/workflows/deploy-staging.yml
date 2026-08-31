@@ -1,11 +1,12 @@
 name: Deploy to Staging
 
-# Triggered manually or on push to the `staging` branch.
-# The staging service runs 1 Fargate task (no HA) with DEV_MODE=true.
+# Triggered on every merge to main (alongside deploy.yml) so staging always
+# mirrors production code automatically.  Also triggers on the `staging` branch
+# for isolated staging-only deploys, and supports workflow_dispatch for manual runs.
 # Production is never touched by this workflow.
 on:
   push:
-    branches: [staging]
+    branches: [main, staging]
     paths:
       - 'rag-backend/**'
   workflow_dispatch:

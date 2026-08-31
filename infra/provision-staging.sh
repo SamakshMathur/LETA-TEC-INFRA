@@ -18,7 +18,7 @@ REGION="ap-south-1"
 CLUSTER="gst-rag-cluster"
 STAGING_SERVICE="gst-rag-backend-staging-service"
 STAGING_FAMILY="gst-rag-backend-staging"
-ACCOUNT="446550122628"
+ACCOUNT="721082558531"
 
 # ── These must already exist in your AWS account ──────────────────────────────
 # Subnets and security group — reuse the same ones as production (or create new)

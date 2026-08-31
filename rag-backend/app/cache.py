@@ -21,7 +21,10 @@ import threading
 import time
 from typing import Optional
 
-import faiss
+try:
+    import faiss
+except ImportError:
+    faiss = None  # type: ignore  # CI env; only fails if SemanticCache is instantiated
 import numpy as np
 
 from app.config import (

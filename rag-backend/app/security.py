@@ -14,6 +14,7 @@ from app.database import get_user_collection
 logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
+ADMIN_MASTER_SECRET = os.environ.get("ADMIN_MASTER_SECRET", "")
 _secret = os.environ.get("SECRET_KEY")
 if not _secret:
     raise RuntimeError(

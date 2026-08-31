@@ -1,4 +1,7 @@
-import faiss
+try:
+    import faiss
+except ImportError:
+    faiss = None  # type: ignore  # CI env; only fails if VectorStore is instantiated
 import json
 import numpy as np
 from pathlib import Path
