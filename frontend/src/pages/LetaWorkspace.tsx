@@ -1313,7 +1313,7 @@ const LetaWorkspace: React.FC = () => {
           </div>
 
           {/* Sidebar content — conditional on activeRepo */}
-          <div className="flex-grow min-h-0 overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin">
+          <div className="flex-grow min-h-0 overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
 
             {/* ── REPOSITORY PANEL VIEW ─────────────────────────────────────── */}
             <AnimatePresence mode="wait">
