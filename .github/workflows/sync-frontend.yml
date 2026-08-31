@@ -1,88 +1,73 @@
-# sync-frontend.yml
+# deploy-amplify.yml  (kept as sync-frontend.yml to avoid renaming the file)
 #
 # PURPOSE
 # -------
-# Whenever frontend/ changes are merged to LETRA-TEC-INFRA main, automatically
-# mirror them into the outer GST-RAG- repo's frontend/ directory and push to
-# its main branch — which triggers an Amplify rebuild.
+# Amplify's GitHub webhook is broken — it does not auto-trigger on push to main.
+# This workflow fires on every push/merge to main and explicitly calls
+# `aws amplify start-job --job-type RELEASE` to kick off a new Amplify build.
 #
-# WHY THIS EXISTS
-# ---------------
-# Amplify is connected to SamakshMathur/GST-RAG- (the outer "shell" repo), not
-# to LETRA-TEC-INFRA.  Without this workflow, every frontend change requires a
-# manual copy step into the outer repo, creating the risk of the bordered-box
-# LetaResponse incident (UI fix merged to LETRA-TEC-INFRA but never visible in
-# production because Amplify never saw the change).
-#
-# SETUP (one-time, ~2 minutes)
-# -------
-# 1. Create a GitHub Personal Access Token (classic) with scope `repo`.
-#    Settings → Developer settings → Personal access tokens → Tokens (classic)
-#    → Generate new token → check "repo" → copy the token.
-# 2. In LETRA-TEC-INFRA → Settings → Secrets and variables → Actions →
-#    New repository secret → Name: GST_RAG_TOKEN, Value: <paste token>.
-# That's it.  This workflow will fire on the next push to main that touches
-# the frontend/ directory.
+# No extra secrets needed — reuses the same AWS_ACCESS_KEY_ID /
+# AWS_SECRET_ACCESS_KEY already used by the ECS deploy workflow.
 
-name: Sync frontend → GST-RAG-
+name: Trigger Amplify Build
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'frontend/**'
+
+env:
+  AWS_REGION: ap-south-1
+  AMPLIFY_APP_ID: d1q7i80dk455hq
+  AMPLIFY_BRANCH: main
 
 jobs:
-  sync:
-    name: Mirror frontend to GST-RAG-
+  amplify-deploy:
+    name: Trigger Amplify rebuild
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout LETRA-TEC-INFRA (source)
-        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          path: letra-tec
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
 
-      - name: Checkout GST-RAG- (destination)
-        uses: actions/checkout@v4
-        with:
-          repository: SamakshMathur/GST-RAG-
-          token: ${{ secrets.GST_RAG_TOKEN }}
-          ref: main
-          # Skip LFS objects — we only touch JS/JSX source files, not the
-          # 127 MB chunks.jsonl that lives in LFS.
-          lfs: false
-          path: gst-rag
-
-      - name: Sync frontend files
+      - name: Start Amplify RELEASE job
+        id: start_job
         run: |
-          # rsync everything from LETRA-TEC-INFRA/frontend/ into GST-RAG-/frontend/
-          # --delete removes files from the destination that no longer exist in
-          # the source, keeping both directories in lock-step.
-          rsync -av --delete \
-            letra-tec/frontend/ \
-            gst-rag/frontend/
+          JOB_ID=$(aws amplify start-job \
+            --app-id     "$AMPLIFY_APP_ID" \
+            --branch-name "$AMPLIFY_BRANCH" \
+            --job-type   RELEASE \
+            --region     "$AWS_REGION" \
+            --query      "jobSummary.jobId" \
+            --output     text)
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "✅ Amplify build started — job $JOB_ID"
+          echo "🔗 https://ap-south-1.console.aws.amazon.com/amplify/home#/d1q7i80dk455hq/main/$JOB_ID"
 
-      - name: Commit and push if changed
-        working-directory: gst-rag
+      - name: Wait for build to complete
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add frontend/
-
-          # Only commit if there is actually a diff — avoids empty commits on
-          # pushes that touch other files alongside frontend/ changes.
-          if git diff --staged --quiet; then
-            echo "No frontend changes to sync — skipping commit."
-            exit 0
-          fi
-
-          SOURCE_SHA=$(git -C ../letra-tec rev-parse --short HEAD)
-          git commit -m "sync: frontend from LETRA-TEC-INFRA@${SOURCE_SHA}
-
-Auto-synced by sync-frontend.yml — do not edit frontend/ in GST-RAG- directly;
-all changes must go through LETRA-TEC-INFRA and will be mirrored here on merge."
-
-          git push origin main
-          echo "✅ Synced and pushed — Amplify rebuild triggered."
+          JOB_ID="${{ steps.start_job.outputs.job_id }}"
+          echo "Waiting for Amplify job $JOB_ID …"
+          for i in $(seq 1 30); do
+            STATUS=$(aws amplify get-job \
+              --app-id      "$AMPLIFY_APP_ID" \
+              --branch-name "$AMPLIFY_BRANCH" \
+              --job-id      "$JOB_ID" \
+              --region      "$AWS_REGION" \
+              --query       "job.summary.status" \
+              --output      text)
+            echo "  [$i] status=$STATUS"
+            if [ "$STATUS" = "SUCCEED" ]; then
+              echo "✅ Amplify build succeeded."
+              exit 0
+            elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELLED" ]; then
+              echo "❌ Amplify build $STATUS."
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "⚠️  Timed out waiting for Amplify (10 min). Check the console."
+          exit 1
