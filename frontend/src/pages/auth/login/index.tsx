@@ -47,7 +47,8 @@ const LoginPage: React.FC = () => {
         login(session, false);
         navigate(from, { replace: true });
       } else {
-        setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(30);
+        const cd = data?.cooldown_seconds || 60;
+        setStep('otp'); setOtp(['', '', '', '', '', '']); setCountdown(cd);
       }
     } catch (err: any) {
       const d = err.response?.data?.detail;
@@ -63,14 +64,16 @@ const LoginPage: React.FC = () => {
     if (countdown > 0) return;
     setLoading(true); setError(null);
     try {
-      await sendOtpApi(contact.trim(), method);
-      setOtp(['', '', '', '', '', '']); setCountdown(30);
+      const data = await sendOtpApi(contact.trim(), method);
+      const cd = data?.cooldown_seconds || 60;
+      setOtp(['', '', '', '', '', '']); setCountdown(cd);
     } catch (err: any) {
       const d = err.response?.data?.detail;
       if (typeof d === 'string') setError(d);
       else setError('Failed to resend OTP. Please try again.');
     } finally { setLoading(false); }
   };
+
 
   const handleVerify = async (e: React.SyntheticEvent) => {
     e.preventDefault();
