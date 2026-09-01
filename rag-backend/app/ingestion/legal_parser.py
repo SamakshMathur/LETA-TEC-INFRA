@@ -19,26 +19,41 @@ class LegalParser:
     # Substantive vs Procedural Laws
     SUBSTANTIVE_SECTIONS = ["7", "8", "9", "10", "11", "12", "13", "15", "16", "17", "54"]
     PROCEDURAL_SECTIONS = ["97", "98", "100", "101", "107", "112"]
-    
+
+    # ── Database_V2.0 folder → (document_type, category, source) ──────────────
+    # ORDER MATTERS: "rule" must come before "cgst"/"igst"/"act" so that
+    # "CGST Rules 10-08-2026" is correctly tagged as Rules, not Statute.
+    _FOLDER_MAP = [
+        ("rule",         "Rules",        "rules",         "Official"),
+        ("notification", "Notification", "notifications", "CBIC"),
+        ("circular",     "Circular",     "circulars",     "CBIC"),
+        ("case laws",    "Case Law",     "highcourt",     "Judiciary"),
+        ("supreme",      "Case Law",     "supremecourt",  "Judiciary"),
+        ("aar",          "Case Law",     "aars",          "Judiciary"),
+        ("faq",          "FAQ",          "faqs",          "Official"),
+        ("cgst",         "Statute",      "cgst",          "Official"),
+        ("igst",         "Statute",      "igst",          "Official"),
+        ("act",          "Statute",      "acts",          "Official"),
+    ]
+
     @classmethod
     def classify_folder(cls, rel_path: str) -> Dict[str, Any]:
         """
-        Derives document type and metadata based on the folder structure.
+        Derives document_type, category, and source from the Database_V2.0
+        folder structure.  Uses only the top-level folder segment to avoid
+        cross-contamination from filenames.  'category' aligns with the
+        frontend CATEGORY_MAP keys so retrieval filters work after re-ingestion.
         """
-        path_lower = rel_path.lower()
-        if "act" in path_lower or "cgst" in path_lower or "igst" in path_lower:
-            return {"document_type": "Statute", "source": "Official"}
-        elif "rule" in path_lower:
-            return {"document_type": "Rules", "source": "Official"}
-        elif "notification" in path_lower:
-            return {"document_type": "Notification", "source": "CBIC"}
-        elif "circular" in path_lower:
-            return {"document_type": "Circular", "source": "CBIC"}
-        elif "case laws" in path_lower or "aar" in path_lower:
-            return {"document_type": "Case Law", "source": "Judiciary"}
-        elif "faq" in path_lower:
-            return {"document_type": "FAQ", "source": "Official"}
-        return {"document_type": "Other", "source": "General"}
+        path_lower = rel_path.replace("\\", "/").lower()
+        top_folder = path_lower.split("/")[0]
+        for keyword, doc_type, category, source in cls._FOLDER_MAP:
+            if keyword in top_folder:
+                return {
+                    "document_type": doc_type,
+                    "category":      category,
+                    "source":        source,
+                }
+        return {"document_type": "Other", "category": "other", "source": "General"}
 
     # Structural Headers for Semantic Segmentation (Judgments/AARs)
     STRUCTURE_PATTERNS = {
