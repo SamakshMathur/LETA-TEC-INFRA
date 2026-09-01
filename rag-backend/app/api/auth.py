@@ -36,13 +36,28 @@ from app.security import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
+def _utc_aware(value):
+    """Normalize a datetime to timezone-aware UTC."""
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    return value
+
+
 # =============================================================================
 # CONFIG
 # =============================================================================
 
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
-OTP_EXPIRY_MINUTES = 10
+OTP_EXPIRY_MINUTES = 2        # 2 minutes to match registered Airtel DLT template
+OTP_RESEND_COOLDOWN_SECONDS = 60  # 60-second cooldown between resend requests
 OTP_RATE_LIMIT_PER_HOUR = 3
 MAX_OTP_ATTEMPTS = 5          # Max failed verify attempts before OTP is burned
 
@@ -50,6 +65,7 @@ ADMIN_MASTER_SECRET = os.getenv("ADMIN_MASTER_SECRET", "")
 
 FAST2SMS_API_KEY = os.getenv("FAST2SMS_API_KEY", "")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+
 
 # =============================================================================
 # MODELS
@@ -273,67 +289,23 @@ def _verify_secret(value: str, expected: str) -> bool:
     return _secrets.compare_digest(value, expected)
 
 
-def _send_sms_otp(phone: str, otp: str) -> None:
-    """Send OTP via AWS SNS. Uses task role credentials — no API key needed."""
-    import boto3
-    # Normalise to E.164: strip leading zeros, prepend +91 for India
-    number = phone.strip().lstrip("+")
-    if len(number) == 10:
-        number = "91" + number
-    e164 = "+" + number
-    sns = boto3.client("sns", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-south-1"))
-    sns.publish(
-        PhoneNumber=e164,
-        Message=f"Your LETA OTP is {otp}. Valid for 10 minutes. Do not share.",
-        MessageAttributes={
-            "AWS.SNS.SMS.SMSType": {"DataType": "String", "StringValue": "Transactional"},
-            "AWS.SNS.SMS.SenderID": {"DataType": "String", "StringValue": "LETATEC"},
-        },
-    )
-    logger.info(f"SMS OTP sent via SNS | phone=***{phone[-4:]}")
-
-
-def send_sms_otp(phone: str, otp: str) -> None:
+def send_sms_otp(phone: str, otp: str) -> bool:
+    """Dispatch SMS OTP using configured provider (Airtel DLT primary, AWS SNS/Fast2SMS fallback)."""
     if DEV_MODE:
-        logger.info(f"[DEV MODE] SMS OTP {otp} for {phone} (Fast2SMS/SNS call bypassed)")
-        return
+        logger.info(f"[DEV MODE] SMS OTP dispatched for ***{phone[-4:]} (mock delivery)")
+        return True
 
-    # Try AWS SNS first (from main)
-    try:
-        _send_sms_otp(phone, otp)
-        return
-    except Exception as e:
-        logger.warning(f"AWS SNS failed: {e}. Trying Fast2SMS fallback...")
-
-    # Fallback to Fast2SMS (from aditya-does)
-    if not FAST2SMS_API_KEY:
-        logger.warning("FAST2SMS_API_KEY missing — SMS not sent")
-        return
-
-    try:
-        response = _requests.post(
-            "https://www.fast2sms.com/dev/bulkV2",
-            headers={
-                "authorization": FAST2SMS_API_KEY,
-                "Content-Type": "application/json",
-            },
-            json={
-                "route": "otp",
-                "variables_values": otp,
-                "numbers": phone,
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        logger.info(f"SMS OTP sent via Fast2SMS to ***{phone[-4:]}")
-    except Exception as err:
-        logger.error(f"Fast2SMS sending failed: {err}")
+    from app.services.sms import send_sms_otp as _dispatch_sms
+    res = _dispatch_sms(phone, otp, template_type="registration")
+    return res.success
 
 
 def verify_sms_otp(phone: str, submitted_otp: str, expected_otp: str) -> bool:
-    if DEV_MODE:
+    is_prod = os.getenv("ENVIRONMENT", "").lower() in ("production", "prod")
+    if DEV_MODE and not is_prod:
         return bool(re.match(r"^\d{6}$", submitted_otp))
     return _secrets.compare_digest(expected_otp, submitted_otp)
+
 
 
 def _send_email_otp(email: str, otp: str) -> None:
@@ -637,7 +609,24 @@ async def send_otp(request: Request, req: SendOTPRequest):
     request_count = 0
 
     if otp_record:
-        rate_window_start = (
+        # Enforce 60-second resend cooldown
+        created_at = _utc_aware(otp_record.get("created_at"))
+        if created_at and (now - created_at).total_seconds() < OTP_RESEND_COOLDOWN_SECONDS:
+            cooldown_remaining = max(1, int(OTP_RESEND_COOLDOWN_SECONDS - (now - created_at).total_seconds()))
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="send_otp",
+                user=user,
+                metadata={**_auth_contact_metadata(req.contact, req.method), "error": "resend_cooldown_active"},
+                success=False,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {cooldown_remaining} seconds before requesting a new OTP.",
+            )
+
+        rate_window_start = _utc_aware(
             otp_record.get("rate_window_start")
             or otp_record.get("created_at")
         )
@@ -658,7 +647,7 @@ async def send_otp(request: Request, req: SendOTPRequest):
         )
         raise HTTPException(
             status_code=429,
-            detail="Too many OTP requests",
+            detail="Too many OTP requests. Please try again in an hour.",
         )
 
     otp = _generate_otp()
@@ -678,7 +667,7 @@ async def send_otp(request: Request, req: SendOTPRequest):
                 "method": req.method,
                 "otp_hash": otp_hash,        # hashed — raw OTP never stored
                 "verified": False,
-                "failed_attempts": 0,         # brute-force counter
+                "failed_attempts": 0,         # brute-force counter reset on fresh OTP
                 "created_at": now,
                 "expires_at": expires_at,
                 "rate_window_start": rate_window_start,
@@ -689,17 +678,34 @@ async def send_otp(request: Request, req: SendOTPRequest):
     )
 
     if req.method == "phone":
-        send_sms_otp(req.contact, otp)
+        sms_ok = send_sms_otp(req.contact, otp)
+        if not sms_ok and not DEV_MODE:
+            # Transactional safety: don't leave active OTP record if provider failed
+            otp_col.delete_one({"contact": req.contact})
+            _log_auth_activity(
+                request=request,
+                started_at=started_at,
+                action="send_otp",
+                user=user,
+                metadata={**_auth_contact_metadata(req.contact, req.method), "error": "sms_delivery_failed"},
+                success=False,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to send SMS OTP. Please check the mobile number and try again.",
+            )
     else:
         _send_email_otp(req.contact, otp)
 
     response = {
         "message": "OTP sent successfully",
         "expires_in_minutes": OTP_EXPIRY_MINUTES,
+        "cooldown_seconds": OTP_RESEND_COOLDOWN_SECONDS,
     }
 
     if DEV_MODE:
         response["otp_preview"] = otp
+
 
     _log_auth_activity(
         request=request,
@@ -754,7 +760,9 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
             detail="No pending OTP found",
         )
 
-    if utc_now() > otp_record["expires_at"]:
+    expires_at = _utc_aware(otp_record.get("expires_at"))
+
+    if expires_at and utc_now() > expires_at:
 
         otp_col.delete_one({
             "contact": req.contact
@@ -783,10 +791,12 @@ async def verify_otp(request: Request, req: VerifyOTPRequest):
         legacy_otp = otp_record.get("otp", "")
         return _secrets.compare_digest(legacy_otp, req.otp)
 
-    if DEV_MODE:
+    is_prod = os.getenv("ENVIRONMENT", "").lower() in ("production", "prod")
+    if DEV_MODE and not is_prod:
         otp_valid = bool(re.match(r"^\d{6}$", req.otp))  # any valid 6-digit OTP passes in dev
     else:
         otp_valid = _otp_matches()
+
 
     if not otp_valid:
         new_attempts = otp_record.get("failed_attempts", 0) + 1
