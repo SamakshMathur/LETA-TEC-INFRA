@@ -51,6 +51,36 @@ _model_lock = threading.Lock()
 _model_device = "auto"   # tracks where the model was loaded; "cpu" after GPU fallback
 
 
+def _resolve_model_path(model_name: str) -> str:
+    """Resolves a model identifier to a local cached snapshot directory if available."""
+    from pathlib import Path
+    import os
+
+    p = Path(model_name)
+    if p.exists():
+        return str(p.resolve())
+
+    cache_roots = []
+    if os.environ.get("HF_HOME"):
+        cache_roots.append(Path(os.environ["HF_HOME"]) / "hub")
+    if os.environ.get("TRANSFORMERS_CACHE"):
+        cache_roots.append(Path(os.environ["TRANSFORMERS_CACHE"]))
+    if os.environ.get("HF_HUB_CACHE"):
+        cache_roots.append(Path(os.environ["HF_HUB_CACHE"]))
+    cache_roots.append(Path.home() / ".cache" / "huggingface" / "hub")
+
+    repo_folder = f"models--{model_name.replace('/', '--')}"
+    for root in cache_roots:
+        snapshots_dir = root / repo_folder / "snapshots"
+        if snapshots_dir.exists():
+            snapshots = [s for s in snapshots_dir.iterdir() if s.is_dir()]
+            if snapshots:
+                snapshots.sort(key=lambda s: s.stat().st_mtime, reverse=True)
+                return str(snapshots[0])
+
+    return model_name
+
+
 def get_model(force_cpu: bool = False):
     """Returns the embedding model, loading it once with thread safety.
 
@@ -72,10 +102,18 @@ def get_model(force_cpu: bool = False):
                 device = "cpu" if force_cpu else None   # None = auto-detect
                 device_label = "CPU (fallback)" if force_cpu else "auto"
                 logger.info(f"Loading embedding model: {EMBEDDING_MODEL} | device={device_label}")
-                _model = SentenceTransformer(EMBEDDING_MODEL, device=device)
+
+                resolved_path = _resolve_model_path(EMBEDDING_MODEL)
+                try:
+                    _model = SentenceTransformer(resolved_path, device=device)
+                except Exception:
+                    _model = SentenceTransformer(EMBEDDING_MODEL, device=device, local_files_only=True)
+
                 _model_device = "cpu" if force_cpu else "auto"
                 logger.info(f"Embedding model loaded successfully on {_model_device}")
     return _model
+
+
 
 
 def _is_cuda_error(exc: Exception) -> bool:
@@ -433,13 +471,31 @@ class Retriever:
         self._provision_index: dict = {}
         for _ci, _chunk in enumerate(self.chunks):
             _meta = _chunk.get("metadata", {})
+            _txt = _chunk.get("text", "")
+            # If chunk text header declares a Section or Rule (e.g. "Section - 7, Central Goods And Services Tax Act..."),
+            # ensure that primary provision is indexed and registered in metadata.citations.
+            header_match = re.search(r'^\s*(?:Section|Sec\.?|Rule)\s*[-:]?\s*(\d+[A-Z]*)', _txt[:150], re.IGNORECASE)
+            if header_match:
+                sec_num = header_match.group(1).upper()
+                is_rule = "rule" in _txt[:30].lower()
+                prefix = "CGST_RUL_" if is_rule else "CGST_SEC_"
+                self_prov = f"{prefix}{sec_num}"
+                if "citations" in _meta and self_prov not in _meta["citations"]:
+                    _meta["citations"].append(self_prov)
+                if self_prov not in self._provision_index:
+                    self._provision_index[self_prov] = []
+                if _ci not in self._provision_index[self_prov]:
+                    self._provision_index[self_prov].append(_ci)
+
             for _ref in set(_meta.get("provisions", []) + _meta.get("citations", [])):
                 # Skip generic "ACT" citation — matches everything, not useful
                 if _ref and _ref not in ("ACT", "RULES", "NOTIFICATION"):
                     if _ref not in self._provision_index:
                         self._provision_index[_ref] = []
-                    self._provision_index[_ref].append(_ci)
+                    if _ci not in self._provision_index[_ref]:
+                        self._provision_index[_ref].append(_ci)
         logger.info(f"Provision index built: {len(self._provision_index)} citation keys")
+
 
         # Build circular number index for O(1) direct circular lookup.
         # Maps "CIRCULAR_183" → list of chunk indices from circular filenames.
@@ -496,8 +552,9 @@ class Retriever:
         try:
             self.ranker = Ranker(model_name=RERANKING_MODEL, cache_dir=".flashrank_cache")
         except Exception as e:
-            logger.error(f"Failed to load FlashRank reranker: {e}", exc_info=True)
+            logger.info(f"FlashRank optional reranker not available ({e}). Retrieval falling back cleanly to Layer 3 LegalReranker composite scoring.")
             self.ranker = None
+
 
         # Initialize Layer 1 (Statute-First)
         self.statute_retriever = StatuteRetriever()

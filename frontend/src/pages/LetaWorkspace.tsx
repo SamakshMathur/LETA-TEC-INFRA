@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
+import { doTokenRefresh } from '../utils/interceptors';
+
 
 // Reads the stored JWT and returns an Authorization header object.
 // Used on every call so each request is tied to the logged-in user.
@@ -243,6 +245,8 @@ const LetaWorkspace: React.FC = () => {
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const pendingRetryRef = useRef<{ query: string; file: File | null } | null>(null);
   const isActiveQueryRef = useRef(false);
+  const currentSessionIdRef = useRef<string | null>(null);
+
 
   // ─── Voice Recording State ────────────────────────────────────────────────────
   const [isRecording, setIsRecording]       = useState(false);
@@ -581,10 +585,12 @@ const LetaWorkspace: React.FC = () => {
 
   // Persist the active session ID so a browser refresh restores where the user left off
   useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
     if (currentSessionId) {
       sessionStorage.setItem(`leta_active_session_${domainId}`, currentSessionId);
     }
   }, [currentSessionId, domainId]);
+
 
   useEffect(() => {
     // On mount: fetch sessions, then restore the last active session for this domain
@@ -678,8 +684,10 @@ const LetaWorkspace: React.FC = () => {
     setOpenDocuments([]);
     setActiveDocId(null);
     setMessages(cachedMessages || []);
+    currentSessionIdRef.current = sessionId;
     setCurrentSessionId(sessionId);
     setIsLoading(!cachedMessages && !streamingSessionsRef.current.has(sessionId));
+
     setIsStreaming(streamingSessionsRef.current.has(sessionId));
 
     try {
@@ -712,8 +720,10 @@ const LetaWorkspace: React.FC = () => {
 
   const handleNewSession = () => {
     ++sessionLoadRequestRef.current;
+    currentSessionIdRef.current = null;
     setCurrentSessionId(null);
     setMessages([]);
+
     setQuery('');
     setSelectedFile(null);
     setIsLoading(false);
@@ -756,9 +766,34 @@ const LetaWorkspace: React.FC = () => {
 
   const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 5, delayMs = 8000): Promise<Response> => {
     let lastError: unknown;
+    let authRefreshed = false;
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const res = await fetch(url, options);
+        const currentHeaders = { ...(options.headers as Record<string, string> || {}) };
+        const res = await fetch(url, { ...options, headers: currentHeaders });
+
+        // If 401 Unauthorized, refresh the access token and retry the request once immediately
+        if (res.status === 401 && !authRefreshed) {
+          authRefreshed = true;
+          try {
+            const newTokens = await doTokenRefresh();
+            if (newTokens?.accessToken) {
+              const retryHeaders = {
+                ...currentHeaders,
+                Authorization: `Bearer ${newTokens.accessToken}`,
+              };
+              const retryRes = await fetch(url, { ...options, headers: retryHeaders });
+              if (retryRes.status !== 503 && retryRes.status !== 502 && retryRes.status !== 504) {
+                return retryRes;
+              }
+              lastError = new Error(`status: ${retryRes.status}`);
+            }
+          } catch {
+            return res; // if token refresh fails, return 401
+          }
+        }
+
         // Retry on 503 (server starting up) or 502/504 (gateway/proxy errors during deploy)
         if (res.status !== 503 && res.status !== 502 && res.status !== 504) return res;
         lastError = new Error(`status: ${res.status}`);
@@ -778,6 +813,7 @@ const LetaWorkspace: React.FC = () => {
     throw lastError;
   };
 
+
   // ─── Main ask handler ─────────────────────────────────────────────────────────
   const handleAsk = async (queryOverride?: string) => {
     const activeQuery = typeof queryOverride === 'string' ? queryOverride : query;
@@ -786,23 +822,25 @@ const LetaWorkspace: React.FC = () => {
     const userMsg: Message = { role: 'user', content: activeQuery || (selectedFile ? `[Attached: ${selectedFile.name}]` : '') };
 
     // Keep stream state keyed to its session so navigating away does not stop it.
-    let streamSessionKey = currentSessionId || `pending-${Date.now()}`;
+    let streamSessionKey = currentSessionIdRef.current || `pending-${Date.now()}`;
+    const isCurrentSessionActive = () =>
+      currentSessionIdRef.current === streamSessionKey || currentSessionIdRef.current === null;
+
     const updateStreamMessages = (updater: (prev: Message[]) => Message[]) => {
       const previous = sessionMessagesRef.current.get(streamSessionKey) || [];
       const next = updater(previous);
       sessionMessagesRef.current.set(streamSessionKey, next);
-      if (currentSessionId === streamSessionKey) setMessages(next);
+      if (isCurrentSessionActive()) setMessages(next);
     };
     const setStreamLoading = (value: boolean) => {
-      if (currentSessionId === streamSessionKey) setIsLoading(value);
+      if (isCurrentSessionActive()) setIsLoading(value);
     };
     const setStreamStreaming = (value: boolean) => {
-      if (currentSessionId === streamSessionKey) setIsStreaming(value);
+      if (isCurrentSessionActive()) setIsStreaming(value);
     };
 
     // Only add user message now; assistant message is added when first chunk arrives.
     updateStreamMessages(prev => [...prev, userMsg]);
-    if (!currentSessionId) setMessages(sessionMessagesRef.current.get(streamSessionKey) || []);
     setQuery('');
     setIsLoading(true);
     setIsStreaming(false);
@@ -819,7 +857,7 @@ const LetaWorkspace: React.FC = () => {
     abortControllerRef.current = controller;
 
     try {
-      let activeSessionId = currentSessionId;
+      let activeSessionId = currentSessionIdRef.current;
       if (!activeSessionId) {
         let title = activeQuery;
         if (title.length > 40) title = title.substring(0, 38) + '...';
@@ -849,6 +887,7 @@ const LetaWorkspace: React.FC = () => {
           sessionMessagesRef.current.delete(streamSessionKey);
           streamSessionKey = activeSessionId;
           sessionMessagesRef.current.set(streamSessionKey, pendingMessages);
+          currentSessionIdRef.current = activeSessionId;
           setCurrentSessionId(activeSessionId);
         } catch {
           // Session creation failed (CORS or backend unreachable) — proceed without session tracking

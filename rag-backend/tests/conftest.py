@@ -19,7 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # ── Fake env so config.py reads don't raise ───────────────────────────────────
 os.environ.setdefault("ANTHROPIC_API_KEY",      "ci-placeholder")
 os.environ.setdefault("MONGODB_URI",             "mongodb://localhost:27017/ci_test")
-os.environ.setdefault("SECRET_KEY",             "ci-placeholder-32-char-secret!!")
+os.environ.setdefault("SECRET_KEY",             "ci-placeholder-32-character-sec!")
+
 os.environ.setdefault("REDIS_URL",              "redis://localhost:6379")
 os.environ.setdefault("ADMIN_MASTER_SECRET",    "ci-placeholder")
 os.environ.setdefault("FAST2SMS_API_KEY",       "ci-placeholder")

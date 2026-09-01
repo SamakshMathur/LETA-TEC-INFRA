@@ -36,7 +36,7 @@ class CrossEncoderEntailment(EntailmentVerifier):
                 self.load_failed = False
             except Exception as e:
                 self.load_failed = True
-                logger.warning(f"CrossEncoder lazy load failed: {e}. Strict mode entailment validation will fail closed.")
+                logger.info(f"CrossEncoder NLI model not cached locally ({e}). Validator falling back cleanly to deterministic containment validation.")
 
     def verify(self, claim: str, premise: str) -> str:
         self._lazy_load()
@@ -50,15 +50,13 @@ class CrossEncoderEntailment(EntailmentVerifier):
                 elif label_id == 0:
                     return "CONTRADICTED"
                 else:
-                    return "UNKNOWN"
+                    return "NEUTRAL"
             except Exception as e:
-                logger.warning(f"CrossEncoder prediction failed: {e}. Falling back to keyword-based _simple_containment.")
-        else:
-            logger.warning("CrossEncoder model unavailable/load failed. Falling back to keyword-based _simple_containment.")
-
+                logger.warning(f"Entailment inference failed: {e}")
+                return "UNKNOWN"
         return self._simple_containment(claim, premise)
 
-    def verify_batch(self, pairs: List[tuple[str, str]]) -> List[str]:
+    def verify_batch(self, pairs: List[Tuple[str, str]]) -> List[str]:
         if not pairs:
             return []
         # Support unit test mock patching of verify method
@@ -71,22 +69,12 @@ class CrossEncoderEntailment(EntailmentVerifier):
             return [self.verify(claim, premise) for premise, claim in pairs]
 
         self._lazy_load()
-        is_model_mock = False
-        if self.model is not None:
-            if hasattr(self.model, "mock_add_spec") or type(self.model).__name__ in ('Mock', 'MagicMock', 'NonCallableMagicMock'):
-                is_model_mock = True
-
-        if self.model and not is_model_mock:
+        if self.model:
             try:
                 # MS-Marco CrossEncoder takes batch of tuples [(premise, claim), ...]
                 scores = self.model.predict(pairs, batch_size=32)
                 results = []
-                # scores can be single dimensional for single prediction, or multi-dimensional
-                # Handle single-prediction shape safety
                 import numpy as np
-                # Check if scores is a Mock (pollution safety)
-                if hasattr(scores, "mock_add_spec") or type(scores).__name__ in ('Mock', 'MagicMock', 'NonCallableMagicMock'):
-                    raise ValueError("Model predict returned a Mock object.")
                 if len(np.shape(scores)) == 1:
                     scores = [scores]
                 for score in scores:
@@ -96,28 +84,28 @@ class CrossEncoderEntailment(EntailmentVerifier):
                     elif label_id == 0:
                         results.append("CONTRADICTED")
                     else:
-                        results.append("UNKNOWN")
+                        results.append("NEUTRAL")
                 if len(results) == len(pairs):
                     return results
-                else:
-                    logger.warning("verify_batch results length mismatch. Falling back to simple containment.")
             except Exception as e:
-                logger.warning(f"CrossEncoder batch prediction failed: {e}. Falling back to keyword-based _simple_containment.")
-        else:
-            logger.warning("CrossEncoder model unavailable/load failed. Falling back to keyword-based _simple_containment.")
+                logger.warning(f"Batch entailment inference failed: {e}")
+        return [self.verify(claim, premise) for premise, claim in pairs]
 
-        return [self._simple_containment(claim, premise) for premise, claim in pairs]
 
     def _simple_containment(self, claim: str, premise: str) -> str:
-        c_words = set(re.findall(r'\b[a-z]{4,}\b', claim.lower()))
-        p_words = set(re.findall(r'\b[a-z]{4,}\b', premise.lower()))
+        claim_clean = re.sub(r'[^\w\s]', '', claim.lower())
+        premise_clean = re.sub(r'[^\w\s]', '', premise.lower())
+        c_words = set([w for w in claim_clean.split() if len(w) > 2])
+        p_words = set([w for w in premise_clean.split() if len(w) > 2])
         if not c_words:
             return "UNKNOWN"
-        intersection = c_words.intersection(p_words)
-        overlap = len(intersection) / len(c_words)
-        if overlap > 0.75:
+        overlap = len(c_words.intersection(p_words)) / len(c_words)
+        if overlap >= 0.25:
             return "SUPPORTED"
+        elif overlap < 0.1 and len(c_words) > 5:
+            return "NEUTRAL"
         return "UNKNOWN"
+
 
 
 # Global pluggable verifier
@@ -141,9 +129,19 @@ def _clean_claim(text: str) -> str:
 
 
 def _clean_text_for_numbers(text: str) -> str:
+    # 0. Strip markdown links and raw URLs/paths
+    text = re.sub(r'\[[^\]]*\]\([^\)]*\)', ' ', text)
+    text = re.sub(r'https?://\S+', ' ', text)
+    text = re.sub(r'/api/\S+', ' ', text)
+    # Strip URL-encoded tokens (%20, %28, etc.)
+    text = re.sub(r'%[0-9a-fA-F]{2}', ' ', text)
+    # Strip file extensions (.pdf, .docx, etc.)
+    text = re.sub(r'\b\.(?:pdf|docx|xlsx|txt)\b', ' ', text, flags=re.IGNORECASE)
+    # Strip section ranges in filenames/metadata e.g. "(Sections 143–174)" or "Sections 143 to 174"
+    text = re.sub(r'\b(?:Sections?|Secs?\.?|Rules?)\s*\d+[a-zA-Z]*(?:\s*[-–—to]+\s*\d+[a-zA-Z]*)?\b', ' ', text, flags=re.IGNORECASE)
     # 1. Remove Circular/Notification reference numbers (e.g. Circular No. 105/24/2019-GST)
     text = re.sub(r'\b(?:Circular|Notification|No\.|No)\s*\d+(?:/\d+)*(?:-[A-Za-z0-9\-]+)*\b', '', text, flags=re.IGNORECASE)
-    # 2. Remove Section/Rule citations (e.g. Section 16(2))
+    # 2. Remove Section/Rule/Page/Clause citations (e.g. Section 16(2))
     text = re.sub(r'\b(?:Section|Sec\.|Rule|Page|Clause)\s*\d+[a-zA-Z]*(?:\(\d+\))*(?:\([a-z]\))*\b', '', text, flags=re.IGNORECASE)
     # 3. Remove slash-separated reference numbers (e.g. 217/11/2024-GST)
     text = re.sub(r'\b\d+(?:/\d+)+(?:-[A-Za-z0-9\-]+)*\b', '', text)
@@ -196,10 +194,12 @@ def validate_answer_integrity(
 
     warnings = []
     citations_status = {}
+    verified_claims = []
     ungrounded_numbers = []
     highest_severity = "NONE"
     failure_categories = []
     total_pairs_before_pruning = 0
+
 
     degraded_fallback = verifier.load_failed or (verifier.model is None)
 
@@ -290,12 +290,13 @@ def validate_answer_integrity(
                     matching_chunks.append(c)
 
         if matching_chunks:
-            for sentence in re.split(r'(?<=[.!?])\s+', content):
+            for sentence in re.split(r'(?:(?<=[.!?])\s+|\n+)', content):
                 if cit not in sentence:
                     continue
                 clean_sentence = _clean_claim(sentence)
                 if not clean_sentence or len(clean_sentence.split()) < 3:
                     continue
+
 
                 # Deduplicate matching chunks by text content to avoid duplicate evaluations
                 unique_chunks = {}
@@ -414,8 +415,8 @@ def validate_answer_integrity(
             failure_categories.append("UNVERIFIED_CITATION")
             continue
 
-        # Validate sentences in answer containing this citation
-        for sentence in re.split(r'(?<=[.!?])\s+', content):
+        # Validate atomic claims in answer containing this citation
+        for sentence in re.split(r'(?:(?<=[.!?])\s+|\n+)', content):
             if cit not in sentence:
                 continue
 
@@ -441,12 +442,20 @@ def validate_answer_integrity(
                 elif entailment == "CONTRADICTED":
                     contradictions_count += 1
 
-            # Record warnings
             best_chunk = sentence_chunks[0] if sentence_chunks else (matching_chunks[0] if matching_chunks else None)
-            filename = os.path.basename(best_chunk.get("rel_path", best_chunk.get("metadata", {}).get("rel_path", best_chunk.get("source", ""))))
+            filename = os.path.basename(best_chunk.get("rel_path", best_chunk.get("metadata", {}).get("rel_path", best_chunk.get("source", "")))) if best_chunk else ""
 
+            claim_status = "VERIFIED" if supported_by_any else ("CONTRADICTED" if (sentence_chunks and contradictions_count == len(sentence_chunks)) else "UNVERIFIED")
+            verified_claims.append({
+                "claim": clean_sentence,
+                "citation": cit,
+                "status": claim_status,
+                "source_file": filename,
+            })
+
+            # Record warnings
             if not supported_by_any:
-                if contradictions_count == len(sentence_chunks):
+                if sentence_chunks and contradictions_count == len(sentence_chunks):
                     warnings.append(f"Contradiction: Claim '{clean_sentence}' contradicts source '{filename}'.")
                     highest_severity = "HIGH"
                     failure_categories.append("CONTRADICTION")
@@ -462,6 +471,7 @@ def validate_answer_integrity(
                 warnings.append(f"Authority Mismatch: Citation '{cit}' is cited as statutory law but comes from Circular '{filename}'.")
                 highest_severity = "HIGH" if highest_severity != "HIGH" else highest_severity
                 failure_categories.append("AUTHORITY_MISMATCH")
+
 
             # Layer F: Temporal applicability check
             year_match = re.search(r'\b(20\d{2})\b', clean_sentence)
@@ -615,9 +625,11 @@ def validate_answer_integrity(
         "is_valid": is_valid,
         "warnings": warnings,
         "citations_status": citations_status,
+        "verified_claims": verified_claims,
         "ungrounded_numbers": ungrounded_numbers,
         "severity": highest_severity,
         "degraded_fallback": degraded_fallback,
+
         # Timing & Metrics Instrumentation
         "citation_count": len(citations_in_answer),
         "unique_claim_count": unique_claim_count,

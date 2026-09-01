@@ -12,7 +12,7 @@ const AUTH_ENDPOINTS = [
 
 let refreshPromise: Promise<Tokens> | null = null;
 
-const doTokenRefresh = async (): Promise<Tokens> => {
+export const doTokenRefresh = async (): Promise<Tokens> => {
   const session = getStoredAuthSession();
   if (!session || !session.tokens.refreshToken) {
     throw new Error('No refresh token available');
@@ -31,6 +31,7 @@ const doTokenRefresh = async (): Promise<Tokens> => {
     throw error;
   }
 };
+
 
 // Use an external axios for the refresh call to avoid interception loops
 import axios from 'axios';
