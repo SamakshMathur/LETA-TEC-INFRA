@@ -85,7 +85,7 @@ VECTOR_DB_PATH = str(_APP_ROOT / "vectordb" / "index.faiss")
 CHUNKS_PATH = str(_APP_ROOT / "data" / "chunks" / "chunks.jsonl")
 
 # ─── Ingestion Config ─────────────────────────────────────────────────────
-DATA_DIR = str(_APP_ROOT / "RAG_INFORMATION_DATABASE")
+DATA_DIR = str(_APP_ROOT / "Database_V2.0")
 
 # ─── S3 Config for AWS Deployment ─────────────────────────────────────────
 S3_BUCKET_NAME = "gst-rag-documents"

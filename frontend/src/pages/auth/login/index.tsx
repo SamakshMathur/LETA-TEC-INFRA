@@ -24,7 +24,9 @@ const LoginPage: React.FC = () => {
   const from = fromLocation
     ? `${fromLocation.pathname || '/dashboard'}${fromLocation.search || ''}${fromLocation.hash || ''}`
     : '/dashboard';
-  const sessionExpired = new URLSearchParams(location.search).get('reason') === 'session_expired';
+  const loginReason = new URLSearchParams(location.search).get('reason');
+  const sessionExpired = loginReason === 'session_expired';
+  const planExpired = loginReason === 'plan_expired';
   const switchMethod = (m: Method) => { setMethod(m); setContact(''); setError(null); };
 
   useEffect(() => {
@@ -133,6 +135,12 @@ const LoginPage: React.FC = () => {
           {sessionExpired && (
             <div className="mb-4 p-3 rounded-leta bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium text-center">
               Your session has expired. Please log in again.
+            </div>
+          )}
+
+          {planExpired && (
+            <div className="mb-4 p-3 rounded-leta bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs font-medium text-center">
+              Your consultation plan has expired. Please log in to renew your access.
             </div>
           )}
 

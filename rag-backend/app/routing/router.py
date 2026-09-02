@@ -1,27 +1,31 @@
 import re
 from app.routing.intent_classifier import classify_intent
 
-_HC_SC = ["High Court Case Laws", "Supreme Court Case Laws", "AAR"]
+# ── Database_V2.0 folder name fragments used for retrieval filtering ───────────
+# These are matched as case-insensitive substrings against each chunk's rel_path.
+# e.g. "cgst rules" matches "CGST Rules 10-08-2026/Rule 1.pdf"
+#      "circulars"  matches "circulars(2017-2025)/Circular_123.pdf"
+_HC_SC = ["high court case laws", "supreme court case laws"]
 
 # ─── Domain path mappings ─────────────────────────────────────────────────────
 _DOMAIN_PATHS: dict[str, list[str]] = {
-    "itc":          ["Rules", "Act", "Circulars", "CGST", "IGST", "Notification"] + _HC_SC,
-    "rule4x":       ["Rules", "Act", "Circulars"] + _HC_SC,
-    "refund":       ["Act", "Rules", "Circulars", "Notification", "Forms"] + _HC_SC,
-    "rate_hsn":     ["Act", "Notification", "IGST", "Forms"] + _HC_SC,
-    "export":       ["Export", "Act", "Notification", "Circulars"] + _HC_SC,
-    "eway":         ["Rules", "Circulars", "Notification"] + _HC_SC,
-    "appeal":       ["Act", "Rules"] + _HC_SC,
-    "annual":       ["Rules", "Forms", "Circulars"] + _HC_SC,
-    "registration": ["Act", "Rules", "Circulars"] + _HC_SC,
-    "audit":        ["Act", "Rules", "Circulars"] + _HC_SC,
-    "penalty":      ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
-    "scn":          ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
-    "draft":        ["Act", "Rules", "Circulars", "Notification"] + _HC_SC,
+    "itc":           ["cgst rules", "cgst acts", "igst acts", "circulars", "rate_notifications"] + _HC_SC,
+    "rule4x":        ["cgst rules", "igst rules", "circulars"] + _HC_SC,
+    "refund":        ["cgst acts", "igst acts", "cgst rules", "circulars", "rate_notifications"] + _HC_SC,
+    "rate_hsn":      ["cgst acts", "igst acts", "rate_notifications"] + _HC_SC,
+    "export":        ["cgst acts", "igst acts", "rate_notifications", "circulars"] + _HC_SC,
+    "eway":          ["cgst rules", "circulars", "rate_notifications"] + _HC_SC,
+    "appeal":        ["cgst acts", "cgst rules", "high court case laws", "supreme court case laws"],
+    "annual":        ["cgst rules", "circulars"] + _HC_SC,
+    "registration":  ["cgst acts", "cgst rules", "circulars"] + _HC_SC,
+    "audit":         ["cgst acts", "cgst rules", "circulars"] + _HC_SC,
+    "penalty":       ["cgst acts", "cgst rules", "circulars", "rate_notifications"] + _HC_SC,
+    "scn":           ["cgst acts", "cgst rules", "circulars", "rate_notifications"] + _HC_SC,
+    "draft":         ["cgst acts", "cgst rules", "circulars", "rate_notifications"] + _HC_SC,
     # Intermediary services: definition in IGST Act s.2(13), PoS in s.13(8)(b)
-    "intermediary": ["Act", "IGST", "Circulars", "Notification"] + _HC_SC,
+    "intermediary":  ["igst acts", "cgst acts", "circulars", "rate_notifications"] + _HC_SC,
     # Place of supply — needs both Acts and circulars for PoS disputes
-    "place_of_supply": ["Act", "IGST", "Circulars", "Notification"] + _HC_SC,
+    "place_of_supply": ["igst acts", "cgst acts", "circulars", "rate_notifications"] + _HC_SC,
 }
 
 
