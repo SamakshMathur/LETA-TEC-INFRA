@@ -15,6 +15,20 @@ const AUTH_ENDPOINTS = [
 
 let refreshPromise: Promise<Tokens> | null = null;
 
+// ─── Plan-expiry detection ────────────────────────────────────────────────────
+// When the backend returns 401 with this specific detail, it means the user's
+// plan session has expired — not the JWT.  Retrying with a fresh JWT won't help;
+// we redirect to a plan-renewal page instead of the generic login page.
+const PLAN_EXPIRED_DETAIL = 'Session expired. Please log in again.';
+
+function isPlanExpiry(error: any): boolean {
+  const detail = error?.response?.data?.detail;
+  return typeof detail === 'string' && detail === PLAN_EXPIRED_DETAIL;
+}
+
+// Use an external axios for the refresh call to avoid interception loops
+import axios from 'axios';
+
 const doTokenRefresh = async (): Promise<Tokens> => {
   const session = getStoredAuthSession();
   if (!session || !session.tokens.refreshToken) {
@@ -35,9 +49,6 @@ const doTokenRefresh = async (): Promise<Tokens> => {
   }
 };
 
-// Use an external axios for the refresh call to avoid interception loops
-import axios from 'axios';
-
 export const setupInterceptors = () => {
   AXIOS_INSTANCE.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
@@ -46,8 +57,26 @@ export const setupInterceptors = () => {
         return config;
       }
 
-      // 2. Check for existing header
+      // 2. If Authorization already set by getAuthHeaders(), validate it hasn't
+      //    expired before forwarding — expired token → proactive refresh.
       if (config.headers.Authorization) {
+        const session = getStoredAuthSession();
+        if (session) {
+          const expiresAt = new Date(session.tokens.expiresAt).getTime();
+          if (expiresAt < Date.now() + 10000) {
+            // Token about to expire — refresh before sending
+            if (!refreshPromise) {
+              refreshPromise = doTokenRefresh().finally(() => { refreshPromise = null; });
+            }
+            try {
+              const newTokens = await refreshPromise;
+              config.headers.Authorization = `Bearer ${newTokens.accessToken}`;
+            } catch {
+              // Refresh failed → interceptor already redirected to login;
+              // pass the stale token and let the 401 handler clean up.
+            }
+          }
+        }
         return config;
       }
 
@@ -60,8 +89,8 @@ export const setupInterceptors = () => {
       const now = Date.now();
       const expiresAt = new Date(tokens.expiresAt).getTime();
 
-      // 3. Trigger refresh if expired
-      if (expiresAt < now + 10000) { // 10s buffer
+      // 3. Trigger refresh if expired or within 10s of expiry
+      if (expiresAt < now + 10000) {
         if (!refreshPromise) {
           refreshPromise = doTokenRefresh().finally(() => {
             refreshPromise = null;
@@ -82,10 +111,19 @@ export const setupInterceptors = () => {
     (response: AxiosResponse) => response,
     async (error) => {
       const originalRequest = error.config;
-      
+
       // 4. Handle 401
       if (error.response?.status === 401 && !originalRequest._retry) {
         if (AUTH_ENDPOINTS.some(url => originalRequest.url?.includes(url))) {
+          return Promise.reject(error);
+        }
+
+        // Plan-expiry 401: the user's purchased plan has expired.
+        // A fresh JWT won't fix this — redirect to login with a clear reason
+        // so the UI can offer plan renewal rather than confusing "session expired".
+        if (isPlanExpiry(error)) {
+          clearAuthSession();
+          window.location.href = '/login?reason=plan_expired';
           return Promise.reject(error);
         }
 

@@ -10,21 +10,24 @@ Endpoints:
   GET  /api/admin/jobs                        - list all ingestion jobs
   GET  /api/admin/users                       - list all registered users
   POST /api/admin/users/{contact}/toggle-admin - promote/demote admin role
+  POST /api/admin/users/{contact}/grant-plan  - grant / extend plan session for a user
 """
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 
 from app.security import get_current_admin, require_roles, ROLE_SUPER_ADMIN, ROLE_ADMIN
 from app.api.documents import BASE_DIR, CATEGORY_MAP
 from app.database import get_user_collection
 from app.feed_store import make_event, publish_event
 from app.rate_limiter import limiter
+from app.utils.time import utc_now
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -275,3 +278,83 @@ async def toggle_admin_role(
         f"new_role={new_role}"
     )
     return {"username": user.get("username"), "new_role": new_role}
+
+
+# ── Plan / Session Grant ───────────────────────────────────────────────────────
+
+class GrantPlanRequest(BaseModel):
+    hours: Optional[int] = None          # Duration from now in hours; None = remove limit
+    plan: Optional[str] = "pro"          # plan name label stored on the user
+
+
+@router.post("/users/{contact}/grant-plan")
+@limiter.limit("20/minute")
+async def grant_plan(
+    request: Request,
+    contact: str,
+    body: GrantPlanRequest,
+    current_admin: dict = Depends(get_current_admin),
+):
+    """
+    Grant or extend a plan session for a user.
+
+    • contact: email, phone, or username
+    • hours:   session duration from now.  Omit (or null) to remove the
+               session_end cap entirely (unlimited access until next payment).
+    • plan:    label stored on the user document ("basic", "pro", etc.)
+
+    Called by admin after manual payment, for testing, or to reset an
+    accidentally-expired session.
+    """
+    users_col = get_user_collection()
+    if users_col is None:
+        raise HTTPException(status_code=500, detail="Database not connected")
+
+    user = users_col.find_one(
+        {"$or": [{"email": contact}, {"phone": contact}, {"username": contact}]},
+        {"_id": 1, "username": 1, "role": 1},
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User '{contact}' not found")
+
+    now = utc_now()
+    if body.hours is not None:
+        session_end_dt = now + timedelta(hours=body.hours)
+        session_end_ms = int(session_end_dt.timestamp() * 1000)
+        update = {
+            "$set": {
+                "plan":             body.plan or "pro",
+                "session_end":      session_end_dt,
+                "session_end_ms":   session_end_ms,
+                "last_granted_by":  current_admin.get("username"),
+                "last_granted_at":  now,
+            }
+        }
+        expires_label = session_end_dt.isoformat()
+    else:
+        # Remove session cap entirely
+        update = {
+            "$set": {
+                "plan":             body.plan or "pro",
+                "last_granted_by":  current_admin.get("username"),
+                "last_granted_at":  now,
+            },
+            "$unset": {
+                "session_end":    "",
+                "session_end_ms": "",
+            },
+        }
+        expires_label = "unlimited"
+
+    users_col.update_one({"_id": user["_id"]}, update)
+
+    logger.info(
+        f"Plan granted | actor={current_admin.get('username')} "
+        f"target={user.get('username')} plan={body.plan} expires={expires_label}"
+    )
+    return {
+        "username":  user.get("username"),
+        "plan":      body.plan or "pro",
+        "expires":   expires_label,
+        "granted_by": current_admin.get("username"),
+    }
