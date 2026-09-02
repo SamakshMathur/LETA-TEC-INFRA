@@ -85,7 +85,23 @@ VECTOR_DB_PATH = str(_APP_ROOT / "vectordb" / "index.faiss")
 CHUNKS_PATH = str(_APP_ROOT / "data" / "chunks" / "chunks.jsonl")
 
 # ─── Ingestion Config ─────────────────────────────────────────────────────
-DATA_DIR = str(_APP_ROOT / "Database_V2.0")
+def _resolve_data_dir() -> str:
+    env_path = os.getenv("DATA_DIR")
+    if env_path and Path(env_path).exists():
+        return env_path
+    candidates = [
+        _APP_ROOT / "Database_V2.0",
+        _APP_ROOT / "RAG_INFORMATION_DATABASE" / "NEW DATABASE" / "Database_V2.0",
+        _APP_ROOT.parent / "Database_V2.0",
+        _APP_ROOT / "RAG_INFORMATION_DATABASE",
+    ]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return str(_APP_ROOT / "Database_V2.0")
+
+DATA_DIR = _resolve_data_dir()
+
 
 # ─── S3 Config for AWS Deployment ─────────────────────────────────────────
 S3_BUCKET_NAME = "gst-rag-documents"
