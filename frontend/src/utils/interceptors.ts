@@ -119,12 +119,15 @@ export const setupInterceptors = () => {
         }
 
         // Plan-expiry 401: the user's purchased plan has expired.
-        // A fresh JWT won't fix this — redirect to login with a clear reason
-        // so the UI can offer plan renewal rather than confusing "session expired".
+        // A fresh JWT won't fix this — don't bother refreshing, just reject
+        // with an augmented error so callers can distinguish this from a
+        // generic auth failure.  We do NOT redirect or clear the session here
+        // because plan-expiry only blocks session-tracked endpoints; unauthenticated
+        // endpoints like /ask still work and the user should stay on the page.
         if (isPlanExpiry(error)) {
-          clearAuthSession();
-          window.location.href = '/login?reason=plan_expired';
-          return Promise.reject(error);
+          const augmented = error as any;
+          augmented.isPlanExpired = true;
+          return Promise.reject(augmented);
         }
 
         originalRequest._retry = true;
