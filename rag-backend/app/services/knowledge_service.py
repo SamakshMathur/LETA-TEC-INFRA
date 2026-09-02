@@ -214,24 +214,70 @@ class KnowledgeService:
         status: Optional[str] = None,
         search: Optional[str] = None,
         skip: int = 0,
-        limit: int = 20
+        limit: int = 50
     ) -> List[Dict]:
-        """Lists documents from database with filtering, query matching and pagination."""
+        """Lists documents by merging MongoDB upload records and physical repository documents."""
+        from app.services.document_discovery import DocumentDiscoveryService
+
         db = get_db()
+        mongo_docs = []
+        known_filenames = set()
+
         if db is not None:
             query = {}
-            if category:
-                query["category"] = category
-            if status:
+            if category and category.lower() != "all":
+                query["category"] = category.lower()
+            if status and status.lower() != "all":
                 query["status"] = status
             if search:
                 query["filename"] = {"$regex": search, "$options": "i"}
 
-            docs = list(db["knowledge_base"].find(query).skip(skip).limit(limit).sort("uploaded_at", -1))
-            for doc in docs:
+            raw_mongo = list(db["knowledge_base"].find(query).sort("uploaded_at", -1))
+            for doc in raw_mongo:
                 doc.pop("_id", None)
-            return docs
-        return []
+                if isinstance(doc.get("uploaded_at"), datetime):
+                    doc["uploaded_at"] = doc["uploaded_at"].isoformat()
+                mongo_docs.append(doc)
+                if doc.get("filename"):
+                    known_filenames.add(doc["filename"].lower())
+
+        # Physical documents from repository
+        phys_docs = DocumentDiscoveryService.discover_documents(
+            category=category or "all",
+            search=search,
+            limit=limit * 2
+        )
+
+        merged: List[Dict] = list(mongo_docs)
+        for p in phys_docs:
+            if p["filename"].lower() in known_filenames:
+                continue
+
+            if status and status.lower() not in ("all", "completed", "indexed", "discovered"):
+                continue
+
+            merged.append({
+                "document_id": p["id"],
+                "title": p["title"],
+                "filename": p["filename"],
+                "category": p["category"],
+                "document_type": p["file_type"],
+                "tags": [p["category"], p["file_type"]],
+                "uploader": "System Corpus",
+                "uploaded_at": p["modified_at"],
+                "effective_date": p["year"] or "2024",
+                "version": 1,
+                "status": "Completed" if p.get("indexed") else "Discovered",
+                "chunk_count": p.get("chunk_count", 0),
+                "is_active": True,
+                "rel_path": p["path"],
+                "file_path": p["path"],
+                "size": p["size"],
+                "year": p["year"]
+            })
+
+        return merged[skip : skip + limit]
+
 
     @staticmethod
     def refresh_retriever():

@@ -61,24 +61,36 @@ async def admin_status(request: Request, current_admin: dict = Depends(get_curre
     except Exception:
         pass
 
+    from app.services.document_discovery import DocumentDiscoveryService
+
+    discovered = DocumentDiscoveryService.discover_categories()
     categories = {}
-    for key, folder_name in CATEGORY_MAP.items():
-        folder_path = BASE_DIR / folder_name
-        if folder_path.exists():
-            files = [
-                f for f in folder_path.rglob("*")
-                if f.is_file() and f.suffix.lower() in ALLOWED_EXTENSIONS
-            ]
-            categories[key] = {"folder": folder_name, "files": len(files)}
-        else:
-            categories[key] = {"folder": folder_name, "files": 0, "exists": False}
+    total_physical_docs = 0
+    total_physical_mb = 0.0
+
+    for key, info in discovered.items():
+        files_count = info.get("files", 0)
+        size_mb = info.get("size_mb", 0.0)
+        total_physical_docs += files_count
+        total_physical_mb += size_mb
+        categories[key] = {
+            "folder": info.get("folder") or key,
+            "files": files_count,
+            "size_mb": size_mb,
+            "label": info.get("label", key.title()),
+            "is_dynamic": info.get("is_dynamic", False),
+            "exists": info.get("exists", False),
+        }
 
     return {
         "faiss_index": index_info,
         "chunks_in_corpus": chunks_count,
+        "total_documents": total_physical_docs,
+        "total_storage_mb": round(total_physical_mb, 2),
         "categories": categories,
         "admin": current_admin.get("username"),
     }
+
 
 
 # ── Upload ─────────────────────────────────────────────────────────────────────
