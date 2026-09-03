@@ -749,8 +749,14 @@ const LetaWorkspace: React.FC = () => {
       if (currentSessionId === streamSessionKey) setIsStreaming(value);
     };
 
-    // Only add user message now; assistant message is added when first chunk arrives.
-    updateStreamMessages(prev => [...prev, userMsg]);
+    // Add the user message AND an empty assistant placeholder immediately —
+    // the placeholder's presence is what makes LetaResponse's loading state
+    // (animated dots + live status text) render right away, instead of
+    // waiting for session creation and the first stream chunk to complete
+    // first. Previously the placeholder was only added after `await
+    // axios.post(/api/sessions/new)` resolved, so a new conversation showed
+    // a fully blank screen for however long that round-trip took.
+    updateStreamMessages(prev => [...prev, userMsg, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
     if (!currentSessionId) setMessages(sessionMessagesRef.current.get(streamSessionKey) || []);
     setQuery('');
     setIsLoading(true);
@@ -791,16 +797,29 @@ const LetaWorkspace: React.FC = () => {
           else if (lower.includes('appeal')) title = 'CIT(Appeals) Assessment Protest';
         }
 
+        // Optimistic session-list entry — appears in the sidebar instantly,
+        // using the same pending key the message stream is already keyed
+        // under, rather than waiting for the /api/sessions/new round-trip.
+        const optimisticId = streamSessionKey;
+        setSessions(prev => [{ session_id: optimisticId, title, updated_at: new Date().toISOString() }, ...prev]);
+        setCurrentSessionId(optimisticId);
+
         try {
           const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title }, { headers: getAuthHeaders() });
           activeSessionId = sessionRes.data.session_id;
           const pendingMessages = sessionMessagesRef.current.get(streamSessionKey) || [];
           sessionMessagesRef.current.delete(streamSessionKey);
+          // Reconcile the optimistic sidebar entry with the real session_id
+          // in place, instead of removing + re-adding (avoids a visible
+          // flicker/reorder in the session list).
+          setSessions(prev => prev.map(s => s.session_id === optimisticId ? { ...s, session_id: activeSessionId } : s));
           streamSessionKey = activeSessionId;
           sessionMessagesRef.current.set(streamSessionKey, pendingMessages);
           setCurrentSessionId(activeSessionId);
         } catch {
-          // Session creation failed (CORS or backend unreachable) — proceed without session tracking
+          // Session creation failed (CORS or backend unreachable) — proceed
+          // without server-side session tracking. The optimistic sidebar
+          // entry and message stream stay keyed under the pending id.
         }
       }
 
@@ -810,8 +829,8 @@ const LetaWorkspace: React.FC = () => {
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
-        // Add placeholder assistant bubble so showRetryStatus has a target
-        updateStreamMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        // Placeholder assistant bubble already added immediately after the
+        // user message, above — don't add a second one here.
         streamingSessionsRef.current.add(streamSessionKey);
         const fileRes = await fetchWithRetry(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
@@ -971,8 +990,8 @@ const LetaWorkspace: React.FC = () => {
         });
       } else {
         // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
-        // Add placeholder assistant bubble before fetch so showRetryStatus has a target during 503 retries
-        updateStreamMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        // Placeholder assistant bubble already added immediately after the
+        // user message, above — don't add a second one here.
         streamingSessionsRef.current.add(streamSessionKey);
         const streamRes = await fetchWithRetry(`${BASE_URL}/ask`, {
           method: 'POST',
