@@ -1340,6 +1340,14 @@ const LetaWorkspace: React.FC = () => {
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
+  // Drives the empty-state layout: greeting + composer are grouped and
+  // vertically centered as one unit (no conversation yet), instead of the
+  // greeting pinned to the top and the composer pinned to the bottom with a
+  // wall of empty space between — matches the composition of ChatGPT/Claude's
+  // own start screens. Reverts to the normal bottom-docked composer the
+  // moment a message exists; no change to in-conversation behavior.
+  const isEmptyState = messages.length === 0;
+
   return (
     <div className="h-screen w-screen flex flex-col bg-[#000000] text-sm font-body overflow-hidden">
 
@@ -1662,7 +1670,7 @@ const LetaWorkspace: React.FC = () => {
 
         {/* ── CENTER WORKSPACE ──────────────────────────────────────────────────── */}
         <section
-          className="flex-grow min-h-0 flex flex-col bg-[#000000] overflow-hidden relative"
+          className={`flex-grow min-h-0 flex flex-col bg-[#000000] overflow-hidden relative ${isEmptyState ? 'justify-center' : ''}`}
           onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
           onDragEnter={e => {
             e.preventDefault(); e.stopPropagation();
@@ -1728,7 +1736,7 @@ const LetaWorkspace: React.FC = () => {
           </button>
 
           {/* CHAT MESSAGE AREA */}
-          <div className="flex-1 min-h-0 relative flex flex-col">
+          <div className={`min-h-0 relative flex flex-col ${isEmptyState ? 'flex-shrink-0' : 'flex-1'}`}>
             {/* Scroll-to-bottom floating button */}
             <AnimatePresence>
               {showScrollBtn && (
@@ -1754,14 +1762,14 @@ const LetaWorkspace: React.FC = () => {
           <div
             ref={chatScrollRef}
             data-lenis-prevent
-            className="flex-1 min-h-0 overflow-y-auto relative scrollbar-thin"
+            className={`relative scrollbar-thin ${isEmptyState ? 'flex-shrink-0 overflow-visible' : 'flex-1 min-h-0 overflow-y-auto'}`}
             style={{ overflowX: 'clip', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
           >
-            <div className="max-w-[920px] mx-auto w-full px-6 md:px-12 pt-10 pb-40 flex flex-col gap-8">
+            <div className={`max-w-[920px] mx-auto w-full px-6 md:px-12 flex flex-col gap-8 ${isEmptyState ? '' : 'pt-10 pb-40'}`}>
 
               {messages.length === 0 ? (
-                <div className="w-full max-w-[800px] mx-auto pt-6 flex flex-col">
-                  <div className="text-left mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="w-full max-w-[640px] mx-auto flex flex-col">
+                  <div className="text-left mb-7 animate-in fade-in slide-in-from-top-4 duration-300">
                     <h2
                       style={{
                         fontFamily: "'Playfair Display', Georgia, serif",
@@ -1775,23 +1783,18 @@ const LetaWorkspace: React.FC = () => {
                       Hi {getSessionFirstName() || 'there'}, LETA is here to assist you.
                     </h2>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                  <div className="flex flex-col">
                     {domainConfig.suggestedQueries.map((card, idx) => (
-                      <div
+                      <button
                         key={idx}
                         onClick={() => handleAsk(card.query)}
-                        className="p-4 rounded-xl border border-[#4FB7C5]/10 bg-[#000000] hover:bg-[#0a1520] hover:border-[#4FB7C5]/30 cursor-pointer transition-all duration-200 group flex flex-col justify-between"
+                        className="flex items-start gap-3 py-2.5 text-left rounded-lg hover:bg-white/[0.03] transition-colors duration-150 group -mx-2 px-2"
                       >
-                        <div className="flex items-center gap-1.5 mb-2 text-[#4FB7C5]">
-                          <FileCheck size={12} />
-                          <span className="text-[10px] font-sans uppercase tracking-wider font-semibold">
-                            {card.title}
-                          </span>
-                        </div>
-                        <p className="text-xs leading-relaxed text-[#A7B3C2] group-hover:text-white transition-colors">
+                        <FileCheck size={13} className="mt-0.5 flex-shrink-0 text-[#4FB7C5]/70 group-hover:text-[#4FB7C5] transition-colors" />
+                        <span className="text-sm leading-relaxed text-[#A7B3C2] group-hover:text-white transition-colors">
                           {card.query}
-                        </p>
-                      </div>
+                        </span>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1942,7 +1945,7 @@ const LetaWorkspace: React.FC = () => {
           </div>{/* end scroll-to-bottom wrapper */}
 
           {/* CHAT INPUT AREA */}
-          <div className="p-6 md:px-10 py-6 border-t border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 relative z-20">
+          <div className={`p-6 md:px-10 py-6 bg-[#000000] flex-shrink-0 relative z-20 ${isEmptyState ? '' : 'border-t border-[#4FB7C5]/10'}`}>
             <div className="max-w-[920px] mx-auto relative">
 
               {/* ── Voice recording live overlay ─────────────────────────── */}
