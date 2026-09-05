@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 class Node3D {
   constructor() {
@@ -69,11 +69,6 @@ class Node3D {
 
 const NeuralBrainLoader = () => {
   const canvasRef = useRef(null);
-  const [nodeCountText, setNodeCountText] = useState(1243);
-
-  useEffect(() => {
-    setNodeCountText(Math.floor(Math.random() * 500) + 1000);
-  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;

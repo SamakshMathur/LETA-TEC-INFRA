@@ -14,7 +14,7 @@ const COLORS = {
 const StatutoryLayer = ({ position, rotation, scale, color, speed = 0.1 }) => {
   const meshRef = useRef();
 
-  useFrame((state) => {
+  useFrame(() => {
     if (!meshRef.current) return;
     // Very slow, "idling" rotation - authoritative and calm
     meshRef.current.rotation.y += 0.0005 * speed;

@@ -62,6 +62,7 @@ interface Message {
   consulted_sources?: any[];
   current_status?: string;
   isHistory?: boolean;
+  responseId?: string;  // generated once at creation (see handleAsk) — never in LetaResponse's render
 }
 
 interface OpenDoc {
@@ -100,6 +101,104 @@ const REPO_SECTIONS: {
 ];
 
 const STORAGE_KEY = 'leta_repository';
+
+// ─── Streaming sentinel-marker parsing ─────────────────────────────────────────
+
+type StreamMarkerHandlers = {
+  appendChunk: (text: string) => void;
+  onStatus: (msg: string) => void;
+  onMetadata: (sources: any) => void;
+  onCitations: (map: CitationEntry[]) => void;
+};
+
+const STREAM_MARKERS = [
+  { tag: '__STATUS__:', end: '__END_STATUS__' },
+  { tag: '__METADATA__:', end: '__END_METADATA__' },
+  { tag: '__CITATIONS__:', end: '__END_CITATIONS__' },
+] as const;
+
+// Pulls __STATUS__/__METADATA__/__CITATIONS__ sentinel blocks out of a
+// streaming text buffer, routing each payload to its handler; everything
+// else passes through as plain answer text via appendChunk. Returns
+// whatever of the buffer wasn't consumed (a trailing partial marker, or
+// the tail end of the plain text run).
+//
+// Shared by both the /ask and /ask-with-file readers below — this used to
+// be duplicated inline in each, as a fixed STATUS→METADATA→CITATIONS
+// if-chain. That fixed order was a real bug: each branch treated
+// "everything before my own start index" as plain content, so if a
+// complete CITATIONS block happened to land in the buffer BEFORE a
+// complete METADATA block (exactly what happens here, since CITATIONS is
+// always written before METADATA) but the METADATA check runs first in
+// the chain, METADATA's own "everything before me" step swallowed the
+// entire preceding CITATIONS block as literal visible answer text — a
+// live browser test caught raw citation JSON rendered straight into the
+// chat. Finding whichever marker starts EARLIEST in the buffer first
+// (below), rather than a fixed priority order, fixes that for good.
+function extractStreamMarkers(buffer: string, handlers: StreamMarkerHandlers): string {
+  let processed = true;
+  while (processed) {
+    processed = false;
+
+    let match: { tag: string; end: string; si: number; ei: number } | null = null;
+    for (const m of STREAM_MARKERS) {
+      const si = buffer.indexOf(m.tag);
+      if (si === -1) continue;
+      const ei = buffer.indexOf(m.end, si);
+      if (ei === -1) continue;
+      if (!match || si < match.si) match = { ...m, si, ei };
+    }
+
+    if (match) {
+      if (buffer.substring(0, match.si)) handlers.appendChunk(buffer.substring(0, match.si));
+      const payload = buffer.substring(match.si + match.tag.length, match.ei);
+      try {
+        const parsed = JSON.parse(payload);
+        if (match.tag === '__STATUS__:') {
+          handlers.onStatus(parsed.msg);
+        } else if (match.tag === '__METADATA__:') {
+          handlers.onMetadata(parsed.sources);
+        } else {
+          const map: CitationEntry[] = (parsed.citations || []).map((c: any) => ({
+            marker: c.marker || '',
+            chunk_id: c.chunk_id || '',
+            title: c.title || '',
+            rel_path: c.rel_path,
+            page: c.page,
+            url: c.url,
+          }));
+          handlers.onCitations(map);
+        }
+      } catch {}
+      buffer = buffer.substring(match.ei + match.end.length);
+      processed = true;
+      continue;
+    }
+
+    // No complete marker yet — flush plain text up to wherever any marker
+    // tag/end-tag has begun to appear (whole or as a not-yet-complete
+    // trailing prefix), so a half-arrived sentinel is never emitted as
+    // visible text while the rest of it is still in flight.
+    const triggers = [...STREAM_MARKERS.flatMap(m => [m.tag, m.end]), '__'];
+    let safePoint = buffer.length;
+    for (const m of STREAM_MARKERS) {
+      const si = buffer.indexOf(m.tag);
+      if (si !== -1) safePoint = Math.min(safePoint, si);
+    }
+    for (const t of triggers) {
+      const li = buffer.lastIndexOf(t);
+      if (li !== -1 && li + t.length > buffer.length) {
+        safePoint = Math.min(safePoint, li);
+      }
+    }
+    if (safePoint > 0) {
+      handlers.appendChunk(buffer.substring(0, safePoint));
+      buffer = buffer.substring(safePoint);
+    }
+  }
+
+  return buffer;
+}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -190,6 +289,24 @@ const LetaWorkspace: React.FC = () => {
   // ─── Core State ─────────────────────────────────────────────────────────────
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // handleAsk is a long-lived async closure (spans the whole streaming
+  // request). Every `currentSessionId` reference inside it is frozen at
+  // whatever the state was when handleAsk was CALLED — setCurrentSessionId()
+  // calls made later in that same execution never update it, because
+  // that's how JS closures work, not a React quirk. For a brand-new
+  // conversation this closure value starts as null, `streamSessionKey`
+  // starts as a local `pending-<ts>` placeholder, and once session
+  // creation succeeds and streamSessionKey is reassigned to the real
+  // backend UUID, the stale `currentSessionId === streamSessionKey` check
+  // used to gate every setMessages/setIsLoading/setIsStreaming call can
+  // never become true again for the rest of that stream — so the answer
+  // keeps streaming and persisting correctly in the background, but never
+  // reaches the screen. A ref kept in sync via effect reads the LIVE value
+  // instead of the frozen one.
+  const currentSessionIdRef = useRef<string | null>(currentSessionId);
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [query, setQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -497,15 +614,21 @@ const LetaWorkspace: React.FC = () => {
   const userScrolledUpRef = useRef(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
-  // Only auto-scroll when the user is already near the bottom (ChatGPT behaviour)
-  const scrollToBottom = (force = false) => {
+  // Only auto-scroll when the user is already near the bottom (ChatGPT behaviour).
+  // `behavior` defaults to smooth for explicit user actions (send, switch
+  // session) but must be 'auto' (instant) while an answer is actively
+  // streaming — at up to one scroll-triggering update per animation frame,
+  // repeatedly kicking off a *smooth* scroll animation competes with itself
+  // and reads as laggy, even though the batching fix already cut the
+  // update frequency way down.
+  const scrollToBottom = (force = false, behavior: ScrollBehavior = 'smooth') => {
     const el = chatScrollRef.current;
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (force || nearBottom) {
       userScrolledUpRef.current = false;
       setShowScrollBtn(false);
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current?.scrollIntoView({ behavior });
     }
   };
 
@@ -523,8 +646,8 @@ const LetaWorkspace: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!userScrolledUpRef.current) scrollToBottom();
-  }, [messages, isLoading]);
+    if (!userScrolledUpRef.current) scrollToBottom(false, isStreaming ? 'auto' : 'smooth');
+  }, [messages, isLoading, isStreaming]);
 
   // ─── Sessions ────────────────────────────────────────────────────────────────
 
@@ -740,17 +863,29 @@ const LetaWorkspace: React.FC = () => {
       const previous = sessionMessagesRef.current.get(streamSessionKey) || [];
       const next = updater(previous);
       sessionMessagesRef.current.set(streamSessionKey, next);
-      if (currentSessionId === streamSessionKey) setMessages(next);
+      // .current reads the LIVE value — see currentSessionIdRef comment above.
+      if (currentSessionIdRef.current === streamSessionKey) setMessages(next);
     };
     const setStreamLoading = (value: boolean) => {
-      if (currentSessionId === streamSessionKey) setIsLoading(value);
+      if (currentSessionIdRef.current === streamSessionKey) setIsLoading(value);
     };
     const setStreamStreaming = (value: boolean) => {
-      if (currentSessionId === streamSessionKey) setIsStreaming(value);
+      if (currentSessionIdRef.current === streamSessionKey) setIsStreaming(value);
     };
 
-    // Only add user message now; assistant message is added when first chunk arrives.
-    updateStreamMessages(prev => [...prev, userMsg]);
+    // Add the user message AND an empty assistant placeholder immediately —
+    // the placeholder's presence is what makes LetaResponse's loading state
+    // (animated dots + live status text) render right away, instead of
+    // waiting for session creation and the first stream chunk to complete
+    // first. Previously the placeholder was only added after `await
+    // axios.post(/api/sessions/new)` resolved, so a new conversation showed
+    // a fully blank screen for however long that round-trip took.
+    // responseId generated here, once, at message creation — not inside
+    // LetaResponse's render. Lint (and correctness) requires render to stay
+    // free of side effects/randomness; generating the ID in this event
+    // handler and carrying it on the message object is the actual fix, not
+    // just guarding the old in-render Math.random() call with a ref.
+    updateStreamMessages(prev => [...prev, userMsg, { role: 'assistant', content: '', confidence: 0.95, citations: [], responseId: crypto.randomUUID() }]);
     if (!currentSessionId) setMessages(sessionMessagesRef.current.get(streamSessionKey) || []);
     setQuery('');
     setIsLoading(true);
@@ -791,16 +926,40 @@ const LetaWorkspace: React.FC = () => {
           else if (lower.includes('appeal')) title = 'CIT(Appeals) Assessment Protest';
         }
 
+        // Optimistic session-list entry — appears in the sidebar instantly,
+        // using the same pending key the message stream is already keyed
+        // under, rather than waiting for the /api/sessions/new round-trip.
+        const optimisticId = streamSessionKey;
+        setSessions(prev => [{ session_id: optimisticId, title, updated_at: new Date().toISOString() }, ...prev]);
+        setCurrentSessionId(optimisticId);
+
         try {
           const sessionRes = await axios.post(`${BASE_URL}/api/sessions/new`, { title }, { headers: getAuthHeaders() });
           activeSessionId = sessionRes.data.session_id;
           const pendingMessages = sessionMessagesRef.current.get(streamSessionKey) || [];
           sessionMessagesRef.current.delete(streamSessionKey);
+          // Reconcile the optimistic sidebar entry with the real session_id
+          // in place, instead of removing + re-adding (avoids a visible
+          // flicker/reorder in the session list).
+          setSessions(prev => prev.map(s => s.session_id === optimisticId ? { ...s, session_id: activeSessionId } : s));
           streamSessionKey = activeSessionId;
           sessionMessagesRef.current.set(streamSessionKey, pendingMessages);
           setCurrentSessionId(activeSessionId);
         } catch {
-          // Session creation failed (CORS or backend unreachable) — proceed without session tracking
+          // Session creation failed (CORS or backend unreachable). The
+          // optimistic entry above is NOT a real backend session — if we
+          // left currentSessionId pointing at it, activeSessionId would
+          // stay truthy on every future send (skipping the `if
+          // (!activeSessionId)` block entirely, so session creation would
+          // never be retried), and every later message/retrieval_run would
+          // silently persist against a session_id the backend has never
+          // heard of. Reset to null so the next send retries creation from
+          // scratch, and drop the misleading sidebar entry rather than
+          // leave a conversation that would 404 if the user tried to
+          // reopen it.
+          activeSessionId = null;
+          setCurrentSessionId(null);
+          setSessions(prev => prev.filter(s => s.session_id !== optimisticId));
         }
       }
 
@@ -810,8 +969,8 @@ const LetaWorkspace: React.FC = () => {
         formData.append('file', selectedFile);
         formData.append('question', userMsg.content);
         if (activeSessionId) formData.append('session_id', activeSessionId);
-        // Add placeholder assistant bubble so showRetryStatus has a target
-        updateStreamMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        // Placeholder assistant bubble already added immediately after the
+        // user message, above — don't add a second one here.
         streamingSessionsRef.current.add(streamSessionKey);
         const fileRes = await fetchWithRetry(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
@@ -828,11 +987,20 @@ const LetaWorkspace: React.FC = () => {
 
         let buffer = '';
         let firstTextChunk = true;
-        const appendChunk = (text: string) => {
-          if (firstTextChunk && text) {
-            firstTextChunk = false;
-            setStreamLoading(false);
-          }
+        // Batch content updates to at most one React state update per
+        // animation frame instead of one per chunk. A fast stream can send
+        // dozens of small chunks/sec, each previously triggering a full
+        // re-render of this whole workspace (chat, sidebars, composer,
+        // modals) — this was the single biggest source of "typing/
+        // scrolling feels sluggish while LETA is answering." Local to this
+        // streaming call (not component state), so no cleanup/ref needed
+        // beyond this closure's own lifetime.
+        let pendingText = '';
+        let flushFrame: number | null = null;
+        const flushPendingText = () => {
+          const text = pendingText;
+          pendingText = '';
+          flushFrame = null;
           updateStreamMessages(prev => {
             const next = [...prev];
             const last = next[next.length - 1];
@@ -841,6 +1009,27 @@ const LetaWorkspace: React.FC = () => {
             }
             return next;
           });
+        };
+        const appendChunk = (text: string) => {
+          if (firstTextChunk && text) {
+            firstTextChunk = false;
+            setStreamLoading(false);
+          }
+          pendingText += text;
+          if (flushFrame === null) {
+            flushFrame = requestAnimationFrame(flushPendingText);
+          }
+        };
+        // Stream-end (done/break/return) paths call appendChunk one last
+        // time with any trailing buffered text, but that final call's rAF
+        // may not have fired before the loop exits — flush synchronously
+        // wherever the stream actually ends (see call sites below).
+        const flushStreamNow = () => {
+          if (flushFrame !== null) {
+            cancelAnimationFrame(flushFrame);
+            flushFrame = null;
+          }
+          if (pendingText) flushPendingText();
         };
 
         while (true) {
@@ -851,103 +1040,30 @@ const LetaWorkspace: React.FC = () => {
           }
           buffer += decoder.decode(value, { stream: true });
 
-          let processed = true;
-          while (processed) {
-            processed = false;
-
-            if (buffer.includes('__STATUS__:')) {
-              const si = buffer.indexOf('__STATUS__:');
-              const ei = buffer.indexOf('__END_STATUS__', si);
-              if (ei !== -1) {
-                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
-                try {
-                  const d = JSON.parse(buffer.substring(si + '__STATUS__:'.length, ei));
-                  updateStreamMessages(prev => {
-                    const next = [...prev];
-                    const last = next[next.length - 1];
-                    if (last.role === 'assistant') {
-                      next[next.length - 1] = { ...last, current_status: d.msg };
-                    }
-                    return next;
-                  });
-                } catch {}
-                buffer = buffer.substring(ei + '__END_STATUS__'.length);
-                processed = true;
-                continue;
-              }
-            }
-
-            if (buffer.includes('__METADATA__:')) {
-              const si = buffer.indexOf('__METADATA__:');
-              const ei = buffer.indexOf('__END_METADATA__', si);
-              if (ei !== -1) {
-                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
-                try {
-                  const meta = JSON.parse(buffer.substring(si + '__METADATA__:'.length, ei));
-                  updateStreamMessages(prev => {
-                    const next = [...prev];
-                    const last = next[next.length - 1];
-                    if (last.role === 'assistant') {
-                      next[next.length - 1] = { ...last, consulted_sources: meta.sources };
-                    }
-                    return next;
-                  });
-                } catch {}
-                buffer = buffer.substring(ei + '__END_METADATA__'.length);
-                processed = true;
-                continue;
-              }
-            }
-
-            if (buffer.includes('__CITATIONS__:')) {
-              const si = buffer.indexOf('__CITATIONS__:');
-              const ei = buffer.indexOf('__END_CITATIONS__', si);
-              if (ei !== -1) {
-                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
-                try {
-                  const citData = JSON.parse(buffer.substring(si + '__CITATIONS__:'.length, ei));
-                  const map: CitationEntry[] = (citData.citations || []).map((c: any) => ({
-                    marker: c.marker || '',
-                    chunk_id: c.chunk_id || '',
-                    title: c.title || '',
-                    rel_path: c.rel_path,
-                    page: c.page,
-                    url: c.url,
-                  }));
-                  updateStreamMessages(prev => {
-                    const next = [...prev];
-                    const last = next[next.length - 1];
-                    if (last.role === 'assistant') {
-                      next[next.length - 1] = { ...last, citationMap: map };
-                    }
-                    return next;
-                  });
-                } catch {}
-                buffer = buffer.substring(ei + '__END_CITATIONS__'.length);
-                processed = true;
-                continue;
-              }
-            }
-
-            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__CITATIONS__:', '__END_CITATIONS__', '__'];
-            let safePoint = buffer.length;
-            const fsi = buffer.indexOf('__STATUS__:');
-            const fmi = buffer.indexOf('__METADATA__:');
-            if (fsi !== -1) safePoint = Math.min(safePoint, fsi);
-            if (fmi !== -1) safePoint = Math.min(safePoint, fmi);
-            for (const t of triggers) {
-              const li = buffer.lastIndexOf(t);
-              if (li !== -1 && li + t.length > buffer.length) {
-                safePoint = Math.min(safePoint, li);
-              }
-            }
-            if (safePoint > 0) {
-              appendChunk(buffer.substring(0, safePoint));
-              buffer = buffer.substring(safePoint);
-            }
-          }
+          buffer = extractStreamMarkers(buffer, {
+            appendChunk,
+            onStatus: (msg) => updateStreamMessages(prev => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last.role === 'assistant') next[next.length - 1] = { ...last, current_status: msg };
+              return next;
+            }),
+            onMetadata: (sources) => updateStreamMessages(prev => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last.role === 'assistant') next[next.length - 1] = { ...last, consulted_sources: sources };
+              return next;
+            }),
+            onCitations: (map) => updateStreamMessages(prev => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last.role === 'assistant') next[next.length - 1] = { ...last, citationMap: map };
+              return next;
+            }),
+          });
         }
 
+        flushStreamNow(); // ensure the last buffered chunk isn't left un-rendered
         setStreamLoading(false);
         setStreamStreaming(false);
         streamingSessionsRef.current.delete(streamSessionKey);
@@ -971,8 +1087,8 @@ const LetaWorkspace: React.FC = () => {
         });
       } else {
         // Full streaming /ask — works via api.letatec.com -> ALB (no timeout cap)
-        // Add placeholder assistant bubble before fetch so showRetryStatus has a target during 503 retries
-        updateStreamMessages(prev => [...prev, { role: 'assistant', content: '', confidence: 0.95, citations: [] }]);
+        // Placeholder assistant bubble already added immediately after the
+        // user message, above — don't add a second one here.
         streamingSessionsRef.current.add(streamSessionKey);
         const streamRes = await fetchWithRetry(`${BASE_URL}/ask`, {
           method: 'POST',
@@ -994,11 +1110,20 @@ const LetaWorkspace: React.FC = () => {
 
         let buffer = '';
         let firstTextChunk = true;
-        const appendChunk = (text: string) => {
-          if (firstTextChunk && text) {
-            firstTextChunk = false;
-            setStreamLoading(false);
-          }
+        // Batch content updates to at most one React state update per
+        // animation frame instead of one per chunk. A fast stream can send
+        // dozens of small chunks/sec, each previously triggering a full
+        // re-render of this whole workspace (chat, sidebars, composer,
+        // modals) — this was the single biggest source of "typing/
+        // scrolling feels sluggish while LETA is answering." Local to this
+        // streaming call (not component state), so no cleanup/ref needed
+        // beyond this closure's own lifetime.
+        let pendingText = '';
+        let flushFrame: number | null = null;
+        const flushPendingText = () => {
+          const text = pendingText;
+          pendingText = '';
+          flushFrame = null;
           updateStreamMessages(prev => {
             const next = [...prev];
             const last = next[next.length - 1];
@@ -1007,6 +1132,27 @@ const LetaWorkspace: React.FC = () => {
             }
             return next;
           });
+        };
+        const appendChunk = (text: string) => {
+          if (firstTextChunk && text) {
+            firstTextChunk = false;
+            setStreamLoading(false);
+          }
+          pendingText += text;
+          if (flushFrame === null) {
+            flushFrame = requestAnimationFrame(flushPendingText);
+          }
+        };
+        // Stream-end (done/break/return) paths call appendChunk one last
+        // time with any trailing buffered text, but that final call's rAF
+        // may not have fired before the loop exits — flush synchronously
+        // wherever the stream actually ends (see call sites below).
+        const flushStreamNow = () => {
+          if (flushFrame !== null) {
+            cancelAnimationFrame(flushFrame);
+            flushFrame = null;
+          }
+          if (pendingText) flushPendingText();
         };
 
         while (true) {
@@ -1017,103 +1163,30 @@ const LetaWorkspace: React.FC = () => {
           }
           buffer += decoder.decode(value, { stream: true });
 
-          let processed = true;
-          while (processed) {
-            processed = false;
-
-            if (buffer.includes('__STATUS__:')) {
-              const si = buffer.indexOf('__STATUS__:');
-              const ei = buffer.indexOf('__END_STATUS__', si);
-              if (ei !== -1) {
-                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
-                try {
-                  const d = JSON.parse(buffer.substring(si + '__STATUS__:'.length, ei));
-                  updateStreamMessages(prev => {
-                    const next = [...prev];
-                    const last = next[next.length - 1];
-                    if (last.role === 'assistant') {
-                      next[next.length - 1] = { ...last, current_status: d.msg };
-                    }
-                    return next;
-                  });
-                } catch {}
-                buffer = buffer.substring(ei + '__END_STATUS__'.length);
-                processed = true;
-                continue;
-              }
-            }
-
-            if (buffer.includes('__METADATA__:')) {
-              const si = buffer.indexOf('__METADATA__:');
-              const ei = buffer.indexOf('__END_METADATA__', si);
-              if (ei !== -1) {
-                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
-                try {
-                  const meta = JSON.parse(buffer.substring(si + '__METADATA__:'.length, ei));
-                  updateStreamMessages(prev => {
-                    const next = [...prev];
-                    const last = next[next.length - 1];
-                    if (last.role === 'assistant') {
-                      next[next.length - 1] = { ...last, consulted_sources: meta.sources };
-                    }
-                    return next;
-                  });
-                } catch {}
-                buffer = buffer.substring(ei + '__END_METADATA__'.length);
-                processed = true;
-                continue;
-              }
-            }
-
-            if (buffer.includes('__CITATIONS__:')) {
-              const si = buffer.indexOf('__CITATIONS__:');
-              const ei = buffer.indexOf('__END_CITATIONS__', si);
-              if (ei !== -1) {
-                if (buffer.substring(0, si)) appendChunk(buffer.substring(0, si));
-                try {
-                  const citData = JSON.parse(buffer.substring(si + '__CITATIONS__:'.length, ei));
-                  const map: CitationEntry[] = (citData.citations || []).map((c: any) => ({
-                    marker: c.marker || '',
-                    chunk_id: c.chunk_id || '',
-                    title: c.title || '',
-                    rel_path: c.rel_path,
-                    page: c.page,
-                    url: c.url,
-                  }));
-                  updateStreamMessages(prev => {
-                    const next = [...prev];
-                    const last = next[next.length - 1];
-                    if (last.role === 'assistant') {
-                      next[next.length - 1] = { ...last, citationMap: map };
-                    }
-                    return next;
-                  });
-                } catch {}
-                buffer = buffer.substring(ei + '__END_CITATIONS__'.length);
-                processed = true;
-                continue;
-              }
-            }
-
-            const triggers = ['__STATUS__:', '__END_STATUS__', '__METADATA__:', '__END_METADATA__', '__CITATIONS__:', '__END_CITATIONS__', '__'];
-            let safePoint = buffer.length;
-            const fsi = buffer.indexOf('__STATUS__:');
-            const fmi = buffer.indexOf('__METADATA__:');
-            if (fsi !== -1) safePoint = Math.min(safePoint, fsi);
-            if (fmi !== -1) safePoint = Math.min(safePoint, fmi);
-            for (const t of triggers) {
-              const li = buffer.lastIndexOf(t);
-              if (li !== -1 && li + t.length > buffer.length) {
-                safePoint = Math.min(safePoint, li);
-              }
-            }
-            if (safePoint > 0) {
-              appendChunk(buffer.substring(0, safePoint));
-              buffer = buffer.substring(safePoint);
-            }
-          }
+          buffer = extractStreamMarkers(buffer, {
+            appendChunk,
+            onStatus: (msg) => updateStreamMessages(prev => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last.role === 'assistant') next[next.length - 1] = { ...last, current_status: msg };
+              return next;
+            }),
+            onMetadata: (sources) => updateStreamMessages(prev => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last.role === 'assistant') next[next.length - 1] = { ...last, consulted_sources: sources };
+              return next;
+            }),
+            onCitations: (map) => updateStreamMessages(prev => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last.role === 'assistant') next[next.length - 1] = { ...last, citationMap: map };
+              return next;
+            }),
+          });
         }
 
+        flushStreamNow(); // ensure the last buffered chunk isn't left un-rendered
         setStreamLoading(false);
         setStreamStreaming(false);
         streamingSessionsRef.current.delete(streamSessionKey);
@@ -1151,8 +1224,27 @@ const LetaWorkspace: React.FC = () => {
       releaseWakeLock();
       if ((error as any)?.name === 'AbortError') {
         pendingRetryRef.current = null;
-        setIsStreaming(false);
-        setIsLoading(false);
+        setStreamStreaming(false);
+        setStreamLoading(false);
+        // If the user hit Stop before any real content had streamed in yet,
+        // the message is left with empty content and a stale current_status
+        // (e.g. "Reranking by legal authority...") from the last __STATUS__
+        // frame that arrived — with nothing to ever clear it, it rendered
+        // as a permanently frozen "thinking" loader. Give it a definite,
+        // retryable end state instead, matching how a natural (non-aborted)
+        // empty-response stream end is already handled elsewhere.
+        updateStreamMessages(prev => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === 'assistant' && !last.content.trim()) {
+            next[next.length - 1] = {
+              ...last,
+              content: '*Stopped.* Use the **↻** button above to retry.',
+              current_status: undefined,
+            };
+          }
+          return next;
+        });
         return;
       }
       // If the error looks like a network interruption (screen sleep / tab hidden),
@@ -1247,6 +1339,14 @@ const LetaWorkspace: React.FC = () => {
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────────
+
+  // Drives the empty-state layout: greeting + composer are grouped and
+  // vertically centered as one unit (no conversation yet), instead of the
+  // greeting pinned to the top and the composer pinned to the bottom with a
+  // wall of empty space between — matches the composition of ChatGPT/Claude's
+  // own start screens. Reverts to the normal bottom-docked composer the
+  // moment a message exists; no change to in-conversation behavior.
+  const isEmptyState = messages.length === 0;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#000000] text-sm font-body overflow-hidden">
@@ -1570,7 +1670,7 @@ const LetaWorkspace: React.FC = () => {
 
         {/* ── CENTER WORKSPACE ──────────────────────────────────────────────────── */}
         <section
-          className="flex-grow min-h-0 flex flex-col bg-[#000000] overflow-hidden relative"
+          className={`flex-grow min-h-0 flex flex-col bg-[#000000] overflow-hidden relative ${isEmptyState ? 'justify-center' : ''}`}
           onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
           onDragEnter={e => {
             e.preventDefault(); e.stopPropagation();
@@ -1636,7 +1736,7 @@ const LetaWorkspace: React.FC = () => {
           </button>
 
           {/* CHAT MESSAGE AREA */}
-          <div className="flex-1 min-h-0 relative flex flex-col">
+          <div className={`min-h-0 relative flex flex-col ${isEmptyState ? 'flex-shrink-0' : 'flex-1'}`}>
             {/* Scroll-to-bottom floating button */}
             <AnimatePresence>
               {showScrollBtn && (
@@ -1662,14 +1762,14 @@ const LetaWorkspace: React.FC = () => {
           <div
             ref={chatScrollRef}
             data-lenis-prevent
-            className="flex-1 min-h-0 overflow-y-auto relative scrollbar-thin"
+            className={`relative scrollbar-thin ${isEmptyState ? 'flex-shrink-0 overflow-visible' : 'flex-1 min-h-0 overflow-y-auto'}`}
             style={{ overflowX: 'clip', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
           >
-            <div className="max-w-[920px] mx-auto w-full px-6 md:px-12 pt-10 pb-40 flex flex-col gap-8">
+            <div className={`max-w-[920px] mx-auto w-full px-6 md:px-12 flex flex-col gap-8 ${isEmptyState ? '' : 'pt-10 pb-40'}`}>
 
               {messages.length === 0 ? (
-                <div className="w-full max-w-[800px] mx-auto pt-6 flex flex-col">
-                  <div className="text-left mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="w-full max-w-[640px] mx-auto flex flex-col">
+                  <div className="text-left mb-7 animate-in fade-in slide-in-from-top-4 duration-300">
                     <h2
                       style={{
                         fontFamily: "'Playfair Display', Georgia, serif",
@@ -1683,23 +1783,18 @@ const LetaWorkspace: React.FC = () => {
                       Hi {getSessionFirstName() || 'there'}, LETA is here to assist you.
                     </h2>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                  <div className="flex flex-col">
                     {domainConfig.suggestedQueries.map((card, idx) => (
-                      <div
+                      <button
                         key={idx}
                         onClick={() => handleAsk(card.query)}
-                        className="p-4 rounded-xl border border-[#4FB7C5]/10 bg-[#000000] hover:bg-[#0a1520] hover:border-[#4FB7C5]/30 cursor-pointer transition-all duration-200 group flex flex-col justify-between"
+                        className="flex items-start gap-3 py-2.5 text-left rounded-lg hover:bg-white/[0.03] transition-colors duration-150 group -mx-2 px-2"
                       >
-                        <div className="flex items-center gap-1.5 mb-2 text-[#4FB7C5]">
-                          <FileCheck size={12} />
-                          <span className="text-[10px] font-sans uppercase tracking-wider font-semibold">
-                            {card.title}
-                          </span>
-                        </div>
-                        <p className="text-xs leading-relaxed text-[#A7B3C2] group-hover:text-white transition-colors">
+                        <FileCheck size={13} className="mt-0.5 flex-shrink-0 text-[#4FB7C5]/70 group-hover:text-[#4FB7C5] transition-colors" />
+                        <span className="text-sm leading-relaxed text-[#A7B3C2] group-hover:text-white transition-colors">
                           {card.query}
-                        </p>
-                      </div>
+                        </span>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1740,6 +1835,7 @@ const LetaWorkspace: React.FC = () => {
                                 consulted_sources: msg.consulted_sources || [],
                                 confidence: msg.confidence || 0.95,
                                 status: msg.current_status,
+                                responseId: msg.responseId,
                               }}
                               isDark
                               animate={!msg.isHistory}
@@ -1849,7 +1945,7 @@ const LetaWorkspace: React.FC = () => {
           </div>{/* end scroll-to-bottom wrapper */}
 
           {/* CHAT INPUT AREA */}
-          <div className="p-6 md:px-10 py-6 border-t border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 relative z-20">
+          <div className={`p-6 md:px-10 py-6 bg-[#000000] flex-shrink-0 relative z-20 ${isEmptyState ? '' : 'border-t border-[#4FB7C5]/10'}`}>
             <div className="max-w-[920px] mx-auto relative">
 
               {/* ── Voice recording live overlay ─────────────────────────── */}

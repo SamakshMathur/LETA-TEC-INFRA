@@ -84,7 +84,7 @@ const ScrollCinemaHero = () => {
           </p>
 
           <Link to="/dashboard" className="cinema-cta">
-            <span>Enter Command Center</span>
+            <span>Enter</span>
             <ArrowRight size={15} />
           </Link>
         </div>

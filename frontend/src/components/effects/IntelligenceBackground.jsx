@@ -12,7 +12,6 @@ const IntelligenceBackground = () => {
     let nodes = [];
     const nodeCount = 80; // Density
     const connectionDistance = 140; // Reach
-    const mouse = { x: null, y: null };
 
     // Colors
     const BG_COLOR = '#FFFFFF';

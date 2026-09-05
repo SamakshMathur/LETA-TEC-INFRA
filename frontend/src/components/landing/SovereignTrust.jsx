@@ -173,7 +173,7 @@ const SovereignTrust = () => (
               fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase',
             }}
           >
-            Enter Command Center
+            Enter
             <ArrowRight size={14} />
           </motion.button>
         </Link>
