@@ -463,27 +463,6 @@ const ModuleDashboard: React.FC = () => {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           style={{ marginBottom: '52px' }}
         >
-          {/* Platform badge */}
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '8px',
-            padding: '5px 12px', borderRadius: '100px', marginBottom: '22px',
-            background: B.iconBg,
-            border: `1px solid ${B.border}`,
-          }}>
-            <span style={{
-              width: '6px', height: '6px', borderRadius: '50%',
-              background: B.accent,
-              animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite',
-            }} />
-            <span style={{
-              fontSize: '9px', fontWeight: 800,
-              letterSpacing: '0.26em', textTransform: 'uppercase',
-              fontFamily: 'monospace', color: B.accent,
-            }}>
-              LETA Platform
-            </span>
-          </div>
-
           {/* Welcome heading */}
           <h1 style={{
             fontSize: 'clamp(32px, 5vw, 52px)',
