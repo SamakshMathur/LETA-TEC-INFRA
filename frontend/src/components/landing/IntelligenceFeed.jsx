@@ -60,16 +60,32 @@ const IntelligenceFeed = () => {
     }, 7000);
   };
 
-  // ── REST: load recent real events on mount ─────────────────────────────────
-  const loadRecent = async () => {
-    try {
-      const res = await fetch('/api/feed/recent?n=7');
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.length > 0) {
-        setFeed(data.slice(0, 7));
-      } else {
-        // No real data yet — seed with synthetics
+  // ── SSE connection ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    // REST: load recent real events on mount. Inlined as an IIFE (rather
+    // than a named async function called from the effect body) so every
+    // setState call is visibly gated behind an `await` right here —
+    // there's no synchronous setState-during-render path for the effect
+    // to trigger a cascading render on mount.
+    (async () => {
+      try {
+        const res = await fetch('/api/feed/recent?n=7');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.length > 0) {
+          setFeed(data.slice(0, 7));
+        } else {
+          // No real data yet — seed with synthetics
+          setFeed(SYNTHETIC_POOL.slice(0, 7).map((s, i) => ({
+            id: `init_${i}`,
+            text: s.text,
+            type: s.type,
+            time: now(),
+            source: 'synthetic',
+          })));
+        }
+      } catch {
+        // Backend unreachable — seed synthetics
         setFeed(SYNTHETIC_POOL.slice(0, 7).map((s, i) => ({
           id: `init_${i}`,
           text: s.text,
@@ -78,21 +94,7 @@ const IntelligenceFeed = () => {
           source: 'synthetic',
         })));
       }
-    } catch {
-      // Backend unreachable — seed synthetics
-      setFeed(SYNTHETIC_POOL.slice(0, 7).map((s, i) => ({
-        id: `init_${i}`,
-        text: s.text,
-        type: s.type,
-        time: now(),
-        source: 'synthetic',
-      })));
-    }
-  };
-
-  // ── SSE connection ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    loadRecent();
+    })();
 
     let retryDelay = 3000;
     let dead = false;

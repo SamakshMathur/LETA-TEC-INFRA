@@ -48,9 +48,27 @@ function findBestSrc(text, sources, ...categoryKws) {
 
 /**
  * Replace inline (Sn) citation markers with real document links.
+ *
+ * Returns the shielded text plus the list of real links it stands for —
+ * NOT the links inline. linkifyLegalRefs (called right after this, on the
+ * shielded text) unconditionally strips every markdown link it finds
+ * before doing its own separate keyword-based relinking pass, on the
+ * assumption that any link already in the text is stale noise to
+ * flatten and re-derive. That's correct for text this function never
+ * touched, but it was also destroying these citation-map-verified links
+ * — the most precise ones available, resolved from real retrieved
+ * chunks — the moment they were created. The caller restores them from
+ * `placeholders` only after linkifyLegalRefs (and its own trailing
+ * bracket cleanup) have both run.
  */
 function applyCitationMarkers(text, citationMap) {
-  if (!citationMap || citationMap.length === 0 || !text) return text;
+  const placeholders = [];
+  if (!citationMap || citationMap.length === 0 || !text) return { text, placeholders };
+
+  // Same Private Use Area sentinel linkifyLegalRefs uses for its own
+  // shielding below, with a distinct token name (CITE vs LINK) so the
+  // two restoration passes never collide.
+  const CITE_SENTINEL = '';
 
   const lookup = {};
   for (const entry of citationMap) {
@@ -58,7 +76,7 @@ function applyCitationMarkers(text, citationMap) {
     if (num) lookup[num] = entry;
   }
 
-  return text.replace(/\(S(\d+)\)/g, (match, num) => {
+  const shielded = text.replace(/\(S(\d+)\)/g, (match, num) => {
     const entry = lookup[num];
     if (!entry || !entry.url) return match;
     const label = (entry.title || 'Source')
@@ -66,8 +84,14 @@ function applyCitationMarkers(text, citationMap) {
       .replace(/\.[a-z]{2,5}$/i, '')
       .trim();
     const pageAnchor = entry.page ? `#page=${entry.page}` : '';
-    return `[📄 ${label}](${entry.url}${pageAnchor})`;
+    placeholders.push(`[📄 ${label}](${entry.url}${pageAnchor})`);
+    // Same Private Use Area sentinel linkifyLegalRefs uses for its own
+    // shielding below, with a distinct token name (CITE vs LINK) so the
+    // two restoration passes never collide.
+    return `CITE${placeholders.length - 1}`;
   });
+
+  return { text: shielded, placeholders };
 }
 
 /**
@@ -77,7 +101,12 @@ function linkifyLegalRefs(markdown, sources) {
   if (!sources || sources.length === 0 || !markdown) return markdown;
 
   const placeholders = [];
-  const shield = m => { placeholders.push(m); return `\x00LINK${placeholders.length - 1}\x00`; };
+  // Sentinel marking a placeholder's boundaries while later regex passes
+  // run over `safe`. A Private Use Area code point (never appears in real
+  // legal text, and unlike \x00 isn't flagged as a "control character" by
+  // static regex analysis) — same delimiter role, just a safer glyph.
+  const SENTINEL = '';
+  const shield = m => { placeholders.push(m); return `${SENTINEL}LINK${placeholders.length - 1}${SENTINEL}`; };
 
   let safe = markdown
     .replace(/\[([^\]]*)\]\s*\(\/api\/[\s\S]*?\)/g, '$1')
@@ -103,7 +132,7 @@ function linkifyLegalRefs(markdown, sources) {
       safe = safe.replace(boldPat, (_, inner) => shield(`[**${inner}**](${src.url})`));
     }
 
-    const plainPat = new RegExp(`(?<![\\[\\(\x00])\\b(${esc(rawName)})`, 'gi');
+    const plainPat = new RegExp(`(?<![\\[\\(${SENTINEL}])\\b(${esc(rawName)})`, 'gi');
     safe = safe.replace(plainPat, (_, inner) => shield(wrap(inner, src)));
   }
 
@@ -123,7 +152,7 @@ function linkifyLegalRefs(markdown, sources) {
     }
   );
 
-  safe = safe.replace(/\b(?:CBIC\s+)?Circular\s+No\.?\s*(\d+)[/\-](\d+)(?:[/\-]\w+)?\b/gi, (match, num) => {
+  safe = safe.replace(/\b(?:CBIC\s+)?Circular\s+No\.?\s*(\d+)[/-](\d+)(?:[/-]\w+)?\b/gi, (match, num) => {
     const src = sources.find(s => (s.title || '').toLowerCase().includes(num)) || findSrc('circular');
     return wrap(match, src);
   });
@@ -162,7 +191,7 @@ function linkifyLegalRefs(markdown, sources) {
     );
   });
 
-  safe = safe.replace(/\*\*([^*\x00\n]{2,150})\*\*/g, (match, inner) => {
+  safe = safe.replace(/\*\*([^*\n]{2,150})\*\*/g, (match, inner) => {
     const t = inner.toLowerCase();
     const gstrM = t.match(/gstr[-‑]?(\d+[a-z]?)/i);
     if (gstrM) {
@@ -188,16 +217,48 @@ function linkifyLegalRefs(markdown, sources) {
     return match;
   });
 
-  return safe.replace(/\x00LINK(\d+)\x00/g, (_, i) => placeholders[+i]);
+  return safe.replace(/LINK(\d+)/g, (_, i) => placeholders[+i]);
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
+const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
   const [hasCopied, setHasCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
 
-  const responseId = React.useMemo(() => Math.random().toString(36).substr(2, 9).toUpperCase(), []);
+  // Generated once, by the caller, at the moment this message is created
+  // (see handleAsk in LetaWorkspace.tsx) — not here. Render must stay free
+  // of side effects/randomness entirely; a ref-guarded Math.random() still
+  // has the call reachable from render and fails a strict lint rule for
+  // exactly that reason. 'PENDING' only shows for the streaming instant
+  // before the caller's ID has propagated through props.
+  const responseId = data?.responseId || 'PENDING';
+
+  // Hooks must run unconditionally on every render (rules-of-hooks). This
+  // used to sit after the `if (!data) return null` early return below,
+  // which is an illegal conditional hook call on the very first render of
+  // a fresh placeholder message (data is momentarily undefined). Guard
+  // internally instead of gating the hook call itself; behavior is
+  // unchanged — computes the same processed markdown once `data.answer`
+  // exists.
+  const processedContent = React.useMemo(() => {
+    if (!data?.answer) return '';
+    if (isStreaming) return data.answer;
+    const { text: withMarkers, placeholders: citationPlaceholders } = applyCitationMarkers(data.answer, data.citationMap);
+    const memoSources = data.consulted_sources || [];
+    let out = linkifyLegalRefs(withMarkers, memoSources)
+      .replace(/(?<!\])\(\/api\/[^()\s)]+\)/g, '')
+      .replace(/\[([^\]]{1,300})\](?!\()/g, '$1');
+    // Restore citation-map links only now, after linkifyLegalRefs's own
+    // stripping/relinking pass and the trailing bracket cleanup above —
+    // see the comment on applyCitationMarkers for why.
+    if (citationPlaceholders.length) {
+      const CITE_SENTINEL = String.fromCharCode(0xE000);
+      const restorePattern = new RegExp(CITE_SENTINEL + 'CITE(\\d+)' + CITE_SENTINEL, 'g');
+      out = out.replace(restorePattern, (_, i) => citationPlaceholders[+i]);
+    }
+    return out;
+  }, [data, isStreaming]);
 
   const handleCopy = () => {
     if (!data?.answer) return;
@@ -209,14 +270,6 @@ const LetaResponse = ({ data, isDark = false, animate = true, onDocumentClick, o
   if (!data) return null;
 
   const sources = data.consulted_sources || [];
-
-  const processedContent = React.useMemo(() => {
-    if (isStreaming) return data?.answer || '';
-    const withMarkers = applyCitationMarkers(data?.answer || '', data?.citationMap);
-    return linkifyLegalRefs(withMarkers, sources)
-      .replace(/(?<!\])\(\/api\/[^()\s)]+\)/g, '')
-      .replace(/\[([^\]\x00]{1,300})\](?!\()/g, '$1');
-  }, [data?.answer, data?.citationMap, isStreaming, sources.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <motion.div

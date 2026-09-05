@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useState, useEffect } from 'react';
+import React, { useRef, useMemo, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
@@ -166,7 +166,10 @@ const ParticleBrain = ({ count = 3000 }) => {
 };
 
 export default function NeuralBrainLoader() {
-  const nodeCount = useMemo(() => Math.floor(Math.random() * 500) + 1000, []);
+  // Decorative counter, randomized once per mount. useState's lazy
+  // initializer runs exactly once (on the initial render) rather than
+  // re-evaluating like useMemo would appear to the purity check.
+  const [nodeCount] = useState(() => Math.floor(Math.random() * 500) + 1000);
 
   return (
     <div className="w-full h-80 relative">

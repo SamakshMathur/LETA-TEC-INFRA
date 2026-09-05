@@ -12,7 +12,6 @@ const NeuralBackground = () => {
     let nodes = [];
     const nodeCount = 60; // Adjust for density
     const connectionDistance = 150;
-    const mouse = { x: null, y: null };
 
     // Set canvas size
     const resizeCanvas = () => {

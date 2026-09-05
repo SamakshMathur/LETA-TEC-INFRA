@@ -10,10 +10,9 @@ const ScifiText = ({ text, className }) => {
   const isInView = useInView(ref, { once: false, amount: 0.5 });
   
   useEffect(() => {
-    if (!isInView) {
-        setDisplayText(''); // Reset when out of view
-        return;
-    }
+    // While out of view there's nothing to animate — the previous run's
+    // cleanup below already reset displayText to '' on the way out.
+    if (!isInView) return;
 
     let iteration = 0;
     const interval = setInterval(() => {
@@ -27,16 +26,22 @@ const ScifiText = ({ text, className }) => {
         })
         .join('')
       );
-      
+
       if (iteration >= text.length) {
         clearInterval(interval);
         setDisplayText(text);
       }
-      
+
       iteration += 1 / 3;
     }, 30);
-    
-    return () => clearInterval(interval);
+
+    // Cleanup (runs on leaving view, on `text` change, or on unmount) is
+    // where the reset belongs — it's the response to that transition,
+    // not a synchronous setState fired from the effect body itself.
+    return () => {
+      clearInterval(interval);
+      setDisplayText('');
+    };
   }, [isInView, text]);
 
   return <span ref={ref} className={className}>{displayText}</span>;
