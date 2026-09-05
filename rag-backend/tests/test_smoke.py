@@ -25,6 +25,15 @@ Test 4 — _coerce_session_doc() with a malformed legacy document
   Guards: the /api/sessions/list 500 error caused by old MongoDB documents
   that pre-date a required field (message_id was added after some messages
   were already saved).  The coercion must return a usable dict, never raise.
+
+Test 5 — build_citations_block() payload shape (not double-nested)
+  Guards: the __CITATIONS__ stream frame being wrapped under an extra
+  top-level "citations" key, which made the frontend's `citData.citations`
+  resolve to {"citations": [...], "unresolved": [...]} instead of the
+  array it expects — `.map()` then threw inside a bare `catch {}`, so
+  citationMap silently never populated and inline (Sn) markers never
+  became clickable links, in every real response. Found via a live
+  browser QA pass, not by any existing test, before this one was added.
 """
 import sys
 import os
@@ -258,3 +267,53 @@ def test_coerce_session_doc_handles_legacy_documents():
     assert result_bad["session_id"] == "sess_bad"
     # At minimum the valid message survives; bad ones are dropped
     assert isinstance(result_bad["messages"], list)
+
+
+# =============================================================================
+# Test 5 — build_citations_block() payload shape (not double-nested)
+# =============================================================================
+
+def test_build_citations_block_is_not_double_nested():
+    """
+    __CITATIONS__:<payload>__END_CITATIONS__ must decode to
+    {"citations": [...], "unresolved": [...]} directly — parse_markers()
+    already returns that shape, so wrapping it again under another
+    top-level "citations" key produces {"citations": {"citations": [...],
+    "unresolved": [...]}}.
+
+    The frontend does `citData.citations.map(...)`, expecting citations to
+    be the array. Double-nested, `.citations` resolves to the whole
+    {"citations": [...], "unresolved": [...]} dict, `.map` throws inside a
+    bare `catch {}`, and citationMap silently never populates — every real
+    response, not an edge case. This exact bug shipped for one full cycle
+    of this project (found only via a live browser QA pass, not by any
+    existing test) before this test and its fix were added.
+    """
+    import json
+    from app.generation.verification_pipeline import build_citations_block
+
+    marker_map = [
+        {"title": "CGST Act Section 16(4)", "page": 4, "rel_path": "acts/cgst.pdf",
+         "chunk_id": "c1", "marker": "[S1]"},
+    ]
+    answer = "ITC must be claimed within the statutory window (S1)."
+
+    block = build_citations_block(answer, marker_map)
+    assert block.startswith("__CITATIONS__:")
+    assert block.endswith("__END_CITATIONS__")
+
+    payload_json = block[len("__CITATIONS__:"):-len("__END_CITATIONS__")]
+    payload = json.loads(payload_json)
+
+    # This is the assertion the double-nesting bug fails: `citations` must
+    # be the array itself, not another dict wrapping it.
+    assert isinstance(payload["citations"], list), (
+        f"citations must be a list, got {type(payload['citations'])} — "
+        "payload is double-nested"
+    )
+    assert isinstance(payload.get("unresolved", []), list)
+    assert len(payload["citations"]) == 1
+
+    # No markers, no chunks retrieved for this turn — must be a clean "".
+    assert build_citations_block(answer, None) == ""
+    assert build_citations_block(answer, []) == ""

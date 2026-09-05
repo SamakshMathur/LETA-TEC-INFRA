@@ -206,6 +206,13 @@ const CABotThreeScene = ({ overlay = true }) => {
       renderer.dispose();
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
     };
+    // `overlay` is intentionally read only at mount time, not tracked as a
+    // dependency: this effect does one-time, imperative construction of the
+    // whole Three.js renderer/scene/animation-loop/observers. Adding
+    // `overlay` here would tear down and rebuild that entire WebGL scene
+    // whenever the prop changes, just to flip a CSS blend-mode style —
+    // a much heavier and more visible behavior change than intended.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;

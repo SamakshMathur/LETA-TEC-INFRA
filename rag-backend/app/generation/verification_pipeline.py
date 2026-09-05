@@ -55,6 +55,36 @@ class VerificationResult:
     citations_block: str = ""
 
 
+def build_citations_block(answer: str, marker_map: list[dict] | None) -> str:
+    """
+    Build the streamed __CITATIONS__:...__END_CITATIONS__ frame from the
+    (Sn) markers actually present in the answer.
+
+    Extracted into its own function (used to be inlined in
+    run_verification_pipeline) specifically so this exact JSON shape has
+    direct test coverage — see test_verification_pipeline.py. It was
+    previously double-nested: parse_markers() already returns
+    {"citations": [...], "unresolved": [...]}, but the payload wrapped
+    that whole dict under ANOTHER "citations" key, so the frontend's
+    `citData.citations` (expected to be the array) got the whole
+    {"citations": [...], "unresolved": [...]} object instead, its
+    `.map()` call threw inside a bare `catch {}`, and citationMap
+    silently never populated — every real response, not an edge case.
+    """
+    if not marker_map:
+        return ""
+    try:
+        from app.generation.context_builder import parse_markers
+        citation_result = parse_markers(answer, marker_map)
+        if not citation_result:
+            return ""
+        import json as _json
+        return f"__CITATIONS__:{_json.dumps(citation_result)}__END_CITATIONS__"
+    except Exception as exc:
+        logger.debug(f"[VERIFY] Citation marker parse failed (non-fatal): {exc}")
+        return ""
+
+
 async def run_verification_pipeline(
     *,
     answer: str,
@@ -164,18 +194,7 @@ async def run_verification_pipeline(
         logger.warning(f"[VERIFY] AnswerVerifier flagged: {verifier_warn[:200]}")
 
     # ── 5. Citation block (structured [Sn] → doc resolution) ─────────────────
-    citations_block = ""
-    if marker_map:
-        try:
-            from app.generation.context_builder import parse_markers
-            citation_result = parse_markers(answer, marker_map)
-            if citation_result:
-                import json as _json
-                citations_block = (
-                    f"__CITATIONS__:{_json.dumps({'citations': citation_result})}__END_CITATIONS__"
-                )
-        except Exception as exc:
-            logger.debug(f"[VERIFY] Citation marker parse failed (non-fatal): {exc}")
+    citations_block = build_citations_block(answer, marker_map)
 
     return VerificationResult(
         verified_answer=validated_answer or answer,

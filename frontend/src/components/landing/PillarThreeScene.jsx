@@ -1,5 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
-
 // All coordinates in a 320 × 720 viewBox
 const VW = 320;
 const VH = 720;
@@ -129,7 +127,6 @@ const PillarThreeScene = ({ activeStep }) => {
         {/* ── Segment lines ─────────────────────────────────── */}
         {SEGS.map((d, i) => {
           const passed = i < activeStep;
-          const active = i === activeStep - 1 || (i === 0 && activeStep === 0);
           const future = i >= activeStep;
           return (
             <g key={i}>

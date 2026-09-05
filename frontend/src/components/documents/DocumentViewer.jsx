@@ -13,7 +13,9 @@ const getFileType = (url) => {
         const ext = decodeURIComponent(pathParam).split('.').pop().toLowerCase();
         if (ext && ext.length <= 5) return ext;
       }
-    } catch {}
+    } catch {
+      // Malformed path= param — fall through to the next detection strategy.
+    }
   }
 
   // view?category=all&filename=CGST%20Act.pdf  →  extract from filename= param
@@ -21,7 +23,9 @@ const getFileType = (url) => {
     try {
       const fileParam = new URLSearchParams(url.split('?')[1]).get('filename');
       if (fileParam) return fileParam.split('.').pop().toLowerCase();
-    } catch {}
+    } catch {
+      // Malformed filename= param — fall through to the direct-URL check below.
+    }
   }
 
   // Direct URL with extension
@@ -40,11 +44,11 @@ const DocxViewer = ({ url }) => {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError('');
-    setHtml('');
 
     const render = async () => {
+      setLoading(true);
+      setError('');
+      setHtml('');
       try {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);

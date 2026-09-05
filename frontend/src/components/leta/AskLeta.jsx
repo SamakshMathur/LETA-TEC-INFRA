@@ -17,7 +17,9 @@ const LetaThinkingLoader = ({ isActive }) => {
   const [stepIdx, setStepIdx] = useState(0);
 
   useEffect(() => {
-    if (!isActive) { setStepIdx(0); return; }
+    // Nothing to animate while inactive — the previous run's cleanup
+    // below already reset stepIdx to 0 on the way out.
+    if (!isActive) return;
     let idx = 0;
     const advance = () => {
       idx = Math.min(idx + 1, THINKING_STEPS.length - 1);
@@ -27,7 +29,13 @@ const LetaThinkingLoader = ({ isActive }) => {
       }
     };
     let t = setTimeout(advance, THINKING_STEPS[0].duration);
-    return () => clearTimeout(t);
+    // Cleanup (runs on going inactive, or on unmount) is where the reset
+    // belongs — it's the response to that transition, not a synchronous
+    // setState fired from the effect body itself.
+    return () => {
+      clearTimeout(t);
+      setStepIdx(0);
+    };
   }, [isActive]);
 
   if (!isActive) return null;
@@ -99,7 +107,7 @@ const SAMPLE_PROMPTS = [
   'GST applicability on renting of immovable property to registered dealer?',
 ];
 
-const AskLeta = ({ domain = 'gst', contextDesc = 'GST scenarios' }) => {
+const AskLeta = ({ contextDesc = 'GST scenarios' }) => {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState(null);

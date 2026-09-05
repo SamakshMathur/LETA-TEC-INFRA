@@ -1,25 +1,32 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+
+// Decorative particle field, randomized once per mount. Generated via a
+// useState lazy initializer (runs exactly once, on the initial render)
+// rather than useMemo — Math.random inside a useMemo callback re-runs
+// impurely on every render the compiler doesn't recognize as memoized,
+// which the react-hooks/purity rule correctly flags.
+function genParticleCloud(count) {
+  const pos = new Float32Array(count * 3);
+  const op = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = 4 + Math.random() * 8;
+    pos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+    pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) * 0.5;
+    pos[i * 3 + 2] = r * Math.cos(phi);
+    op[i] = 0.15 + Math.random() * 0.55;
+  }
+  return [pos, op];
+}
 
 function ParticleCloud({ count = 2800 }) {
   const pointsRef = useRef(null);
   const { mouse } = useThree();
 
-  const [positions, opacities] = useMemo(() => {
-    const pos = new Float32Array(count * 3);
-    const op = new Float32Array(count);
-    for (let i = 0; i < count; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const r = 4 + Math.random() * 8;
-      pos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
-      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) * 0.5;
-      pos[i * 3 + 2] = r * Math.cos(phi);
-      op[i] = 0.15 + Math.random() * 0.55;
-    }
-    return [pos, op];
-  }, [count]);
+  const [[positions]] = useState(() => genParticleCloud(count));
 
   useFrame((state) => {
     if (!pointsRef.current) return;
@@ -48,17 +55,19 @@ function ParticleCloud({ count = 2800 }) {
   );
 }
 
+function genNearParticles(count) {
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3]     = (Math.random() - 0.5) * 6;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * 4;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * 3;
+  }
+  return pos;
+}
+
 function NearParticles({ count = 400 }) {
   const ref = useRef(null);
-  const positions = useMemo(() => {
-    const pos = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      pos[i * 3]     = (Math.random() - 0.5) * 6;
-      pos[i * 3 + 1] = (Math.random() - 0.5) * 4;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 3;
-    }
-    return pos;
-  }, [count]);
+  const [positions] = useState(() => genNearParticles(count));
 
   useFrame((state) => {
     if (!ref.current) return;
