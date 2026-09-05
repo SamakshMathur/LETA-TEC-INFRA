@@ -142,8 +142,10 @@ def get_model(force_cpu: bool = False):
                 from sentence_transformers import SentenceTransformer
                 device = "cpu" if force_cpu else None   # None = auto-detect
                 device_label = "CPU (fallback)" if force_cpu else "auto"
-                logger.info(f"Loading embedding model: {EMBEDDING_MODEL} | device={device_label}")
-                _model = SentenceTransformer(EMBEDDING_MODEL, device=device)
+                try:
+                    _model = SentenceTransformer(EMBEDDING_MODEL, device=device, local_files_only=True)
+                except Exception:
+                    _model = SentenceTransformer(EMBEDDING_MODEL, device=device)
                 _model_device = "cpu" if force_cpu else "auto"
                 logger.info(f"Embedding model loaded successfully on {_model_device}")
     return _model
@@ -1201,20 +1203,37 @@ class Retriever:
         # Replaced cross-encoder/nli-deberta-v3-large which is an NLI model that
         # outputs 3-class probability arrays — float(score) always threw, leaving
         # _rerank_score unset and making all chunks score identically.
-        logger.info("Loading CrossEncoder reranker (cross-encoder/ms-marco-MiniLM-L-6-v2)...")
+        logger.info("cross_encoder.init.start: loading cross-encoder/ms-marco-MiniLM-L-6-v2...")
+        import time as _time
+        _ce_t0 = _time.monotonic()
         try:
             import torch as _torch
             _ce_device = "cuda" if _torch.cuda.is_available() else "cpu"
             logger.info(f"  CrossEncoder device: {_ce_device}")
             from sentence_transformers import CrossEncoder
-            self.cross_encoder = CrossEncoder(
-                "cross-encoder/ms-marco-MiniLM-L-6-v2",
-                max_length=512,
-                device=_ce_device,
+            try:
+                # Prefer local cache first (instant, zero network check latency)
+                self.cross_encoder = CrossEncoder(
+                    "cross-encoder/ms-marco-MiniLM-L-6-v2",
+                    max_length=512,
+                    device=_ce_device,
+                    local_files_only=True,
+                )
+            except Exception:
+                # Fall back to online download if not present in local cache
+                self.cross_encoder = CrossEncoder(
+                    "cross-encoder/ms-marco-MiniLM-L-6-v2",
+                    max_length=512,
+                    device=_ce_device,
+                )
+            _ce_elapsed = round((_time.monotonic() - _ce_t0) * 1000, 2)
+            logger.info(
+                f"cross_encoder.init.complete: loaded cross-encoder/ms-marco-MiniLM-L-6-v2 "
+                f"in {_ce_elapsed}ms | device={_ce_device}"
             )
-            logger.info("  CrossEncoder loaded: cross-encoder/ms-marco-MiniLM-L-6-v2")
         except Exception as e:
-            logger.error(f"Failed to load CrossEncoder: {e}", exc_info=True)
+            _ce_elapsed = round((_time.monotonic() - _ce_t0) * 1000, 2)
+            logger.error(f"Failed to load CrossEncoder after {_ce_elapsed}ms: {e}", exc_info=True)
             self.cross_encoder = None
 
         # Initialize Layer 1 (Statute-First) and pre-build its citation lookup so
@@ -1252,18 +1271,24 @@ class Retriever:
                         stage1_keep: int = 30,
                         taxonomy: dict | None = None) -> list:
         """
-        Reranks candidates with cross-encoder/nli-deberta-v3-large CrossEncoder.
-        Falls back to RRF score order if CrossEncoder is unavailable.
+        Reranks candidates with CrossEncoder.
+        Falls back to RRF score order if CrossEncoder is unavailable or fails.
 
         taxonomy: result of classify_query_authority() — when provided, authority
         bonuses are adjusted per query intent (e.g. notifications get a larger
         bonus for rate queries; circulars get a larger bonus for cross-charge
         advisory queries).
         """
+        import time as _time
+        _t0 = _time.monotonic()
         _taxonomy = taxonomy or {}
         pool = list(candidates)
-        if self.cross_encoder and pool:
+        if not pool:
+            return pool
+
+        if self.cross_encoder:
             try:
+                logger.info(f"CrossEncoder.predict.start: pairs={len(pool)} | batch_size=32")
                 pairs = [
                     (query, (c.get("context_text") or c.get("text", ""))[:512])
                     for c in pool
@@ -1277,22 +1302,42 @@ class Retriever:
                 for chunk, score in zip(pool, scores):
                     # RRF tiebreaker: chunk ranked high in both FAISS and BM25
                     rrf_boost = chunk.get("_rrf_score", 0.0) * 0.01
-                    # Intent-dependent authority bonus:
-                    #   base = source_priority × 0.03 (Acts=0.15, Circulars=0.12…)
-                    #   multiplied by per-category weight from authority taxonomy
-                    #   so for rate queries notifications get 1.6× and Acts 0.8×,
-                    #   for cross-charge circulars get 1.4×, etc.
                     _rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
                     _pri = source_priority(_rel)
                     _auth_bonus = authority_bonus(_rel, _taxonomy, _pri)
                     chunk["_rerank_score"] = float(score) + rrf_boost + _auth_bonus
-                pool.sort(key=lambda c: c["_rerank_score"], reverse=True)
-                logger.debug(
-                    f"CrossEncoder reranked {len(pool)} chunks | "
-                    f"top={pool[0]['_rerank_score']:.3f}"
+                pool.sort(key=lambda c: c.get("_rerank_score", 0.0), reverse=True)
+                _elapsed_ms = round((_time.monotonic() - _t0) * 1000, 2)
+                logger.info(
+                    f"CrossEncoder.predict.complete: pairs={len(pool)} | elapsed_ms={_elapsed_ms} | "
+                    f"top={pool[0].get('_rerank_score', 0):.3f}"
                 )
             except Exception as e:
-                logger.warning(f"CrossEncoder rerank failed: {e}")
+                _elapsed_ms = round((_time.monotonic() - _t0) * 1000, 2)
+                logger.warning(
+                    f"CrossEncoder.error after {_elapsed_ms}ms ({e}) — "
+                    f"falling back to existing RRF/FAISS/BM25 ordering without dropping candidates"
+                )
+                # Ensure all chunks have a valid _rerank_score from baseline scores
+                for chunk in pool:
+                    if "_rerank_score" not in chunk:
+                        _base = float(chunk.get("_rrf_score", chunk.get("_debug_score", 0.0)))
+                        _rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
+                        _pri = source_priority(_rel)
+                        _auth_bonus = authority_bonus(_rel, _taxonomy, _pri)
+                        chunk["_rerank_score"] = _base + _auth_bonus
+                pool.sort(key=lambda c: c.get("_rerank_score", 0.0), reverse=True)
+        else:
+            # CrossEncoder not loaded — baseline RRF / authority score fallback
+            for chunk in pool:
+                if "_rerank_score" not in chunk:
+                    _base = float(chunk.get("_rrf_score", chunk.get("_debug_score", 0.0)))
+                    _rel = chunk.get("rel_path") or chunk.get("metadata", {}).get("rel_path", "")
+                    _pri = source_priority(_rel)
+                    _auth_bonus = authority_bonus(_rel, _taxonomy, _pri)
+                    chunk["_rerank_score"] = _base + _auth_bonus
+            pool.sort(key=lambda c: c.get("_rerank_score", 0.0), reverse=True)
+
         return pool
 
     def _enforce_pool_quotas(self, pool: list, query: str, quotas: dict) -> list:
@@ -1549,6 +1594,7 @@ class Retriever:
         import time
         from app.ai_logger import update_ai_log
         t_start = time.monotonic()
+        logger.info(f"retrieval.start: query='{query[:60]}' | top_k={top_k} | is_draft={is_draft} | skip_rerank={skip_rerank}")
 
         # --- 1. Query Topic & Subtopic (from pre-computed advanced_queries, no extra LLM call) ---
         topic = "General"
@@ -2700,6 +2746,8 @@ class Retriever:
             except Exception:
                 pass
 
+        elapsed_ms = round((time.monotonic() - t_start) * 1000, 2)
+        logger.info(f"retrieval.complete: query='{query[:60]}' | elapsed_ms={elapsed_ms} | chunks={len(final_slice)}")
         return final_slice
 
     def supplement_and_rerank(self, base_chunks: list, advanced_queries: dict, query: str, top_k: int, trace=None) -> list:
@@ -2709,9 +2757,14 @@ class Retriever:
         FlashRank + LegalReranker + MMR pass on the merged pool capped at 80 chunks.
         This replaces the old pattern of running FlashRank on 200 chunks twice.
         """
-        if not advanced_queries:
-            return base_chunks[:top_k]
+        import time as _time_sr
+        _t_sr_start = _time_sr.monotonic()
+        logger.info(f"supplement_and_rerank.start: base={len(base_chunks)} | query='{query[:60]}'")
 
+        if not advanced_queries:
+            _elapsed = round((_time_sr.monotonic() - _t_sr_start) * 1000, 2)
+            logger.info(f"supplement_and_rerank.complete (no advanced queries): elapsed_ms={_elapsed} | final={len(base_chunks[:top_k])}")
+            return base_chunks[:top_k]
         topic = advanced_queries.get("topic", "General")
 
         # Authority taxonomy: predicts governing authorities from query intent
@@ -2932,4 +2985,6 @@ class Retriever:
             except Exception:
                 pass
 
+        _elapsed = round((_time_sr.monotonic() - _t_sr_start) * 1000, 2)
+        logger.info(f"supplement_and_rerank.complete: elapsed_ms={_elapsed} | final={len(final)}")
         return final
