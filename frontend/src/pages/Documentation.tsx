@@ -12,7 +12,7 @@ const DOC_CARDS = [
   {
     icon: Book,
     title: 'User Guides',
-    desc: 'Step-by-step tutorials on using the LETA interface, interpreting confidence scores, and managing citations.',
+    desc: 'Step-by-step tutorials on using the LETA TEC interface, interpreting confidence scores, and managing citations.',
     link: 'View Guides',
     to: '#',
   },

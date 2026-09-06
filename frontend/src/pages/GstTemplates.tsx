@@ -277,7 +277,7 @@ const GstTemplates: React.FC = () => {
     if (!selectedTemplate || !editedContent) return;
     
     setIsEnhancing(true);
-    triggerStatus("Deploying LETA neural enhancement model...", "info");
+    triggerStatus("Deploying LETA TEC neural enhancement model...", "info");
 
     try {
       const response = await fetch(`${BASE_URL}/api/templates/${selectedTemplate.id}/enhance`, {
@@ -511,7 +511,7 @@ const GstTemplates: React.FC = () => {
         <div className="p-4 border-t border-white/[0.06] bg-[#000000] flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="text-[9px] font-mono tracking-wider uppercase text-white/50">LETA_ONLINE</span>
+            <span className="text-[9px] font-mono tracking-wider uppercase text-white/50">LETA_TEC_ONLINE</span>
           </div>
           <span className="text-[9px] font-mono text-[#67E8F9] uppercase">v4.2-LITIG</span>
         </div>
@@ -1059,7 +1059,7 @@ const GstTemplates: React.FC = () => {
               >
                 {/* Simulated Watermark */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-[0.03] rotate-[35deg] select-none text-6xl font-sans font-black tracking-widest">
-                  LETA_DRAFT
+                  LETA_TEC_DRAFT
                 </div>
 
                 {isEditing ? (
@@ -1090,7 +1090,7 @@ const GstTemplates: React.FC = () => {
                 </div>
 
                 <p className="text-[11px] text-[#A1AAB8]/60 leading-relaxed">
-                  Instruct LETA to add specific legal arguments, emphasize certain sections, or adapt references to your client's fact patterns.
+                  Instruct LETA TEC to add specific legal arguments, emphasize certain sections, or adapt references to your client's fact patterns.
                 </p>
 
                 <div className="relative">

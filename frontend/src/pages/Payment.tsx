@@ -159,7 +159,7 @@ const Payment: React.FC = () => {
         key: rzConfig?.key_id || '',
         amount: order.amount,
         currency: order.currency,
-        name: 'LETA — Legal Intelligence',
+        name: 'LETA TEC — Legal Intelligence',
         description: `${mod.fullName} · ${plan.label}`,
         order_id: order.order_id,
         prefill: { email: user?.email || '' },

@@ -14,7 +14,7 @@ router = APIRouter()
 
 # In-memory mock states for Control Center items not persisted in Mongo yet
 _api_keys = [
-  {"id": "key_01", "name": "Production LETA Gateway", "prefix": "let_live_8f3d...", "role": "admin", "created_at": "2026-06-15T08:00:00Z", "expires_at": "2027-06-15T08:00:00Z", "status": "active"},
+  {"id": "key_01", "name": "Production LETA TEC Gateway", "prefix": "let_live_8f3d...", "role": "admin", "created_at": "2026-06-15T08:00:00Z", "expires_at": "2027-06-15T08:00:00Z", "status": "active"},
   {"id": "key_02", "name": "Local Development Key", "prefix": "let_dev_9a1f...", "role": "uploader", "created_at": "2026-07-01T12:00:00Z", "expires_at": "2026-10-01T12:00:00Z", "status": "active"},
 ]
 
@@ -24,7 +24,7 @@ _webhooks = [
 ]
 
 _organizations = [
-  {"id": "org_default", "name": "LETATEC Central", "plan": "Enterprise Titan", "storage_used": "1.2 GB", "storage_limit": "100 GB", "members_count": 8, "status": "active"},
+  {"id": "org_default", "name": "LETA TEC Central", "plan": "Enterprise Titan", "storage_used": "1.2 GB", "storage_limit": "100 GB", "members_count": 8, "status": "active"},
   {"id": "org_partner_01", "name": "TaxConsult Partners", "plan": "Professional Plus", "storage_used": "450 MB", "storage_limit": "20 GB", "members_count": 3, "status": "active"},
 ]
 

@@ -31,7 +31,7 @@ const VideoSection = () => {
             // EXECUTION_LOG_01
           </span>
           <h2 className="text-3xl md:text-5xl font-bold mb-6 font-display tracking-tight text-[#F5F7FA] uppercase">
-            See LETA in Action
+            See LETA TEC in Action
           </h2>
           <p className="max-w-2xl mx-auto text-sm leading-relaxed font-mono text-[#A1AAB8]">
             Observing real-time statutory deconstruction and analysis protocols.

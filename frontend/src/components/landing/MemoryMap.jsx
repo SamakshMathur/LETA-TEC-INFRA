@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Link2, Sparkles, Database, FileText } from 'lucide-react';
 
 const NODES = [
-  { id: 'core', label: 'LETA Core Reasoning Engine', x: 50, y: 50, isCore: true, type: 'CORE' },
+  { id: 'core', label: 'LETA TEC Core Reasoning Engine', x: 50, y: 50, isCore: true, type: 'CORE' },
   { id: 'gst', label: 'GST (Indirect Taxes)', x: 20, y: 25, isCore: false, type: 'STATUTE', desc: 'CGST Act, SGST Act, IGST Act, rules mapping, circular exemptions.' },
   { id: 'fema', label: 'FEMA', x: 15, y: 60, isCore: false, type: 'STATUTE', desc: 'Foreign Exchange Management Act compliance, cross-border regulations.' },
   { id: 'company', label: 'Company Law', x: 80, y: 30, isCore: false, type: 'STATUTE', desc: 'Companies Act 2013, filing procedures, director liabilities, compliance checks.' },

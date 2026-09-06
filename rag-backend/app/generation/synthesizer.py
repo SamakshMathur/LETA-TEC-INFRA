@@ -90,7 +90,7 @@ def _select_response_mode(complexity: float) -> tuple:
     """
     Maps complexity score to (mode_name, prompt_template, max_tokens).
 
-    All tiers now follow LETATEC master prompt v2 structure:
+    All tiers now follow LETA TEC master prompt v2 structure:
       Quick Take (≤300w) + Key Extracts + Detailed Advisory (500–3000w)
       → minimum viable response is ~1200 tokens; generous headroom given.
 

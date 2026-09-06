@@ -4,7 +4,7 @@ Post-generation verification pipeline.
 Runs all accuracy checks on the generated answer in parallel before it is
 saved and shown to the user.  Previously these were 4 ad-hoc async closures
 defined inline inside ``stream_and_save`` — pulling them here means there is
-one place to reason about "what does LETA check before showing an answer",
+one place to reason about "what does LETA TEC check before showing an answer",
 add new checks, adjust timeouts, or disable a pass.
 
 Checks (run concurrently with a shared 12-second ceiling):

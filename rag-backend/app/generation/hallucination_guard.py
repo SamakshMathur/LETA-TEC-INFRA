@@ -171,7 +171,7 @@ def check_hallucinated_numbers(
 
     unique_ungrounded = sorted(set(ungrounded))
     warning  = "\n\n" + "─" * 44 + "\n"
-    warning += "⚠ LETA NUMBER VERIFICATION\n"
+    warning += "⚠ LETA TEC NUMBER VERIFICATION\n"
     warning += "─" * 44 + "\n"
     warning += (
         f"The following {len(unique_ungrounded)} numeric claim(s) could not be "

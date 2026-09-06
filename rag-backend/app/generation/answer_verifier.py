@@ -103,7 +103,7 @@ Verify the answer against the source documents. Focus on factual contradictions.
 
         # Build a visible warning block
         warning = "\n\n" + "═" * 50 + "\n"
-        warning += "⚠️  LETA ACCURACY REVIEW — POTENTIAL ISSUE DETECTED\n"
+        warning += "⚠️  LETA TEC ACCURACY REVIEW — POTENTIAL ISSUE DETECTED\n"
         warning += "═" * 50 + "\n"
         for issue in issues:
             warning += f"• {issue}\n"

@@ -95,7 +95,7 @@ const Navbar = () => {
           <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
             <img
               src="/LETA_WHITE_ON_BLACK_4K.png"
-              alt="LETA"
+              alt="LETA TEC"
               className="h-9 w-9 object-contain"
               style={{ mixBlendMode: 'screen' }}
             />

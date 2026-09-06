@@ -1,5 +1,5 @@
 """
-quarantine.py — Shared chunk quarantine gate for LETA retrieval.
+quarantine.py — Shared chunk quarantine gate for LETA TEC retrieval.
 
 A chunk is quarantined when:
   - metadata.is_active is explicitly False, OR

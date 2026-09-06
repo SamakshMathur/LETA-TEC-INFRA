@@ -2100,7 +2100,7 @@ class Retriever:
                 existing_ids.add(r.get("chunk_id"))
 
         # --- P2.2: Exclude generated_reports from retrieval corpus ---
-        # These 206 LETA-generated Advisory PDFs create a feedback loop: the model can
+        # These 206 LETA TEC-generated Advisory PDFs create a feedback loop: the model can
         # retrieve its own prior outputs as if they were authoritative legal sources.
         # Authoritative corpus must not contain generated material.
         # Evidence: regression run 2026-08-11 confirmed these contaminate final context.

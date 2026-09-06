@@ -1,5 +1,5 @@
 """
-RetrievalTrace — full pipeline provenance for every LETA query.
+RetrievalTrace — full pipeline provenance for every LETA TEC query.
 
 Design principles:
   - Zero retrieval-behavior change: recording is purely additive / read-only.
@@ -152,7 +152,7 @@ class ChunkRecord:
 
 class RetrievalTrace:
     """
-    Accumulates full retrieval provenance for one LETA query.
+    Accumulates full retrieval provenance for one LETA TEC query.
     Created at /ask entry, passed through retriever.search() and supplement_and_rerank(),
     finalized before CloudWatch logging.
 

@@ -6,7 +6,7 @@ import PillarThreeScene from './PillarThreeScene';
 const STEPS = [
   {
     id: 'query', icon: Search, label: 'User Query', tag: 'INPUT_STREAM',
-    desc: 'You type a GST question — ITC eligibility, SCN reply, place of supply, GSTR mismatch. LETA understands the legal context before it searches.',
+    desc: 'You type a GST question — ITC eligibility, SCN reply, place of supply, GSTR mismatch. LETA TEC understands the legal context before it searches.',
     metrics: [
       { name: 'Parse Speed',  value: '1,200 tokens/sec' },
       { name: 'Query Encode', value: 'Vector-Hashed' },
@@ -14,7 +14,7 @@ const STEPS = [
   },
   {
     id: 'mapping', icon: Map, label: 'Statute Mapping', tag: 'ACT_SEARCH',
-    desc: 'LETA pinpoints the exact section, notification, or circular — across the CGST Act, IGST Act, Rules, and CBIC circulars — relevant to your query.',
+    desc: 'LETA TEC pinpoints the exact section, notification, or circular — across the CGST Act, IGST Act, Rules, and CBIC circulars — relevant to your query.',
     metrics: [
       { name: 'Accuracy',     value: '99.2%' },
       { name: 'Acts Indexed', value: '14 Million+' },
@@ -107,7 +107,7 @@ const IntelligenceEngine = () => {
           <div style={{ marginBottom: 32 }}>
             <p className="section-eyebrow">// How It Works</p>
             <h2 className="section-headline" style={{ fontSize: 'clamp(26px,2.8vw,46px)' }}>
-              How LETA<br />Answers Your Query
+              How LETA TEC<br />Answers Your Query
             </h2>
           </div>
 

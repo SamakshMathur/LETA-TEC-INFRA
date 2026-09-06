@@ -1,5 +1,5 @@
 """
-LETA Context Compressor — Stage 4 of TITAN architecture.
+LETA TEC Context Compressor — Stage 4 of TITAN architecture.
 
 Reduces injected LLM context from the raw 80 KB chunk dump to a
 targeted ~8 KB focused-excerpt block. The compressor:

@@ -218,7 +218,7 @@ const Hero = () => {
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#67E8F9' }} />
                     <span className="text-[10px] font-mono font-bold uppercase tracking-wider" style={{ color: '#67E8F9' }}>
-                      LETA Response — Confidence 94%
+                      LETA TEC Response — Confidence 94%
                     </span>
                   </div>
                   {[

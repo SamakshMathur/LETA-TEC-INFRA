@@ -255,7 +255,7 @@ const AskLeta = ({ contextDesc = 'GST scenarios' }) => {
               Ready for Consultation Query
             </p>
             <p className="text-[11px] mt-1.5 text-[#52525B] max-w-sm leading-relaxed">
-              LETA cross-references statutory codes, central rules, and notifications up to the latest gazette amendments.
+              LETA TEC cross-references statutory codes, central rules, and notifications up to the latest gazette amendments.
             </p>
           </div>
         )}
