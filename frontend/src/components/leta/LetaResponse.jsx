@@ -285,7 +285,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
           The rail (Init/Cache/Retrieve/Rerank/Generate, dots + connecting
           lines) read as a technical dashboard instead of a calm "thinking"
           moment; ChatGPT/Claude's own loaders are exactly this restrained.
-          The status text is kept — real transparency into what LETA is
+          The status text is kept — real transparency into what LETA TEC is
           doing that those products don't even offer — it's the dots that
           needed to stay minimal, not the information. */}
       {!data?.answer && (
@@ -341,7 +341,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
             >
               <ShieldCheck size={10} style={{ color: '#67E8F9' }} />
               <span className="font-mono text-[9px] font-bold tracking-widest uppercase" style={{ color: '#4FB7C5' }}>
-                LETA
+                LETA TEC
               </span>
             </div>
 

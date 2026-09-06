@@ -280,7 +280,7 @@ def _send_sms_otp(phone: str, otp: str) -> None:
     sns = boto3.client("sns", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-south-1"))
     sns.publish(
         PhoneNumber=e164,
-        Message=f"Your LETA OTP is {otp}. Valid for 10 minutes. Do not share.",
+        Message=f"Your LETA TEC OTP is {otp}. Valid for 10 minutes. Do not share.",
         MessageAttributes={
             "AWS.SNS.SMS.SMSType": {"DataType": "String", "StringValue": "Transactional"},
             "AWS.SNS.SMS.SenderID": {"DataType": "String", "StringValue": "LETATEC"},
@@ -355,12 +355,12 @@ def _send_email_otp(email: str, otp: str) -> None:
                 "Content-Type": "application/json",
             },
             json={
-                "from": "LETA <noreply@letatec.com>",
+                "from": "LETA TEC <noreply@letatec.com>",
                 "to": [email],
-                "subject": "Your LETA OTP",
+                "subject": "Your LETA TEC OTP",
                 "html": f"""
                 <div style="font-family:Arial;padding:30px">
-                    <h2>LETA Login Verification</h2>
+                    <h2>LETA TEC Login Verification</h2>
                     <p>Your OTP is:</p>
                     <h1>{otp}</h1>
                     <p>This OTP expires in {OTP_EXPIRY_MINUTES} minutes.</p>

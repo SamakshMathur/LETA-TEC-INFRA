@@ -1,8 +1,8 @@
 """
 Template Matcher — Searches the litigation template database
-and returns matching templates alongside LETA chat answers.
+and returns matching templates alongside LETA TEC chat answers.
 
-When a user asks a question on LETA, this module checks if any
+When a user asks a question on LETA TEC, this module checks if any
 litigation templates are relevant. If found, they are surfaced
 as downloadable suggestions alongside the legal answer.
 """

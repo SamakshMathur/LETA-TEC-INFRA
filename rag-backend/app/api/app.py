@@ -625,13 +625,13 @@ async def ask_question(request: Request, req: QuestionRequest):
         # and exhausting the frontend's retry budget, we hold the streaming connection
         # open with a STATUS keepalive and release it as soon as warmup completes.
         if not _warmup_complete:
-            yield f"__STATUS__:{json.dumps({'msg': 'LETA is starting up — please wait…'})}__END_STATUS__"
+            yield f"__STATUS__:{json.dumps({'msg': 'LETA TEC is starting up — please wait…'})}__END_STATUS__"
             _wt = 0
             while not _warmup_complete and _wt < 90:
                 await _asyncio.sleep(3)
                 _wt += 3
             if not _warmup_complete:
-                yield "\n\n⚠ **LETA is taking longer than expected to start.** Please refresh the page and try your question again in a moment."
+                yield "\n\n⚠ **LETA TEC is taking longer than expected to start.** Please refresh the page and try your question again in a moment."
                 return
         from app.routing.router import route_query
         from app.generation.synthesizer import _estimate_complexity
@@ -753,19 +753,19 @@ async def ask_question(request: Request, req: QuestionRequest):
                 return ""
             _ctx_parts = []
             for _m in _matches:
-                # Find the most relevant message pair (user question + LETA answer)
+                # Find the most relevant message pair (user question + LETA TEC answer)
                 _msgs = _m.get("messages", [])
                 _best_pair = ""
                 for _i, _msg in enumerate(_msgs):
                     _content = _msg.get("content", "")
                     if any(t in _content.lower() for t in _search_terms):
-                        # Include user question + LETA response pair
+                        # Include user question + LETA TEC response pair
                         _u_msg = _msgs[_i - 1]["content"][:300] if _i > 0 and _msgs[_i-1]["role"] == "user" else ""
                         _a_msg = _content[:500]
                         if _u_msg:
-                            _best_pair = f"USER: {_u_msg}\nLETA: {_a_msg}"
+                            _best_pair = f"USER: {_u_msg}\nLETA TEC: {_a_msg}"
                         else:
-                            _best_pair = f"LETA: {_a_msg}"
+                            _best_pair = f"LETA TEC: {_a_msg}"
                         break
                 if _best_pair:
                     _title = _m.get("title", "Previous Session")
@@ -786,8 +786,8 @@ async def ask_question(request: Request, req: QuestionRequest):
             # IMPORTANT: include the current user message (already saved by the
             # immediate save above) in the history window. Previously [:-1] excluded
             # it, so CHECK 1 in the drafting prompt could not see the user's reply
-            # to LETA's questions and would ask again. Using [-7:] shows the model
-            # the full sequence: LETA-questions → USER-answers → produce draft.
+            # to LETA TEC's questions and would ask again. Using [-7:] shows the model
+            # the full sequence: LETA TEC-questions → USER-answers → produce draft.
             _recent = _sess["messages"][-7:]
             _hist = "".join(f"{m['role'].upper()}: {m['content']}\n" for m in _recent)
             # Draft detection: check only the 2 most recent messages so a single
@@ -993,7 +993,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                     f"query_id={query_id} | {_retrieval_exc!r}\n{_tb.format_exc()}"
                 )
                 yield f"__STATUS__:{json.dumps({'msg': 'Retrieval engine error. Please try again.'})}__END_STATUS__"
-                yield "\n\n⚠ **LETA encountered a retrieval error.** The statutory database search failed for this query. Please try again — if the problem persists, try rephrasing your question."
+                yield "\n\n⚠ **LETA TEC encountered a retrieval error.** The statutory database search failed for this query. Please try again — if the problem persists, try rephrasing your question."
                 return
 
         # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
@@ -1013,7 +1013,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                 f"{_ctx_exc!r}\n{_tb.format_exc()}"
             )
             yield (
-                f"\n\n⚠ **LETA encountered a context assembly error.** "
+                f"\n\n⚠ **LETA TEC encountered a context assembly error.** "
                 f"(`{type(_ctx_exc).__name__}: {str(_ctx_exc)[:120]}`)\n\n"
                 "This is unexpected — please retry. If it persists, contact support."
             )
@@ -1117,7 +1117,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                 "[CRASH] rag_pipeline_orchestrator synthesis stage failed | "
                 f"query_id={query_id} | {_synth_exc!r}\n{_tb.format_exc()}"
             )
-            yield "\n\n⚠ **LETA encountered an error while generating the response.** The statutory sources were retrieved successfully but the synthesis step failed. Please try asking again — your question is valid and the answer exists in our database."
+            yield "\n\n⚠ **LETA TEC encountered an error while generating the response.** The statutory sources were retrieved successfully but the synthesis step failed. Please try asking again — your question is valid and the answer exists in our database."
             _synthesis_yielded_text = True  # don't double-emit
 
         # Safety net: if the entire synthesis pipeline completed without yielding
@@ -1128,7 +1128,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                 f"query_id={query_id} | complexity={_complexity:.2f} | draft={_is_draft}"
             )
             yield (
-                "\n\n⚠ **LETA's language model returned an empty response.**\n\n"
+                "\n\n⚠ **LETA TEC's language model returned an empty response.**\n\n"
                 "This is an infrastructure issue — not your query. Possible causes: "
                 "model rate-limit, API timeout, or extended-thinking budget exhausted. "
                 "**Please retry in a few seconds.** If this happens repeatedly, "
@@ -1156,7 +1156,7 @@ async def ask_question(request: Request, req: QuestionRequest):
             # The raw `raise e` here caused StreamingResponse to abort silently — the
             # frontend received only status tokens and displayed "unable to generate".
             yield (
-                f"\n\n⚠ **LETA encountered an unexpected error.**\n\n"
+                f"\n\n⚠ **LETA TEC encountered an unexpected error.**\n\n"
                 f"**Debug info (for support):** `{type(e).__name__}: {str(e)[:200]}`\n\n"
                 "Please screenshot this message and retry. If the issue persists, "
                 "try rephrasing your question."

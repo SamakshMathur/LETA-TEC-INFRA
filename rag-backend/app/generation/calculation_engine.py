@@ -1,5 +1,5 @@
 """
-LETA Calculation Engine — Stage 5A of TITAN architecture.
+LETA TEC Calculation Engine — Stage 5A of TITAN architecture.
 
 Deterministic GST computation for Rule 42/43, Section 50 interest,
 and basic GST liability. The LLM explains; this engine computes.

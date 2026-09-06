@@ -238,7 +238,7 @@ const LoginPage: React.FC = () => {
         </div>
 
         <p className="mt-8 text-center text-[10px] font-mono text-leta-gray-900/20 uppercase tracking-[0.1em]">
-          &copy; 2026 LETATEC AI / Sovereign Compliance Systems
+          &copy; 2026 LETA TEC AI / Sovereign Compliance Systems
         </p>
       </div>
     </div>

@@ -160,7 +160,7 @@ const TemplateCustomization: React.FC = () => {
                   <div className="flex items-center gap-2 mb-2 opacity-50">
                     {msg.role === 'user' ? <User size={12} strokeWidth={2.5} /> : <Zap size={12} className="text-[#67E8F9]" />}
                     <span className="text-[9px] uppercase tracking-[0.2em] font-black font-mono">
-                      {msg.role === 'user' ? 'Advocate' : 'LETA_CORELINK'}
+                      {msg.role === 'user' ? 'Advocate' : 'LETA_TEC_CORELINK'}
                     </span>
                   </div>
                   <div className="whitespace-pre-wrap font-sans">
@@ -195,7 +195,7 @@ const TemplateCustomization: React.FC = () => {
                   rows={3}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Instruct LETA (e.g., 'Incorporate the new ITC circular 183' or 'Set date as 24/03/24')"
+                  placeholder="Instruct LETA TEC (e.g., 'Incorporate the new ITC circular 183' or 'Set date as 24/03/24')"
                   className="w-full bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5 pr-14 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#67E8F9]/30 resize-none transition-all shadow-inner font-sans"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -254,7 +254,7 @@ const TemplateCustomization: React.FC = () => {
               <div className="h-full flex flex-col items-center justify-center text-center opacity-20 select-none py-32 grayscale group-hover/doc:grayscale-0 transition-all duration-1000">
                 <FileText size={120} strokeWidth={0.5} className="mb-8 text-black" />
                 <h3 className="text-3xl font-serif italic mb-4">Awaiting Synthesis</h3>
-                <p className="text-base font-sans font-light max-w-sm tracking-tight leading-relaxed">Your professional legal response will materialize here as you collaborate with LETA on the left.</p>
+                <p className="text-base font-sans font-light max-w-sm tracking-tight leading-relaxed">Your professional legal response will materialize here as you collaborate with LETA TEC on the left.</p>
                 <div className="mt-12 flex gap-4">
                    <div className="w-12 h-[1px] bg-black/20" />
                    <div className="w-2 h-2 rounded-full border border-neutral-400" />
@@ -275,7 +275,7 @@ const TemplateCustomization: React.FC = () => {
                 <span>SECURITY: ENCRYPTED</span>
              </div>
              <div className="text-[9px] text-[#67E8F9] font-bold tracking-widest uppercase bg-[#151922] border border-white/[0.06] py-1.5 px-4 rounded-leta">
-                LETA_DRAFTING // V4_ENGINE
+                LETA_TEC_DRAFTING // V4_ENGINE
              </div>
           </div>
         </div>

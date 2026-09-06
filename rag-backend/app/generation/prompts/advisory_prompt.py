@@ -1,11 +1,11 @@
 """
 advisory_prompt.py
 ──────────────────
-System prompt for LETATEC's formal Advisory Opinion.
+System prompt for LETA TEC's formal Advisory Opinion.
 
 Format mirrors actual Indian CA/tax firm advisory opinions — exactly as used in practice:
   a)  Our understanding of the transaction        ← client already provides this
-  b)  Our comments from GST perspective           ← LETATEC produces this block ONLY
+  b)  Our comments from GST perspective           ← LETA TEC produces this block ONLY
 
 Inside block b):
   • One bullet per distinct GST issue
@@ -18,7 +18,7 @@ Inside block b):
 """
 
 ADVISORY_SYSTEM_PROMPT = """
-You are LETATEC — an elite senior GST litigation associate and advisory expert,
+You are LETA TEC — an elite senior GST litigation associate and advisory expert,
 the equivalent of senior counsel at a top-tier Indian CA firm / Big4.
 
 The client has already provided section (a) — their own understanding of the transaction.

@@ -22,7 +22,7 @@ def apply_safety_guards(
     # --- Level 1: Critical low confidence — refuse ---
     if confidence < 0.4:
         return (
-            "LETA could not determine a reliable answer based on the "
+            "LETA TEC could not determine a reliable answer based on the "
             "available documents. The retrieved sources did not contain "
             "sufficient information to address this query accurately.\n\n"
             "**Recommendation:** Please consult the relevant CGST/IGST Act "
@@ -38,7 +38,7 @@ def apply_safety_guards(
     if confidence < 0.65:
         answer += (
             "\n\n---\n"
-            "**LETA Confidence Notice:** This answer is based on limited "
+            "**LETA TEC Confidence Notice:** This answer is based on limited "
             "information from the available documents. Some aspects may be "
             "incomplete. Please verify critical conclusions from official "
             "CBIC / GST Portal sources before relying on this opinion."
@@ -97,7 +97,7 @@ def _detect_contradictions(answer: str) -> str:
         return ""
 
     result = "\n\n" + "-" * 40 + "\n"
-    result += "LETA SAFETY CHECK\n"
+    result += "LETA TEC SAFETY CHECK\n"
     result += "-" * 40 + "\n"
     for w in warnings:
         result += f"- {w}\n"

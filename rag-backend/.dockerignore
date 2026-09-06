@@ -1,4 +1,4 @@
-# .dockerignore optimized for LETA TITAN
+# .dockerignore optimized for LETA TEC
 # Exclude raw documents (not needed at runtime, only for ingestion)
 RAG_INFORMATION_DATABASE/
 

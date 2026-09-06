@@ -207,7 +207,7 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
         className="px-4 py-1 flex justify-between items-center text-[9px] font-mono uppercase tracking-widest flex-shrink-0"
         style={{ borderTop: '1px solid rgba(255,255,255,0.03)', color: '#2a3050', background: '#050810' }}
       >
-        <span>LETA · DOCUMENT VIEWER</span>
+        <span>LETA TEC · DOCUMENT VIEWER</span>
         <span>{isPDF ? 'PDF_RENDER' : isDocx ? 'DOCX_RENDER' : 'RAW'}</span>
       </div>
     </div>

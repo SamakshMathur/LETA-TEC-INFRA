@@ -118,7 +118,7 @@ const AdminUploadPortal: React.FC = () => {
   const [assistantOpen, setAssistantOpen] = useState<boolean>(false);
   const [assistantPrompt, setAssistantPrompt] = useState<string>('');
   const [assistantReplies, setAssistantReplies] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([
-    { sender: 'ai', text: 'LETA Administrative Console active. How can I help you query operational data today?' }
+    { sender: 'ai', text: 'LETA TEC Administrative Console active. How can I help you query operational data today?' }
   ]);
   
   // Data States
@@ -542,7 +542,7 @@ const AdminUploadPortal: React.FC = () => {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/[0.05] pb-6 gap-4">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold font-display tracking-tight text-white uppercase">LETATEC Control Center</h1>
+                <h1 className="text-2xl font-bold font-display tracking-tight text-white uppercase">LETA TEC Control Center</h1>
                 <span className="text-[10px] font-black tracking-[0.2em] uppercase text-[#67E8F9] bg-[#67E8F9]/10 border border-[#67E8F9]/20 px-2.5 py-0.5 rounded-full">v1.5 Enterprise</span>
                 {healthInfo?.score !== undefined && (
                   <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full font-mono ${

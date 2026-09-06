@@ -208,7 +208,7 @@ const LetaWorkspace: React.FC = () => {
   // Active configurations based on current domain
   const domainConfig = {
     gst: {
-      title: 'LETA GST',
+      title: 'LETA TEC GST',
       subtitle: 'Professional GST Intelligence Workspace',
       contextDesc: 'GST compliance or notice issue',
       placeholder: 'Enter your query, notice issue, or drafting requirement...',
@@ -225,7 +225,7 @@ const LetaWorkspace: React.FC = () => {
       ]
     },
     fema: {
-      title: 'LETA FEMA',
+      title: 'LETA TEC FEMA',
       subtitle: 'Professional FEMA Compliance Workspace',
       contextDesc: 'cross-border regulatory query',
       placeholder: 'Describe your FEMA compliance, regulatory issue, or cross-border transaction...',
@@ -242,7 +242,7 @@ const LetaWorkspace: React.FC = () => {
       ]
     },
     'company-law': {
-      title: 'LETA Company Law',
+      title: 'LETA TEC Company Law',
       subtitle: 'Professional Company Law Compliance Workspace',
       contextDesc: 'secretarial or corporate filing query',
       placeholder: 'Describe your ROC filing, board procedure, or corporate governance requirement...',
@@ -259,7 +259,7 @@ const LetaWorkspace: React.FC = () => {
       ]
     },
     'income-tax': {
-      title: 'LETA Income Tax',
+      title: 'LETA TEC Income Tax',
       subtitle: 'Professional Income Tax Workspace',
       contextDesc: 'litigation, scrutiny, or assessment query',
       placeholder: 'Describe your scrutiny notice, direct tax query, or litigation draft requirements...',
@@ -276,7 +276,7 @@ const LetaWorkspace: React.FC = () => {
       ]
     }
   }[domainId] || {
-    title: 'LETA Workspace',
+    title: 'LETA TEC Workspace',
     subtitle: 'Professional Legal & Advisory Workspace',
     contextDesc: 'notice or statutory query',
     placeholder: 'Describe the issue you are facing...',
@@ -992,7 +992,7 @@ const LetaWorkspace: React.FC = () => {
         // dozens of small chunks/sec, each previously triggering a full
         // re-render of this whole workspace (chat, sidebars, composer,
         // modals) — this was the single biggest source of "typing/
-        // scrolling feels sluggish while LETA is answering." Local to this
+        // scrolling feels sluggish while LETA TEC is answering." Local to this
         // streaming call (not component state), so no cleanup/ref needed
         // beyond this closure's own lifetime.
         let pendingText = '';
@@ -1075,8 +1075,8 @@ const LetaWorkspace: React.FC = () => {
               next[next.length - 1] = {
                 ...last,
                 content: last.current_status
-                  ? `⚠ **${last.current_status}**\n\nLETA was unable to generate a response. Please use the **↻** button above to retry.`
-                  : '⚠ **LETA returned an empty response.** Please use the **↻** button above to retry.',
+                  ? `⚠ **${last.current_status}**\n\nLETA TEC was unable to generate a response. Please use the **↻** button above to retry.`
+                  : '⚠ **LETA TEC returned an empty response.** Please use the **↻** button above to retry.',
                 current_status: undefined,
               };
             } else {
@@ -1115,7 +1115,7 @@ const LetaWorkspace: React.FC = () => {
         // dozens of small chunks/sec, each previously triggering a full
         // re-render of this whole workspace (chat, sidebars, composer,
         // modals) — this was the single biggest source of "typing/
-        // scrolling feels sluggish while LETA is answering." Local to this
+        // scrolling feels sluggish while LETA TEC is answering." Local to this
         // streaming call (not component state), so no cleanup/ref needed
         // beyond this closure's own lifetime.
         let pendingText = '';
@@ -1200,8 +1200,8 @@ const LetaWorkspace: React.FC = () => {
               next[next.length - 1] = {
                 ...last,
                 content: last.current_status
-                  ? `⚠ **${last.current_status}**\n\nLETA was unable to generate a response. Please use the **↻** button above to retry, or rephrase your question.`
-                  : '⚠ **LETA returned an empty response.** This can happen when the server is under load or the query is unusually complex. Please use the **↻** button above to retry.',
+                  ? `⚠ **${last.current_status}**\n\nLETA TEC was unable to generate a response. Please use the **↻** button above to retry, or rephrase your question.`
+                  : '⚠ **LETA TEC returned an empty response.** This can happen when the server is under load or the query is unusually complex. Please use the **↻** button above to retry.',
                 current_status: undefined,
               };
             } else {
@@ -1251,10 +1251,10 @@ const LetaWorkspace: React.FC = () => {
       // keep pendingRetryRef so the visibilitychange handler can auto-retry.
       const isNetworkInterrupt = error?.name === 'TypeError' || error?.message?.includes('network') || error?.message?.includes('Failed to fetch');
       if (!isNetworkInterrupt) pendingRetryRef.current = null;
-      console.error('LETA API Error:', error);
+      console.error('LETA TEC API Error:', error);
       const status = error?.message?.match(/status: (\d+)/)?.[1];
       const errMsg = status === '503'
-        ? 'LETA is starting up after a deployment — please wait a moment and try again.'
+        ? 'LETA TEC is starting up after a deployment — please wait a moment and try again.'
         : status === '401'
         ? 'Your session has expired. Please refresh the page and log in again.'
         : 'Unable to reach the advisory server. Please check your connection and try again.';
@@ -1357,7 +1357,7 @@ const LetaWorkspace: React.FC = () => {
           {/* Brand mark */}
           <img
             src="/LETA_WHITE_ON_BLACK_4K.png"
-            alt="LETA"
+            alt="LETA TEC"
             className="h-8 w-8 object-contain flex-shrink-0"
             style={{ mixBlendMode: 'screen' }}
           />
@@ -1452,7 +1452,7 @@ const LetaWorkspace: React.FC = () => {
                       <span className="text-[#4FB7C5]">
                         {activeRepo === 'starred' ? '★ Star' : '⊡ Save'}
                       </span>{' '}
-                      button on any LETA response.
+                      button on any LETA TEC response.
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -1780,7 +1780,7 @@ const LetaWorkspace: React.FC = () => {
                         lineHeight: 1.2,
                       }}
                     >
-                      Hi {getSessionFirstName() || 'there'}, LETA is here to assist you.
+                      Hi {getSessionFirstName() || 'there'}, LETA TEC is here to assist you.
                     </h2>
                   </div>
                   <div className="flex flex-col">
@@ -1821,7 +1821,7 @@ const LetaWorkspace: React.FC = () => {
                             <div className="flex items-center gap-2 mb-3.5 pl-1 text-[#4FB7C5]">
                               <Sparkles className="w-3.5 h-3.5 animate-pulse" />
                               <span className="text-[10px] font-mono uppercase tracking-widest font-bold">
-                                LETA SYNTHESIS
+                                LETA TEC SYNTHESIS
                               </span>
                             </div>
 
@@ -2297,7 +2297,7 @@ const LetaWorkspace: React.FC = () => {
               <div className="max-w-[960px] mx-auto w-full px-8 pt-5 pb-16">
                 <div className="flex items-center gap-2 mb-4 text-[#4FB7C5]">
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span className="text-[10px] font-mono uppercase tracking-widest font-bold">LETA SYNTHESIS</span>
+                  <span className="text-[10px] font-mono uppercase tracking-widest font-bold">LETA TEC SYNTHESIS</span>
                 </div>
                 <LetaResponse
                   onRegenerate={() => {}}

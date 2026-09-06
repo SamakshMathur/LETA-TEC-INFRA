@@ -73,7 +73,7 @@ def get_full_trace(
       - validation: authority coverage, Layer 6 injections
       - answer: model, mode, latency, cache_hit
 
-    Use this to answer: "Why did LETA give this answer?"
+    Use this to answer: "Why did LETA TEC give this answer?"
     Starting point: look at stages.final vs stages.faiss — was the correct document
     in the FAISS top-20? If yes, track where it dropped out (CrossEncoder? MMR?).
     """

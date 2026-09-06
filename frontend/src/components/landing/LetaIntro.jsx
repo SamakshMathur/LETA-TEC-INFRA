@@ -51,7 +51,7 @@ const features = [
   {
     icon: Brain,
     title: "Contextual Understanding",
-    desc: "LETA interprets query intent against thousands of statutory provisions in real-time."
+    desc: "LETA TEC interprets query intent against thousands of statutory provisions in real-time."
   },
   {
     icon: ShieldCheck,
@@ -95,7 +95,7 @@ const LetaIntro = () => {
              transition={{ duration: 0.8 }}
              className="text-5xl md:text-7xl font-bold mb-4 tracking-tighter font-display text-[#F5F7FA] uppercase"
            >
-             <ScifiText text="INTRODUCING LETA" className="" />
+             <ScifiText text="INTRODUCING LETA TEC" className="" />
            </motion.h2>
 
            <motion.div
@@ -124,7 +124,7 @@ const LetaIntro = () => {
              transition={{ delay: 1.2 }}
              className="text-xl md:text-2xl text-[#A1AAB8] max-w-3xl font-light leading-relaxed border-l-2 border-white/[0.05] pl-6"
            >
-             LETA is not a chatbot. <br className="hidden md:block" />
+             LETA TEC is not a chatbot. <br className="hidden md:block" />
              It is a <span className="text-[#F5F7FA] font-medium">statutory intelligence system</span>, <br className="hidden md:block" />
              embedded directly into professional GST workflows.
            </motion.p>

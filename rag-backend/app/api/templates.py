@@ -319,7 +319,7 @@ async def customize_template(
     # Set up System Prompt
     system_msg = {
         "role": "system", 
-        "content": f"""You are 'LETA', a high-end AI legal assistant specializing ONLY in GST litigation document drafting.
+        "content": f"""You are 'LETA TEC', a high-end AI legal assistant specializing ONLY in GST litigation document drafting.
 Your EXCLUSIVE goal is to help the user customize and refine this specific legal template:
 
 ---
@@ -402,7 +402,7 @@ async def enhance_template(
 
     system_msg = {
         "role": "system",
-        "content": """You are 'LETA', an elite enterprise legal drafting optimizer.
+        "content": """You are 'LETA TEC', an elite enterprise legal drafting optimizer.
 Your objective is to take the provided draft legal document and enhance/refine it to a supreme professional standard.
 
 RULES:

@@ -33,7 +33,7 @@ const AskLetaWidget: React.FC<AskLetaWidgetProps> = ({ domain = 'gst', contextDe
           </div>
 
           <h3 className="text-lg font-bold text-white mb-2 uppercase tracking-wide font-display">
-            Start LETA Consultation
+            Start LETA TEC Consultation
           </h3>
           <p className="text-xs font-mono text-[#67E8F9] uppercase tracking-widest font-semibold">
             {domain.toUpperCase()} ADVISORY WORKSPACE

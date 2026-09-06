@@ -61,7 +61,7 @@ const SimulatedWorkspace = () => {
           {/* The real screenshot */}
           <img
             src={workspaceImg}
-            alt="LETA Workspace"
+            alt="LETA TEC Workspace"
             className="w-full block"
             style={{ display: 'block' }}
           />
