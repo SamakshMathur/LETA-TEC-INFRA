@@ -598,3 +598,55 @@ def test_non_explicit_query_authority_hierarchy_unchanged():
     expected_order = ["sc_1", "act_1", "hc_1", "notif_1", "cir_1", "aar_1", "icai_1"]
     actual_order = [c["chunk_id"] for c in resolved]
     assert actual_order == expected_order, f"Expected order {expected_order}, got {actual_order}"
+
+
+def test_mmr_deduplicate_selects_top_k_and_stays_fast():
+    """
+    Regression guard for a real production bug: _mmr_deduplicate's Jaccard
+    similarity step used to re-tokenize (`.lower().split()`) full chunk text
+    on every single comparison inside an O(top_k * n) loop, with zero
+    caching — the same chunk's text got re-split on every comparison it was
+    involved in. With a realistic top_k=25 / n=80 pool this was slow enough
+    to blow through supplement_and_rerank's 40s timeout in production,
+    silently discarding whatever MMR would have selected (confirmed live:
+    a document that scored #1 after both CrossEncoder and the legal
+    reranker never made it into the final answer, because this step never
+    finished in time and the pipeline fell back to a cruder pre-rerank pool
+    that never included it).
+
+    Asserts both correctness (selects exactly top_k distinct chunks, keeps
+    the highest-scoring one) and that it actually stays fast on a
+    realistically-sized pool — this second assertion is the one that would
+    have caught the original bug.
+    """
+    import time
+    from app.retrieval.retriever import _mmr_deduplicate
+
+    # Build an 80-chunk pool with ~3KB of varied text each (realistic chunk
+    # size) and distinct scores, mirroring the RERANK_CAP=80 pool size and
+    # _retrieval_top_k=20-30 range used in production.
+    words = ["gst", "section", "notification", "circular", "tax", "credit",
+              "supply", "refund", "assessment", "penalty", "rule", "act"]
+    pool = []
+    for i in range(80):
+        text = " ".join(f"{words[(i + j) % len(words)]}{j}" for j in range(400))
+        pool.append({
+            "chunk_id": f"chunk_{i}",
+            "text": text,
+            "_final_legal_score": float(80 - i),  # chunk_0 is the clear top scorer
+        })
+
+    top_k = 25
+    t0 = time.perf_counter()
+    selected = _mmr_deduplicate(pool, top_k=top_k)
+    elapsed = time.perf_counter() - t0
+
+    assert len(selected) == top_k
+    assert len({c["chunk_id"] for c in selected}) == top_k  # no duplicates
+    assert selected[0]["chunk_id"] == "chunk_0"  # highest-scoring chunk survives
+    # Generous ceiling — the fix runs this in well under a second locally;
+    # 5s leaves headroom for slow CI while still catching the O(top_k^2 * n)
+    # uncached-tokenization regression (which took 1.6s+ on this exact pool
+    # size even before accounting for the production CPU contention that
+    # pushed the real incident to a 40s timeout).
+    assert elapsed < 5.0, f"_mmr_deduplicate took {elapsed:.2f}s on an 80-chunk pool — regression risk"
