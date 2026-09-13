@@ -56,9 +56,25 @@ class ErrorBoundary extends React.Component<
   }
 }
 
+// Whether a pathname is the LetaWorkspace chat page — it gets its own
+// full-screen layout with no global Navbar/SystemFooter, since it has its
+// own internal header. Was `.endsWith('/leta')`, which only matched the
+// bare workspace URL (/:domainId/leta). Per-chat URLs
+// (/:domainId/leta/:sessionId, added for shareable chat links) broke that
+// the moment any chat was open — the check went false, so Layout fell
+// through to the normal branch and rendered the global Navbar +
+// SystemFooter ON TOP OF the workspace's own internal header/footer: two
+// headers stacked, which is what showed up as the logo/"Back to
+// Dashboard" overlap. Matching the whole "/leta" segment (with or without
+// a chat id after it) instead of just the end of the string fixes it for
+// every URL shape this route can take, not just the one without an id.
+export function isLetaWorkspacePath(pathname: string): boolean {
+  return /^\/[^/]+\/leta(\/|$)/.test(pathname);
+}
+
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
-  const isLetaWorkspace = location.pathname.endsWith('/leta');
+  const isLetaWorkspace = isLetaWorkspacePath(location.pathname);
 
   if (isLetaWorkspace) {
     return (
