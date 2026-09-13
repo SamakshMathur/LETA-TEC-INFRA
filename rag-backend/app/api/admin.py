@@ -89,6 +89,7 @@ async def upload_documents(
     request: Request,
     category: str = Form(..., description="Target category key e.g. 'acts', 'circulars'"),
     files: List[UploadFile] = File(..., description="One or more files to upload"),
+    year: Optional[str] = Form(None, description="Issuing year, e.g. '2026' — for notifications/circulars, drives recency-aware retrieval. Omit for documents with no meaningful year (e.g. the bare Act)."),
     current_admin: dict = Depends(get_current_admin),
 ):
     """
@@ -167,7 +168,7 @@ async def upload_documents(
         results = []
         for f in saved_files:
             try:
-                result = await run_in_threadpool(ingest_file, f["path"], f["rel_path"])
+                result = await run_in_threadpool(ingest_file, f["path"], f["rel_path"], year)
                 results.append({"file": f["filename"], **result})
             except Exception as e:
                 logger.error(f"Ingestion error for {f['filename']}: {e}")

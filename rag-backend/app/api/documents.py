@@ -121,6 +121,19 @@ def _load_metadata() -> List[dict]:
         return _meta_cache
 
 
+def append_to_metadata_cache(entry: dict) -> None:
+    """
+    Called by incremental_ingest right after an admin-uploaded document is
+    ingested, so it shows up in the document library listing (/list/*)
+    immediately — without this, a freshly uploaded document was searchable
+    by the RAG pipeline right away but invisible in the library until the
+    next container restart re-downloaded metadata.json from S3.
+    """
+    meta = _load_metadata()  # ensures the cache is populated first
+    with _meta_lock:
+        meta.append(entry)
+
+
 def _scan_filesystem() -> List[dict]:
     """Scan Database_V2.0 directory (fallback when metadata JSON is unavailable)."""
     docs = []
