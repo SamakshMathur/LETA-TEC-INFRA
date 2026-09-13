@@ -69,6 +69,10 @@ export const authRoutes: RouteConfig[] = [
 export const protectedRoutes: RouteConfig[] = [
   { path: ROUTES.DASHBOARD,   element: <ModuleDashboard /> },
   { path: '/:domainId/leta',  element: <LiveDomainGuard><LetaWorkspace /></LiveDomainGuard> },
+  // Same workspace, with a specific chat opened — gives every sidebar
+  // session a real, unique, copyable/bookmarkable URL instead of every
+  // chat living only in React state under the bare /:domainId/leta path.
+  { path: '/:domainId/leta/:sessionId', element: <LiveDomainGuard><LetaWorkspace /></LiveDomainGuard> },
 
   {
     path: ROUTES.GST.ROOT,
