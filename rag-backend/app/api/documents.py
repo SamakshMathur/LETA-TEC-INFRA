@@ -32,6 +32,39 @@ S3_BUCKET  = os.getenv("S3_DATA_BUCKET", "gst-rag-data-721082558531")
 S3_REGION  = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
 S3_DOCS_PREFIX = "documents"   # s3://<bucket>/documents/<folder>/<filename>
 
+
+def _content_disposition(disposition: str, filename: str) -> str:
+    """
+    Build a Content-Disposition value safe to pass as S3's
+    ResponseContentDisposition presigned-URL param.
+
+    HTTP header values are ISO-8859-1 (Latin-1) only — a filename with a
+    typographic character outside that range (en/em dash, smart quotes;
+    common in legal document titles like "Sections 3–6") makes S3 itself
+    reject the presigned request with InvalidArgumentHeader, which the
+    browser then shows as a raw S3 XML error where the PDF should be.
+
+    Sends both: an ASCII-safe `filename=` fallback (typographic
+    punctuation folded to its plain-ASCII equivalent, anything left
+    non-ASCII dropped) for older clients, and the RFC 5987
+    `filename*=UTF-8''<percent-encoded>` form every modern browser
+    actually uses, which preserves the exact original name.
+    """
+    import re
+    from urllib.parse import quote
+
+    ascii_name = (
+        filename
+        .replace("–", "-").replace("—", "-")   # – —
+        .replace("‘", "'").replace("’", "'")    # ‘ ’
+        .replace("“", '"').replace("”", '"')    # “ ”
+    )
+    ascii_name = ascii_name.encode("ascii", "ignore").decode("ascii").strip() or "document.pdf"
+    # `"` and `\` would break out of the quoted-string in `filename="..."`.
+    ascii_name = re.sub(r'[\\"]', "_", ascii_name)
+    encoded_name = quote(filename, safe="")
+    return f'{disposition}; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_name}'
+
 # Category → Database_V2.0 top-level folder name.
 # As of the 2026-09 restructure, Database_V2.0 is FLAT — one folder per
 # category, matching these keys 1:1. The listing endpoints filter by the
@@ -257,7 +290,9 @@ def view_document(category: str, filename: str, download: bool = False):
         url = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": S3_BUCKET, "Key": s3_key,
-                    "ResponseContentDisposition": f"{'attachment' if download else 'inline'}; filename=\"{filename}\""},
+                    "ResponseContentDisposition": _content_disposition(
+                        "attachment" if download else "inline", filename
+                    )},
             ExpiresIn=300,
         )
         from fastapi.responses import RedirectResponse
