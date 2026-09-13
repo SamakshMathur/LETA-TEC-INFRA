@@ -676,9 +676,20 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
 
     max_score = max(r.get("_final_legal_score", 0) for r in remaining) or 1.0
 
-    def jaccard(a: str, b: str) -> float:
-        set_a = set(a.lower().split())
-        set_b = set(b.lower().split())
+    # Tokenize every candidate's text ONCE up front and key sets by id() —
+    # the loop below previously called `.lower().split()` on full chunk text
+    # inside a nested O(top_k * n) comparison loop with zero caching, so the
+    # *same* chunk's text got re-tokenized on every single comparison it was
+    # involved in (tens of thousands of re-tokenizations for a realistic
+    # top_k=20-30 / n=80 pool). On the 1-2 vCPU Fargate tasks this runs on,
+    # that was slow enough to blow through supplement_and_rerank's 40s
+    # timeout and get silently abandoned — discarding whatever MMR would
+    # have selected (confirmed live: a document that scored #1 after both
+    # CrossEncoder and the legal reranker never made it into the final
+    # answer because this step never finished in time).
+    token_sets = {id(r): set(str(r.get("text", "")).lower().split()) for r in remaining}
+
+    def jaccard(set_a: set, set_b: set) -> float:
         if not set_a or not set_b:
             return 0.0
         return len(set_a & set_b) / len(set_a | set_b)
@@ -691,8 +702,9 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
             relevance = candidate.get("_final_legal_score", 0) / max_score
 
             if selected:
+                cand_tokens = token_sets[id(candidate)]
                 max_sim = max(
-                    jaccard(candidate.get("text", ""), s.get("text", ""))
+                    jaccard(cand_tokens, token_sets[id(s)])
                     for s in selected
                 )
             else:
