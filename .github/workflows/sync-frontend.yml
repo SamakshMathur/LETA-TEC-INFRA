@@ -2,9 +2,19 @@
 #
 # PURPOSE
 # -------
-# Amplify's GitHub webhook is broken — it does not auto-trigger on push to main.
 # This workflow fires on every push/merge to main and explicitly calls
-# `aws amplify start-job --job-type RELEASE` to kick off a new Amplify build.
+# `aws amplify start-job --job-type RELEASE` to kick off a new Amplify build,
+# as a backstop in case Amplify's own native GitHub webhook doesn't fire.
+#
+# As of 2026-09, Amplify's native webhook appears to be triggering builds on
+# its own again (it wasn't, originally, which is why this workflow exists) —
+# so on a normal push both this workflow's start-job call AND the native
+# webhook can race to build the same commit. Amplify only allows one job per
+# branch at a time, so whichever loses that race gets a LimitExceededException
+# back from start-job. That's expected and harmless: the "Start Amplify
+# RELEASE job" step below detects it and watches the other trigger's job
+# instead of failing. If Amplify's webhook is later confirmed reliable on its
+# own, this whole workflow could be retired instead of kept as a backstop.
 #
 # No extra secrets needed — reuses the same AWS_ACCESS_KEY_ID /
 # AWS_SECRET_ACCESS_KEY already used by the ECS deploy workflow.
@@ -36,15 +46,53 @@ jobs:
       - name: Start Amplify RELEASE job
         id: start_job
         run: |
-          JOB_ID=$(aws amplify start-job \
+          set +e
+          OUTPUT=$(aws amplify start-job \
             --app-id     "$AMPLIFY_APP_ID" \
             --branch-name "$AMPLIFY_BRANCH" \
             --job-type   RELEASE \
             --region     "$AWS_REGION" \
             --query      "jobSummary.jobId" \
-            --output     text)
+            --output     text 2>&1)
+          RC=$?
+          set -e
+
+          if [ $RC -eq 0 ]; then
+            JOB_ID="$OUTPUT"
+            echo "✅ Amplify build started — job $JOB_ID"
+          elif echo "$OUTPUT" | grep -q "LimitExceededException"; then
+            # Amplify only allows one job per branch at a time. Seeing this
+            # means a build for this exact push is already RUNNING/PENDING —
+            # either Amplify's own native webhook fired first (the header
+            # comment above assumes that webhook is broken; it appears to
+            # have started working again at some point without this workflow
+            # being updated) or a near-simultaneous run of this same workflow
+            # won the race. Either way there's nothing wrong: find that job
+            # and watch it instead of failing a deploy that's actually
+            # succeeding. (Confirmed by hand after PRs #37/#38: this step
+            # failed both times, but `aws amplify get-job` showed a real job
+            # already running each time and it went on to SUCCEED.)
+            echo "⚠️  start-job rejected (LimitExceededException) — a build for this branch is already in progress. Looking up that job instead of failing."
+            JOB_ID=$(aws amplify list-jobs \
+              --app-id      "$AMPLIFY_APP_ID" \
+              --branch-name "$AMPLIFY_BRANCH" \
+              --region      "$AWS_REGION" \
+              --max-results 5 \
+              --query       "jobSummaries[?status=='RUNNING' || status=='PENDING'] | [0].jobId" \
+              --output      text)
+            if [ -z "$JOB_ID" ] || [ "$JOB_ID" = "None" ]; then
+              echo "❌ start-job was rejected but no RUNNING/PENDING job was found to watch instead. Original error:"
+              echo "$OUTPUT"
+              exit 1
+            fi
+            echo "↪️  Watching already-running job $JOB_ID instead."
+          else
+            echo "❌ Amplify start-job failed:"
+            echo "$OUTPUT"
+            exit 1
+          fi
+
           echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
-          echo "✅ Amplify build started — job $JOB_ID"
           echo "🔗 https://ap-south-1.console.aws.amazon.com/amplify/home#/d1q7i80dk455hq/main/$JOB_ID"
 
       - name: Wait for build to complete
