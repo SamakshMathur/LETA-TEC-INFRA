@@ -5,7 +5,7 @@ import {
   X, Send, Sparkles, Menu, Paperclip,
   ChevronLeft, Folder, Star, Landmark, FileCheck,
   Bookmark, BookmarkCheck, Trash2, Calendar, ShieldCheck, Plus, Square, Upload,
-  ArrowLeft, Eye, Mic, MicOff, FileText, Tag
+  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio
 } from 'lucide-react';
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
@@ -291,6 +291,12 @@ const LetaWorkspace: React.FC = () => {
   // ─── Core State ─────────────────────────────────────────────────────────────
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // Corpus-freshness ticker on the landing screen — real titles pulled from
+  // the same document library the retriever indexes, not placeholder copy.
+  // Shows the most recently effective notifications/circulars so the corpus
+  // date is visible at a glance instead of only surfacing when a user hits
+  // a stale answer.
+  const [latestUpdates, setLatestUpdates] = useState<{ title: string; category: string }[]>([]);
   // handleAsk is a long-lived async closure (spans the whole streaming
   // request). Every `currentSessionId` reference inside it is frozen at
   // whatever the state was when handleAsk was CALLED — setCurrentSessionId()
@@ -726,6 +732,67 @@ const LetaWorkspace: React.FC = () => {
     const interval = setInterval(fetchSessions, 60000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Landing-screen freshness ticker — pull the most recent year bucket from
+  // both categories and interleave a handful of real titles. Public,
+  // unauthenticated endpoints (same ones the document library browser uses),
+  // so no auth header needed and a failure here should never block the page.
+  useEffect(() => {
+    const loadLatestUpdates = async () => {
+      try {
+        const [notifRes, circRes] = await Promise.all([
+          axios.get(`${BASE_URL}/api/documents/list/notifications/by-year`),
+          axios.get(`${BASE_URL}/api/documents/list/circulars/by-year`),
+        ]);
+
+        // Notification filenames follow CBIC's own convention reliably
+        // enough to reconstruct a real title: "01-2025-ct-eng.pdf" →
+        // Notification No. 01/2025 (Central Tax). Unknown tax-type codes
+        // just drop the parenthetical rather than guess.
+        const TAX_TYPE: Record<string, string> = {
+          ct: 'Central Tax', 'ct-rate': 'Central Tax, Rate',
+          igst: 'Integrated Tax', 'igst-rate': 'Integrated Tax, Rate',
+          utgst: 'Union Territory Tax', 'utgst-rate': 'Union Territory Tax, Rate',
+          cess: 'Compensation Cess', 'cess-rate': 'Compensation Cess, Rate',
+        };
+        const formatNotificationTitle = (filename: string, fallback: string) => {
+          const m = filename.match(/^(\d{1,3})-(\d{4})-([a-z-]+?)(?:-eng)?\.pdf$/i);
+          if (!m) return fallback;
+          const [, num, year, code] = m;
+          const taxType = TAX_TYPE[code.toLowerCase()];
+          return `Notification No. ${num}/${year}${taxType ? ` — ${taxType}` : ''}`;
+        };
+
+        const years = (byYear: Record<string, any[]>) =>
+          Object.keys(byYear).filter(y => y !== 'other').sort().reverse();
+
+        const notifByYear = notifRes.data || {};
+        const notifYears = years(notifByYear);
+        const notifications = notifYears.length
+          ? (notifByYear[notifYears[0]] || []).slice(0, 4).map((d: any) => ({
+              title: formatNotificationTitle(d.filename || '', (d.title || '').replace(/\.(pdf|docx?|xlsx?)$/i, '')),
+              category: 'Notification',
+            }))
+          : [];
+
+        // Circular filenames squish the circular number and date together
+        // with no reliable separator ("cir-244012025-cgst.pdf") — showing a
+        // parsed number risks showing a WRONG number, so use an honest
+        // generic label (still real, current data) instead of guessing.
+        const circByYear = circRes.data || {};
+        const circYears = years(circByYear);
+        const circulars = circYears.length
+          ? [{ title: `CBIC Circular — ${circYears[0]}`, category: 'Circular' }]
+          : [];
+
+        setLatestUpdates([...notifications, ...circulars].filter(u => u.title));
+      } catch (err) {
+        // Non-critical — landing screen still works without the ticker.
+        console.error('Failed to fetch latest updates ticker:', err);
+      }
+    };
+    loadLatestUpdates();
   }, []);
 
   useEffect(() => {
@@ -1897,7 +1964,28 @@ const LetaWorkspace: React.FC = () => {
             <div className={`max-w-[920px] mx-auto w-full px-6 md:px-12 flex flex-col gap-8 ${isEmptyState ? '' : 'pt-10 pb-40'}`}>
 
               {messages.length === 0 ? (
-                <div className="w-full max-w-[640px] mx-auto flex flex-col">
+                <div className="w-full max-w-[760px] mx-auto flex flex-col">
+                  {/* Corpus-freshness ticker — real recent notifications/circulars */}
+                  {latestUpdates.length > 0 && (
+                    <div className="mb-6 -mx-1 overflow-x-auto scrollbar-thin animate-in fade-in duration-300" style={{ WebkitOverflowScrolling: 'touch' }}>
+                      <div className="flex items-center gap-2 px-1 w-max">
+                        <div className="flex items-center gap-1.5 pr-2 flex-shrink-0 text-[#4FB7C5]">
+                          <Radio size={11} className="animate-pulse" />
+                          <span className="text-[9px] font-mono uppercase tracking-[0.15em] font-bold">Latest</span>
+                        </div>
+                        {latestUpdates.map((u, i) => (
+                          <span
+                            key={i}
+                            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/[0.06] bg-white/[0.02] text-[11px] text-[#A7B3C2] whitespace-nowrap"
+                          >
+                            <span className="text-[9px] font-mono uppercase tracking-wide text-[#4FB7C5]/70">{u.category}</span>
+                            {u.title.length > 48 ? u.title.slice(0, 45) + '...' : u.title}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="text-left mb-7 animate-in fade-in slide-in-from-top-4 duration-300">
                     <h2
                       style={{
@@ -1912,17 +2000,25 @@ const LetaWorkspace: React.FC = () => {
                       Hi {getSessionFirstName() || 'there'}, LETA TEC is here to assist you.
                     </h2>
                   </div>
-                  <div className="flex flex-col">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {domainConfig.suggestedQueries.map((card, idx) => (
                       <button
                         key={idx}
                         onClick={() => handleAsk(card.query)}
-                        className="flex items-start gap-3 py-2.5 text-left rounded-lg hover:bg-white/[0.03] transition-colors duration-150 group -mx-2 px-2"
+                        className="flex flex-col items-start gap-3 p-4 text-left rounded-2xl border border-white/[0.05] bg-white/[0.015] hover:bg-white/[0.03] hover:border-[#4FB7C5]/25 transition-all duration-150 group"
                       >
-                        <FileCheck size={13} className="mt-0.5 flex-shrink-0 text-[#4FB7C5]/70 group-hover:text-[#4FB7C5] transition-colors" />
-                        <span className="text-sm leading-relaxed text-[#A7B3C2] group-hover:text-white transition-colors">
-                          {card.query}
-                        </span>
+                        <div className="w-full flex items-start justify-between">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#4FB7C5]/10 text-[#4FB7C5] flex-shrink-0">
+                            <FileCheck size={14} />
+                          </div>
+                          <ArrowUpRight size={14} className="text-[#475569] group-hover:text-[#4FB7C5] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-white mb-1">{card.title}</p>
+                          <p className="text-[11px] leading-relaxed text-[#6C7A99] line-clamp-2">
+                            {card.query}
+                          </p>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -2322,6 +2418,10 @@ const LetaWorkspace: React.FC = () => {
                 )}
               </div>
             </div>
+
+            <p className="text-center text-[10px] text-[#475569] mt-3 max-w-[920px] mx-auto">
+              *Responses are generated from indexed statutes and filings — verify source citations before relying on them.
+            </p>
           </div>
         </section>
 
