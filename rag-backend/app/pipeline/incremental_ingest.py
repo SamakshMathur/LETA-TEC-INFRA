@@ -231,7 +231,7 @@ def _persist_to_s3():
 # it to the metadata list /list/* reads from (local file + S3 + the live
 # in-process cache, so it appears without a restart).
 
-def _register_document(file_path: Path, rel_path: str, first_meta: Dict, year: str = None, filename: str = None) -> None:
+def _register_document(file_path: Path, rel_path: str, year: str = None, filename: str = None) -> None:
     folder = rel_path.split("/")[0] if "/" in rel_path else rel_path.split("\\")[0]
     # file_path may be a temp on-disk path (e.g. the knowledge-upload flow's
     # <uuid>_<original name>.pdf) — filename lets the caller give the real,
@@ -252,17 +252,25 @@ def _register_document(file_path: Path, rel_path: str, first_meta: Dict, year: s
             logger.warning(f"Document S3 upload failed (still ingested/searchable): {e}")
 
     # 2. Library metadata entry — same shape as the bulk-generated ones.
+    # Re-derive category/document_type/source from rel_path directly rather
+    # than trust first_meta's copies: _extract_pages/_extract_text sets
+    # metadata["source"] = str(file_path) right after classify_folder() set
+    # it to the real authority ("CBIC"/"Judiciary"/"Official"), silently
+    # clobbering it (both ingestion paths, pre-existing, not introduced
+    # here) — same dict key used for two different things. Re-classifying
+    # here keeps this entry correct regardless of that separate bug.
+    classified = LegalParser.classify_folder(rel_path)
     entry = {
-        "id": f"{first_meta.get('category', 'other')}_{filename}",
-        "title": file_path.stem,
+        "id": f"{classified.get('category', 'other')}_{filename}",
+        "title": Path(filename).stem,
         "filename": filename,
         "size": f"{round(file_path.stat().st_size / 1024, 1)} KB",
         "path": rel_path,
         "folder": folder,
-        "category": first_meta.get("category", "other"),
+        "category": classified.get("category", "other"),
         "year": year or "other",
-        "source": first_meta.get("source", "General"),
-        "document_type": first_meta.get("document_type", "Other"),
+        "source": classified.get("source", "General"),
+        "document_type": classified.get("document_type", "Other"),
     }
 
     try:
@@ -332,7 +340,7 @@ def ingest_file(file_path: Path, rel_path: str, year: str = None) -> Dict:
     # Register the raw file + library metadata so it's viewable/browsable,
     # not just searchable (see _register_document's docstring for why this
     # was a separate, previously-missing step).
-    _register_document(file_path, rel_path, chunks[0]["metadata"], year=year)
+    _register_document(file_path, rel_path, year=year)
 
     # Signal the live retriever to reload so new docs are searchable immediately
     try:

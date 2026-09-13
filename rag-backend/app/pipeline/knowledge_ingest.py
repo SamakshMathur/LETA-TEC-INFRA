@@ -173,7 +173,7 @@ async def process_document_task(doc_id: str, file_path: str, rel_path: str):
         if doc and doc.get("effective_date"):
             year = str(doc["effective_date"])[:4]
         filename = doc["filename"] if doc else rel_path.split("/")[-1]
-        _register_document(path, rel_path, chunks[0]["metadata"], year=year, filename=filename)
+        _register_document(path, rel_path, year=year, filename=filename)
     except Exception as e:
         logger.warning(f"Document registration failed (searchable but not browsable/viewable yet): {e}")
 
