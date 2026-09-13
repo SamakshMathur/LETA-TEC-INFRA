@@ -9,6 +9,7 @@ from typing import List, Dict, Optional, Tuple
 from app.database import get_db
 from app.config import DATA_DIR
 from app.pipeline.knowledge_ingest import calculate_sha256, process_document_task
+from app.api.documents import CATEGORY_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,14 @@ class KnowledgeService:
         document_id = str(uuid.uuid4())
         ext = Path(filename).suffix.replace(".", "").upper()
 
+        # LegalParser.classify_folder (used deep in the ingestion pipeline to
+        # tag every chunk with the right category/document_type/source) reads
+        # this from the rel_path's TOP-LEVEL FOLDER — a bare filename with no
+        # folder prefix always fell through to "other"/"Other", regardless of
+        # the category the admin actually picked in the upload form.
+        folder_name = CATEGORY_MAP.get(category.lower(), category)
+        rel_path = f"{folder_name}/{filename}"
+
         metadata = {
             "document_id": document_id,
             "title": filename,
@@ -72,7 +81,7 @@ class KnowledgeService:
             "chunk_count": 0,
             "is_active": True,
             "sha256": file_hash,
-            "rel_path": filename,
+            "rel_path": rel_path,
             "file_path": str(temp_path)
         }
 
@@ -88,10 +97,10 @@ class KnowledgeService:
             })
 
         if background_tasks:
-            background_tasks.add_task(process_document_task, document_id, str(temp_path), filename)
+            background_tasks.add_task(process_document_task, document_id, str(temp_path), rel_path)
         else:
             import asyncio
-            asyncio.create_task(process_document_task(document_id, str(temp_path), filename))
+            asyncio.create_task(process_document_task(document_id, str(temp_path), rel_path))
 
         # Clean ObjectId from return dict
         metadata.pop("_id", None)
@@ -200,11 +209,14 @@ class KnowledgeService:
                 "details": f"Re-indexed document {doc['filename']}"
             })
 
+            # rel_path (category-prefixed) if this doc has one — older records
+            # from before that fix only have the bare filename.
+            reindex_rel_path = doc.get("rel_path") or doc["filename"]
             if background_tasks:
-                background_tasks.add_task(process_document_task, doc_id, doc["file_path"], doc["filename"])
+                background_tasks.add_task(process_document_task, doc_id, doc["file_path"], reindex_rel_path)
             else:
                 import asyncio
-                asyncio.create_task(process_document_task(doc_id, doc["file_path"], doc["filename"]))
+                asyncio.create_task(process_document_task(doc_id, doc["file_path"], reindex_rel_path))
             return {"status": "success", "message": "Re-indexing task queued"}
         return {"status": "error", "message": "Database connection failed"}
 

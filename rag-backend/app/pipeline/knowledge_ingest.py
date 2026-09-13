@@ -18,7 +18,10 @@ from app.ingestion.legal_parser import LegalParser
 from app.ingestion.pdf_text import extract_text_from_pdf
 from app.ingestion.docx_reader import extract_text_from_docx, extract_text_from_doc
 from app.ingestion.excel_reader import extract_text_from_excel
-from app.pipeline.incremental_ingest import _chunk_pages, _embed_and_append, _append_to_chunks_file
+from app.pipeline.incremental_ingest import (
+    _chunk_pages, _embed_and_append, _append_to_chunks_file,
+    _persist_to_s3, _register_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +149,33 @@ async def process_document_task(doc_id: str, file_path: str, rel_path: str):
     except Exception as e:
         update_status(doc_id, "Failed", error_message=f"Indexing failed: {str(e)}")
         return
+
+    # Without this, the updated FAISS index/chunks only ever existed on this
+    # one container's local disk — the admin UI would report "Completed" and
+    # the doc would be searchable right now, then silently vanish from
+    # retrieval on the next deploy/restart because nothing was ever pushed
+    # back to S3 (unlike the older incremental_ingest.ingest_file() path,
+    # which this pipeline otherwise mirrors).
+    update_status(doc_id, "Persisting")
+    try:
+        _persist_to_s3()
+    except Exception as e:
+        update_status(doc_id, "Failed", error_message=f"S3 persistence failed: {str(e)}")
+        return
+
+    # Register the raw file + library metadata so it's viewable in
+    # /api/documents/view and browsable in /api/documents/list/*, not just
+    # searchable by the RAG pipeline.
+    try:
+        db = get_db()
+        doc = db["knowledge_base"].find_one({"document_id": doc_id}) if db is not None else None
+        year = None
+        if doc and doc.get("effective_date"):
+            year = str(doc["effective_date"])[:4]
+        filename = doc["filename"] if doc else rel_path.split("/")[-1]
+        _register_document(path, rel_path, chunks[0]["metadata"], year=year, filename=filename)
+    except Exception as e:
+        logger.warning(f"Document registration failed (searchable but not browsable/viewable yet): {e}")
 
     update_status(doc_id, "Refreshing Retriever")
     try:

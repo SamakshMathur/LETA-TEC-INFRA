@@ -27,6 +27,16 @@ from app.ingestion.clean_text import clean_text
 
 _S3_BUCKET = os.getenv("S3_DATA_BUCKET", "")
 _S3_REGION = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+_S3_DOCS_PREFIX = "documents"   # matches app.api.documents.S3_DOCS_PREFIX
+
+# The document *library* listing file — a different thing from this module's
+# own META_FILE (index.meta.json, one entry per FAISS-indexed chunk). This
+# one is what app.api.documents reads to show a document in /list/* and to
+# resolve /view's S3 lookup. Kept in sync here on every admin upload —
+# previously nothing updated it, so an uploaded file was searchable right
+# away but invisible in the library and its "View PDF" button 404'd, until
+# a full offline metadata regen + container restart happened to pick it up.
+_DOC_META_FILE = Path(DATA_DIR) / "document_metadata.json"
 
 # Set ENABLE_CONTEXTUAL_ENRICHMENT=true in ECS task definition to enable
 # per-chunk Haiku context enrichment on admin-upload ingestion.
@@ -214,9 +224,77 @@ def _persist_to_s3():
         logger.warning(f"S3 persistence failed (index still updated in-memory): {e}")
 
 
+# ── Document-library registration ─────────────────────────────────────────────
+# Makes an admin-uploaded file behave like every other document in the
+# library, not just a searchable-but-otherwise-invisible set of vectors:
+# pushes the raw file to where /view's S3 fallback looks for it, and adds
+# it to the metadata list /list/* reads from (local file + S3 + the live
+# in-process cache, so it appears without a restart).
+
+def _register_document(file_path: Path, rel_path: str, first_meta: Dict, year: str = None, filename: str = None) -> None:
+    folder = rel_path.split("/")[0] if "/" in rel_path else rel_path.split("\\")[0]
+    # file_path may be a temp on-disk path (e.g. the knowledge-upload flow's
+    # <uuid>_<original name>.pdf) — filename lets the caller give the real,
+    # user-facing name instead of that temp path's own basename.
+    filename = filename or file_path.name
+
+    # 1. Raw file → S3, at the exact key app.api.documents' /view endpoint
+    #    looks up (S3_DOCS_PREFIX/<folder>/<filename>). Without this the file
+    #    only ever existed on the container's local disk — gone on the next
+    #    restart, and never found by /view even before that.
+    if _S3_BUCKET:
+        try:
+            import boto3
+            s3 = boto3.client("s3", region_name=_S3_REGION)
+            s3.upload_file(str(file_path), _S3_BUCKET, f"{_S3_DOCS_PREFIX}/{rel_path}")
+            logger.info(f"Persisted document → s3://{_S3_BUCKET}/{_S3_DOCS_PREFIX}/{rel_path}")
+        except Exception as e:
+            logger.warning(f"Document S3 upload failed (still ingested/searchable): {e}")
+
+    # 2. Library metadata entry — same shape as the bulk-generated ones.
+    entry = {
+        "id": f"{first_meta.get('category', 'other')}_{filename}",
+        "title": file_path.stem,
+        "filename": filename,
+        "size": f"{round(file_path.stat().st_size / 1024, 1)} KB",
+        "path": rel_path,
+        "folder": folder,
+        "category": first_meta.get("category", "other"),
+        "year": year or "other",
+        "source": first_meta.get("source", "General"),
+        "document_type": first_meta.get("document_type", "Other"),
+    }
+
+    try:
+        existing: list = []
+        if _DOC_META_FILE.exists():
+            with _DOC_META_FILE.open(encoding="utf-8") as f:
+                existing = json.load(f)
+        existing.append(entry)
+        _DOC_META_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with _DOC_META_FILE.open("w", encoding="utf-8") as f:
+            json.dump(existing, f, ensure_ascii=False)
+
+        if _S3_BUCKET:
+            import boto3
+            s3 = boto3.client("s3", region_name=_S3_REGION)
+            s3.upload_file(str(_DOC_META_FILE), _S3_BUCKET, "data/document_metadata.json")
+            logger.info("Persisted document_metadata.json → S3")
+    except Exception as e:
+        logger.warning(f"document_metadata.json update failed: {e}")
+
+    # 3. Hot-update the live process's in-memory copy so it shows up in
+    #    /list/* immediately, same idea as reload_retriever() below.
+    try:
+        from app.api.documents import append_to_metadata_cache
+        append_to_metadata_cache(entry)
+    except Exception as e:
+        logger.warning(f"In-memory metadata cache update failed (restart to pick up): {e}")
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def ingest_file(file_path: Path, rel_path: str) -> Dict:
+def ingest_file(file_path: Path, rel_path: str, year: str = None) -> Dict:
     """
     Full incremental pipeline for a single uploaded file.
     Returns a status dict: {chunks_added, vectors_added, status}
@@ -250,6 +328,11 @@ def ingest_file(file_path: Path, rel_path: str) -> Dict:
 
     # Persist updated index to S3 so it survives ECS task restarts
     _persist_to_s3()
+
+    # Register the raw file + library metadata so it's viewable/browsable,
+    # not just searchable (see _register_document's docstring for why this
+    # was a separate, previously-missing step).
+    _register_document(file_path, rel_path, chunks[0]["metadata"], year=year)
 
     # Signal the live retriever to reload so new docs are searchable immediately
     try:
