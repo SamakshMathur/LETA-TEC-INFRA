@@ -182,6 +182,12 @@ db = Database()
 def get_session_collection():
     return db.get_collection("sessions")
 
+def get_message_collection():
+    """Messages are stored as their own documents here (see app.py's
+    _save_message), not $push-ed into the session doc's embedded array —
+    every session/chat-history read must pull from this collection."""
+    return db.get_collection("messages")
+
 def get_user_collection():
     return db.get_collection("users")
 

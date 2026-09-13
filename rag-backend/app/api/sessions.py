@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import uuid
 import logging
 
-from app.database import get_session_collection
+from app.database import get_session_collection, get_message_collection
 from app.security import get_current_user
 
 router = APIRouter()
@@ -137,11 +137,37 @@ def _coerce_message(raw: dict) -> Optional[Message]:
             content=raw.get("content", ""),
             metadata=raw.get("metadata"),
             citations=raw.get("citations"),
-            timestamp=raw.get("timestamp") or utc_now(),
+            # "timestamp" is the embedded-array (legacy) field name; messages
+            # saved to the separate collection (see get_session_messages
+            # below) use "created_at" instead — accept either.
+            timestamp=raw.get("timestamp") or raw.get("created_at") or utc_now(),
         )
     except Exception as exc:
         logger.warning(f"_coerce_message: could not coerce message — {exc!r}")
         return None
+
+
+def _load_session_messages(session_id: str, embedded_fallback: list) -> list:
+    """
+    Messages are saved as their own documents in the "messages" collection
+    (see app.py's _save_message — one document per message, not $push-ed
+    into the session doc's embedded array), so that's the real source of
+    truth for a session's conversation. Without this, GET /{session_id}
+    silently returned an always-empty `messages: []` (the session doc's own
+    embedded field, which nothing writes to anymore) — every previously
+    saved consultation would show as blank when reopened.
+
+    Falls back to the session doc's embedded array for any legacy session
+    that predates the separate-collection change.
+    """
+    msg_collection = get_message_collection()
+    if msg_collection is None:
+        return embedded_fallback
+
+    docs = list(
+        msg_collection.find({"session_id": session_id}, {"_id": 0}).sort("created_at", 1)
+    )
+    return docs if docs else embedded_fallback
 
 
 def _coerce_session_doc(doc: dict) -> dict:
@@ -150,7 +176,7 @@ def _coerce_session_doc(doc: dict) -> dict:
     message so the FastAPI response-model validator never sees legacy
     documents that are missing required fields (e.g. message_id).
     """
-    raw_messages = doc.get("messages", [])
+    raw_messages = _load_session_messages(doc.get("session_id", ""), doc.get("messages", []))
     coerced_messages = []
     for raw_msg in raw_messages:
         m = _coerce_message(raw_msg)
@@ -463,6 +489,12 @@ def delete_session(
             detail="Session not found"
         )
 
+    # Real messages live in their own collection (see _load_session_messages) —
+    # deleting only the session doc would leave them all orphaned.
+    msg_collection = get_message_collection()
+    if msg_collection is not None:
+        msg_collection.delete_many({"session_id": session_id})
+
     logger.info(
         f"Session deleted | user={current_user['username']} "
         f"| session={session_id}"
@@ -510,6 +542,12 @@ def clear_session_messages(
             status_code=404,
             detail="Session not found"
         )
+
+    # Real messages live in their own collection (see _load_session_messages) —
+    # clearing only the session doc's embedded array leaves them all in place.
+    msg_collection = get_message_collection()
+    if msg_collection is not None:
+        msg_collection.delete_many({"session_id": session_id})
 
     logger.info(
         f"Session cleared | user={current_user['username']} "
