@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BASE_URL } from '../../config/api';
-import { ShieldCheck, Copy, Check, RefreshCw } from 'lucide-react';
+import {
+  ShieldCheck, Copy, Check, RefreshCw,
+  ThumbsUp, ThumbsDown, Share2, Download, Printer,
+  FileText, ExternalLink, ChevronDown, ChevronUp,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -222,9 +226,12 @@ function linkifyLegalRefs(markdown, sources) {
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true, onDocumentClick, onRegenerate, isStreaming = false }) => {
+const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true, onDocumentClick, onRegenerate, isStreaming = false, shareUrl = null }) => {
   const [hasCopied, setHasCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
+  const [feedback, setFeedback] = useState(null); // 'up' | 'down' | null
+  const [shareCopied, setShareCopied] = useState(false);
+  const [expandedSources, setExpandedSources] = useState(() => new Set());
 
   // Generated once, by the caller, at the moment this message is created
   // (see handleAsk in LetaWorkspace.tsx) — not here. Render must stay free
@@ -265,6 +272,56 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
     navigator.clipboard.writeText(data.answer);
     setHasCopied(true);
     setTimeout(() => setHasCopied(false), 2000);
+  };
+
+  // Fire-and-forget against the existing /feedback endpoint (already used
+  // for quality monitoring) — a failed post shouldn't undo the button's
+  // visual state, the user's click was still real.
+  const handleFeedback = (rating) => {
+    const next = feedback === rating ? null : rating;
+    setFeedback(next);
+    if (next === null) return; // toggled off — nothing meaningful to log
+    fetch(`${BASE_URL}/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: data?.sessionId || null,
+        question: data?.query || '',
+        answer_preview: (data?.answer || '').slice(0, 200),
+        rating: next === 'up' ? 1 : -1,
+      }),
+    }).catch(() => { /* non-critical — button state already reflects the click */ });
+  };
+
+  const handleShare = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  };
+
+  const handleDownload = () => {
+    if (!data?.answer) return;
+    const body = `Q: ${data.query || ''}\n\n${data.answer}\n`;
+    const blob = new Blob([body], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `leta-tec-response-${(data.responseId || Date.now())}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrint = () => window.print();
+
+  const toggleSourceExpanded = (idx) => {
+    setExpandedSources(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
   };
 
   if (!data) return null;
@@ -378,6 +435,68 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                 <RefreshCw size={12} />
               </button>
             )}
+
+            {/* Like / Dislike */}
+            <button
+              onClick={() => handleFeedback('up')}
+              className="p-1.5 rounded-md transition-all"
+              style={{
+                background: feedback === 'up' ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${feedback === 'up' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.07)'}`,
+                color: feedback === 'up' ? '#22C55E' : '#64748B',
+              }}
+              title="Good response"
+            >
+              <ThumbsUp size={12} />
+            </button>
+            <button
+              onClick={() => handleFeedback('down')}
+              className="p-1.5 rounded-md transition-all"
+              style={{
+                background: feedback === 'down' ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${feedback === 'down' ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.07)'}`,
+                color: feedback === 'down' ? '#EF4444' : '#64748B',
+              }}
+              title="Needs improvement"
+            >
+              <ThumbsDown size={12} />
+            </button>
+
+            {/* Share — copies this chat's own URL, only once a real session exists */}
+            {shareUrl && (
+              <button
+                onClick={handleShare}
+                className="p-1.5 rounded-md transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  color: shareCopied ? '#22C55E' : '#64748B',
+                }}
+                title={shareCopied ? 'Link copied' : 'Copy link to this chat'}
+              >
+                {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
+              </button>
+            )}
+
+            {/* Download */}
+            <button
+              onClick={handleDownload}
+              className="p-1.5 rounded-md transition-all"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: '#64748B' }}
+              title="Download response"
+            >
+              <Download size={12} />
+            </button>
+
+            {/* Print */}
+            <button
+              onClick={handlePrint}
+              className="p-1.5 rounded-md transition-all"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: '#64748B' }}
+              title="Print response"
+            >
+              <Printer size={12} />
+            </button>
           </motion.div>
 
           {/* Content — no box, flows naturally */}
@@ -466,6 +585,60 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
               />
             )}
           </div>
+
+          {/* ── Reference cards — the real chunks this answer was built from ── */}
+          {!isStreaming && sources.length > 0 && (
+            <div className="mt-6">
+              <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6C7A99] block mb-2.5">
+                Referenced in this answer
+              </span>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
+                {sources.map((src, idx) => {
+                  const isExpanded = expandedSources.has(idx);
+                  const title = (src.title || 'Document').replace(/\.[a-z]{2,5}$/i, '');
+                  const snippet = src.snippet || '';
+                  const docUrl = src.url?.startsWith('/api/') ? BASE_URL + src.url : src.url;
+                  return (
+                    <div
+                      key={idx}
+                      className="flex-shrink-0 w-[260px] p-3.5 rounded-xl border border-white/[0.06] bg-white/[0.015] flex flex-col"
+                    >
+                      <div className="flex items-start gap-2 mb-2">
+                        <FileText size={13} className="mt-0.5 flex-shrink-0 text-[#4FB7C5]" />
+                        <p className="text-xs font-semibold text-white leading-snug line-clamp-2">{title}</p>
+                      </div>
+                      {snippet && (
+                        <p className={`text-[11px] leading-relaxed text-[#8592A8] mb-2 ${isExpanded ? '' : 'line-clamp-3'}`}>
+                          {snippet}
+                        </p>
+                      )}
+                      <div className="mt-auto flex items-center justify-between pt-1">
+                        {snippet.length > 140 ? (
+                          <button
+                            onClick={() => toggleSourceExpanded(idx)}
+                            className="flex items-center gap-0.5 text-[10px] font-semibold text-[#4FB7C5] hover:text-[#67E8F9] transition-colors"
+                          >
+                            {isExpanded ? 'Show less' : 'Read more'}
+                            {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                          </button>
+                        ) : <span />}
+                        {docUrl && (
+                          <button
+                            onClick={() => onDocumentClick
+                              ? onDocumentClick({ url: docUrl, page: src.page || null, title })
+                              : window.open(docUrl, '_blank', 'noopener,noreferrer')}
+                            className="flex items-center gap-0.5 text-[10px] font-semibold text-[#8592A8] hover:text-white transition-colors"
+                          >
+                            Original PDF <ExternalLink size={10} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Minimal ID watermark — only visible on hover */}
           <motion.div

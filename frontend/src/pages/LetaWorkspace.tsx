@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Send, Sparkles, Menu, Paperclip,
@@ -205,7 +205,14 @@ function extractStreamMarkers(buffer: string, handlers: StreamMarkerHandlers): s
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const LetaWorkspace: React.FC = () => {
-  const { domainId = 'gst' } = useParams<{ domainId: string }>();
+  // sessionId here is the URL's own copy of the active chat, present only
+  // when the workspace was opened via a per-chat link (/:domainId/leta/:sessionId)
+  // — either a shared/bookmarked link or one this session's own navigation
+  // just pushed. It's read once on mount to seed the initial restore below;
+  // day-to-day session switching updates the URL via `navigate`, not by
+  // reading this param again.
+  const { domainId = 'gst', sessionId: urlSessionId } = useParams<{ domainId: string; sessionId?: string }>();
+  const navigate = useNavigate();
 
   // Active configurations based on current domain
   const domainConfig = {
@@ -719,9 +726,13 @@ const LetaWorkspace: React.FC = () => {
         const list: Session[] = res.data;
         setSessions(list);
 
+        // A session id already in the URL (shared link, bookmark, refresh
+        // of a per-chat URL) wins over the sessionStorage "last active"
+        // fallback — that's the whole point of giving each chat its own URL.
         const savedId = sessionStorage.getItem(`leta_active_session_${domainId}`);
-        if (savedId && list.some(s => s.session_id === savedId)) {
-          handleSelectSession(savedId);
+        const restoreId = urlSessionId || savedId;
+        if (restoreId && list.some(s => s.session_id === restoreId)) {
+          handleSelectSession(restoreId);
         }
       } catch (err) {
         console.error('Failed to fetch sessions:', err);
@@ -868,6 +879,10 @@ const LetaWorkspace: React.FC = () => {
     setCurrentSessionId(sessionId);
     setIsLoading(!cachedMessages && !streamingSessionsRef.current.has(sessionId));
     setIsStreaming(streamingSessionsRef.current.has(sessionId));
+    // Reflect the open chat in the URL so it has a real, copyable address —
+    // `replace` so clicking through a dozen past chats doesn't bury the
+    // back button under a dozen history entries.
+    navigate(`/${domainId}/leta/${sessionId}`, { replace: true });
 
     try {
       const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`, { headers: getAuthHeaders() });
@@ -904,6 +919,7 @@ const LetaWorkspace: React.FC = () => {
     setQuery('');
     setSelectedFile(null);
     setIsLoading(false);
+    navigate(`/${domainId}/leta`, { replace: true });
   };
 
   const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
@@ -1083,6 +1099,9 @@ const LetaWorkspace: React.FC = () => {
           streamSessionKey = activeSessionId;
           sessionMessagesRef.current.set(streamSessionKey, pendingMessages);
           setCurrentSessionId(activeSessionId);
+          // Real backend id exists now — give this brand-new chat its real
+          // shareable URL too, not just chats reopened from the sidebar.
+          navigate(`/${domainId}/leta/${activeSessionId}`, { replace: true });
         } catch {
           // Session creation failed (CORS or backend unreachable). The
           // optimistic entry above is NOT a real backend session — if we
@@ -2077,7 +2096,16 @@ const LetaWorkspace: React.FC = () => {
                                 confidence: msg.confidence || 0.95,
                                 status: msg.current_status,
                                 responseId: msg.responseId,
+                                sessionId: currentSessionId,
                               }}
+                              // Only a real backend session has a URL worth sharing —
+                              // the "pending-<ts>" placeholder used before the first
+                              // /api/sessions/new round-trip resolves isn't one.
+                              shareUrl={
+                                currentSessionId && !currentSessionId.startsWith('pending-')
+                                  ? `${window.location.origin}/${domainId}/leta/${currentSessionId}`
+                                  : null
+                              }
                               isDark
                               animate={!msg.isHistory}
                               onDocumentClick={handleDocumentClick}
