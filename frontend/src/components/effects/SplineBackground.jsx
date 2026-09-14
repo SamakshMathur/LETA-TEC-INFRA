@@ -1,6 +1,7 @@
-import { Suspense, lazy } from 'react';
+import { Suspense } from 'react';
+import { lazyWithRetry } from '../../utils/lazyWithRetry';
 
-const Spline = lazy(() => import('@splinetool/react-spline'));
+const Spline = lazyWithRetry(() => import('@splinetool/react-spline'));
 
 /**
  * Drop your Spline scene URL below.
