@@ -383,13 +383,23 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
       {/* ── Answer body ──────────────────────────────────────────────────── */}
       {data?.answer && (
         <>
-          {/* Floating action bar — appears on hover, top-right of the answer */}
+          {/* Action bar — appears on hover, right-aligned above the answer.
+              NOT absolutely positioned: it used to float via `absolute
+              top-0 right-0` when it only held the LETA badge + Copy (+
+              Regenerate), narrow enough to clear the text below it. Once
+              like/dislike/share/download/print were added it got wide
+              enough to visually sit on top of the first lines of the
+              answer instead of clearing them (reported live — the row
+              overlapping mid-sentence text). Reserving its own row in
+              normal flow — same fade-on-hover, but pushing content down
+              by a real height instead of floating over it — fixes that
+              regardless of how many buttons this ever grows to; `flex-wrap`
+              keeps it safe at narrow widths too. */}
           <motion.div
             initial={false}
-            animate={{ opacity: actionsVisible ? 1 : 0, y: actionsVisible ? 0 : -4 }}
+            animate={{ opacity: actionsVisible ? 1 : 0 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-0 right-0 flex items-center gap-1 z-10"
-            style={{ pointerEvents: actionsVisible ? 'auto' : 'none' }}
+            className="flex items-center flex-wrap justify-end gap-1 mb-3"
           >
             {/* LETA badge */}
             <div

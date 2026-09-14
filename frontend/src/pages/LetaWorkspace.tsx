@@ -211,7 +211,11 @@ const LetaWorkspace: React.FC = () => {
   // just pushed. It's read once on mount to seed the initial restore below;
   // day-to-day session switching updates the URL via `navigate`, not by
   // reading this param again.
-  const { domainId = 'gst', sessionId: urlSessionId } = useParams<{ domainId: string; sessionId?: string }>();
+  // The route is a single "/:domainId/leta/*" match (see routes/index.tsx
+  // for why it's a splat and not a second ":sessionId" Route) — the splat
+  // shows up under the '*' key and IS the session id when present.
+  const { domainId = 'gst', '*': sessionSplat } = useParams<{ domainId: string; '*': string }>();
+  const urlSessionId = sessionSplat || undefined;
   const navigate = useNavigate();
 
   // Active configurations based on current domain

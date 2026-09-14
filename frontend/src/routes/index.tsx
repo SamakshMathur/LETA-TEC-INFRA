@@ -68,11 +68,20 @@ export const authRoutes: RouteConfig[] = [
 /** Require login — redirect to /login if not authenticated */
 export const protectedRoutes: RouteConfig[] = [
   { path: ROUTES.DASHBOARD,   element: <ModuleDashboard /> },
-  { path: '/:domainId/leta',  element: <LiveDomainGuard><LetaWorkspace /></LiveDomainGuard> },
-  // Same workspace, with a specific chat opened — gives every sidebar
-  // session a real, unique, copyable/bookmarkable URL instead of every
-  // chat living only in React state under the bare /:domainId/leta path.
-  { path: '/:domainId/leta/:sessionId', element: <LiveDomainGuard><LetaWorkspace /></LiveDomainGuard> },
+  // ONE route with a trailing splat, not two sibling Route entries for
+  // "/:domainId/leta" vs "/:domainId/leta/:sessionId" (that was the
+  // original shape here and it was wrong — two different Route matches
+  // for the same element still count as two different routes to React
+  // Router, so it fully unmounted/remounted LetaWorkspace on every
+  // navigation between them: header flashing/double-painting mid-transition,
+  // and worse, "New Consultation" resetting state and then immediately
+  // remounting straight back into the mount effect, which re-reads
+  // sessionStorage's last-active-session and silently restores the old
+  // chat. A trailing "/*" keeps this ONE continuously-matched route —
+  // "/gst/leta" and "/gst/leta/<id>" both match it, the id just arrives
+  // as a param that changes without a remount, exactly like any other
+  // in-route param transition.
+  { path: '/:domainId/leta/*', element: <LiveDomainGuard><LetaWorkspace /></LiveDomainGuard> },
 
   {
     path: ROUTES.GST.ROOT,
