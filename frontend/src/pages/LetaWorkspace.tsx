@@ -5,7 +5,7 @@ import {
   X, Send, Sparkles, Menu, Paperclip,
   ChevronLeft, Folder, Star, Landmark, FileCheck,
   Bookmark, BookmarkCheck, Trash2, Calendar, ShieldCheck, Plus, Square, Upload,
-  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio
+  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio, LockKeyhole
 } from 'lucide-react';
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
@@ -202,6 +202,37 @@ function extractStreamMarkers(buffer: string, handlers: StreamMarkerHandlers): s
   return buffer;
 }
 
+// Decides which session (if any) to restore on mount, given the URL's own
+// session id, the sessionStorage "last active" fallback, and the current
+// account's own session list. Extracted as a pure function so this specific
+// decision — including the honest error for the exact case that broke
+// live (a shared link opened under a different account) — is directly
+// unit-testable without mounting the full workspace component (which pulls
+// in three.js/pdf.js and a live API client).
+export function resolveSessionRestore(
+  urlSessionId: string | undefined,
+  savedId: string | null,
+  ownSessionIds: string[]
+): { restoreId: string | null; restoreError: string | null } {
+  const restoreId = urlSessionId || savedId || null;
+  if (restoreId && ownSessionIds.includes(restoreId)) {
+    return { restoreId, restoreError: null };
+  }
+  if (urlSessionId) {
+    // Only an *explicit* URL id warrants surfacing an error — the
+    // sessionStorage fallback missing is unremarkable (nothing was ever
+    // open, or it was deleted), not worth alarming the user over.
+    return {
+      restoreId: null,
+      restoreError:
+        "This chat isn't available under your current login. It may have been " +
+        'shared from a different account — per-chat links only work for the ' +
+        'account that created them.',
+    };
+  }
+  return { restoreId: null, restoreError: null };
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const LetaWorkspace: React.FC = () => {
@@ -308,6 +339,15 @@ const LetaWorkspace: React.FC = () => {
   // date is visible at a glance instead of only surfacing when a user hits
   // a stale answer.
   const [latestUpdates, setLatestUpdates] = useState<{ title: string; category: string }[]>([]);
+  // Set when the URL names a specific chat (shared link, bookmark) that
+  // isn't in the CURRENT account's own session list — most often because
+  // it was opened under a different login than the one that created it.
+  // Per-chat URLs only work for the owning account (GET /api/sessions/{id}
+  // is scoped server-side to the requesting user), by design — but silently
+  // falling through to the ordinary empty-chat landing screen when that
+  // happens looks exactly like the share feature is broken, with zero
+  // explanation. This drives an honest message instead.
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   // handleAsk is a long-lived async closure (spans the whole streaming
   // request). Every `currentSessionId` reference inside it is frozen at
   // whatever the state was when handleAsk was CALLED — setCurrentSessionId()
@@ -734,9 +774,13 @@ const LetaWorkspace: React.FC = () => {
         // of a per-chat URL) wins over the sessionStorage "last active"
         // fallback — that's the whole point of giving each chat its own URL.
         const savedId = sessionStorage.getItem(`leta_active_session_${domainId}`);
-        const restoreId = urlSessionId || savedId;
-        if (restoreId && list.some(s => s.session_id === restoreId)) {
+        const { restoreId, restoreError: err } = resolveSessionRestore(
+          urlSessionId, savedId, list.map(s => s.session_id)
+        );
+        if (restoreId) {
           handleSelectSession(restoreId);
+        } else if (err) {
+          setRestoreError(err);
         }
       } catch (err) {
         console.error('Failed to fetch sessions:', err);
@@ -816,6 +860,7 @@ const LetaWorkspace: React.FC = () => {
     setQuery('');
     setOpenDocuments([]);
     setActiveDocId(null);
+    setRestoreError(null);
   }, [domainId]);
 
   // ─── Wake Lock + Visibility auto-retry ────────────────────────────────────────
@@ -875,6 +920,7 @@ const LetaWorkspace: React.FC = () => {
   const handleSelectSession = async (sessionId: string) => {
     const requestId = ++sessionLoadRequestRef.current;
     const cachedMessages = sessionMessagesRef.current.get(sessionId);
+    setRestoreError(null);
     setQuery('');
     setSelectedFile(null);
     setOpenDocuments([]);
@@ -923,6 +969,7 @@ const LetaWorkspace: React.FC = () => {
     setQuery('');
     setSelectedFile(null);
     setIsLoading(false);
+    setRestoreError(null);
     navigate(`/${domainId}/leta`, { replace: true });
   };
 
@@ -1986,7 +2033,25 @@ const LetaWorkspace: React.FC = () => {
           >
             <div className={`max-w-[920px] mx-auto w-full px-6 md:px-12 flex flex-col gap-8 ${isEmptyState ? '' : 'pt-10 pb-40'}`}>
 
-              {messages.length === 0 ? (
+              {messages.length === 0 && restoreError ? (
+                <div className="w-full max-w-[520px] mx-auto flex flex-col items-center text-center py-10 animate-in fade-in duration-300">
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#F59E0B]/10 text-[#F59E0B] mb-4">
+                    <LockKeyhole size={20} />
+                  </div>
+                  <h2 className="text-base font-semibold text-white mb-2">
+                    This chat isn't available
+                  </h2>
+                  <p className="text-sm leading-relaxed text-[#8592A8] mb-6">
+                    {restoreError}
+                  </p>
+                  <button
+                    onClick={handleNewSession}
+                    className="px-5 py-2.5 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] text-black bg-[#4FB7C5] hover:bg-[#3EA6B4] transition-colors"
+                  >
+                    Start New Consultation
+                  </button>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="w-full max-w-[760px] mx-auto flex flex-col">
                   {/* Corpus-freshness ticker — real recent notifications/circulars */}
                   {latestUpdates.length > 0 && (
