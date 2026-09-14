@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BASE_URL } from '../../config/api';
+import { getAuthHeaders } from '../../utils/authHeaders';
 import {
   ShieldCheck, Copy, Check, RefreshCw,
   ThumbsUp, ThumbsDown, Share2, Download, Printer,
@@ -230,7 +231,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
   const [hasCopied, setHasCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [feedback, setFeedback] = useState(null); // 'up' | 'down' | null
-  const [shareCopied, setShareCopied] = useState(false);
+  const [shareState, setShareState] = useState('idle'); // idle | sharing | copied | error
   const [expandedSources, setExpandedSources] = useState(() => new Set());
 
   // Generated once, by the caller, at the moment this message is created
@@ -293,11 +294,29 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
     }).catch(() => { /* non-critical — button state already reflects the click */ });
   };
 
-  const handleShare = () => {
-    if (!shareUrl) return;
-    navigator.clipboard.writeText(shareUrl);
-    setShareCopied(true);
-    setTimeout(() => setShareCopied(false), 2000);
+  const handleShare = async () => {
+    if (!shareUrl || !data?.sessionId) return;
+    // Enable sharing on the backend BEFORE copying the link — a session
+    // starts private (is_shared: false); without this call the link would
+    // copy fine but 404 for anyone else who opens it. Not copying on
+    // failure is deliberate: a link that looks shared but silently isn't
+    // is worse than the button visibly doing nothing.
+    setShareState('sharing');
+    try {
+      await fetch(`${BASE_URL}/api/sessions/${data.sessionId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      }).then(res => {
+        if (!res.ok) throw new Error(`share failed: ${res.status}`);
+      });
+      navigator.clipboard.writeText(shareUrl);
+      setShareState('copied');
+      setTimeout(() => setShareState('idle'), 2000);
+    } catch (err) {
+      console.error('Failed to enable sharing:', err);
+      setShareState('error');
+      setTimeout(() => setShareState('idle'), 2500);
+    }
   };
 
   const handleDownload = () => {
@@ -472,19 +491,27 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
               <ThumbsDown size={12} />
             </button>
 
-            {/* Share — copies this chat's own URL, only once a real session exists */}
+            {/* Share — grants read-only access to this chat for whoever
+                opens the link (any logged-in account), then copies it.
+                Only shown once a real session exists. */}
             {shareUrl && (
               <button
                 onClick={handleShare}
-                className="p-1.5 rounded-md transition-all"
+                disabled={shareState === 'sharing'}
+                className="p-1.5 rounded-md transition-all disabled:cursor-wait"
                 style={{
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.07)',
-                  color: shareCopied ? '#22C55E' : '#64748B',
+                  color: shareState === 'copied' ? '#22C55E' : shareState === 'error' ? '#EF4444' : '#64748B',
                 }}
-                title={shareCopied ? 'Link copied' : 'Copy link to this chat'}
+                title={
+                  shareState === 'copied' ? 'Link copied — anyone signed in can now open it'
+                  : shareState === 'error' ? "Couldn't enable sharing — try again"
+                  : shareState === 'sharing' ? 'Enabling sharing…'
+                  : 'Share this chat (read-only)'
+                }
               >
-                {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
+                {shareState === 'copied' ? <Check size={12} /> : <Share2 size={12} />}
               </button>
             )}
 

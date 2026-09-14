@@ -3,7 +3,7 @@ import logging
 import time
 import uuid
 
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from pydantic import BaseModel
 from typing import List, Any, Optional
 from pathlib import Path
@@ -579,6 +579,42 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
 
 _ask_logger = logging.getLogger("leta.ask")
 
+
+def _verify_session_writable(session_id: Optional[str], username: Optional[str]) -> None:
+    """
+    Raise 403 if session_id already belongs to a DIFFERENT user than the one
+    making this request.
+
+    Pre-existing gap, not introduced by this check: /ask and /ask-sync save
+    messages with `collection.update_one({"session_id": session_id}, ...)` —
+    scoped ONLY by session_id, with no ownership check at all. Any
+    authenticated caller who had (or guessed) another user's session_id
+    could silently push fake messages into that stranger's conversation.
+    That became a far easier real attack path the moment sessions became
+    shareable (POST /api/sessions/{id}/share) — a shared id is, by
+    definition, a session_id now deliberately handed to someone who is NOT
+    the owner. Sharing must only ever grant READ access (enforced in
+    sessions.get_session); this is what keeps it from silently also
+    granting write access via this completely separate endpoint.
+
+    A session_id with no existing document (a brand-new session, or a
+    stale/bogus id) is allowed through unchanged — session creation itself
+    is already ownership-scoped in POST /api/sessions/new, so nothing here
+    needs to gate the not-created-yet case.
+    """
+    if not session_id:
+        return
+    collection = get_session_collection()
+    if collection is None:
+        return
+    doc = collection.find_one({"session_id": session_id}, {"user_id": 1})
+    if doc and doc.get("user_id") != username:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to post to this session.",
+        )
+
+
 @app.post("/ask")
 @limiter.limit("30/minute")
 async def ask_question(request: Request, req: QuestionRequest):
@@ -588,6 +624,7 @@ async def ask_question(request: Request, req: QuestionRequest):
     t0 = time.monotonic()
 
     user_id, username = _get_user_info_from_req(request)
+    _verify_session_writable(session_id, username)
     from app.ai_logger import init_ai_log
     init_ai_log(
         user_id=user_id,
@@ -1245,6 +1282,9 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     question = req.question.strip()
     session_id = req.session_id
 
+    _, _sync_username = _get_user_info_from_req(request)
+    _verify_session_writable(session_id, _sync_username)
+
     if session_id:
         collection = get_session_collection()
         if collection is not None:
@@ -1578,8 +1618,9 @@ async def ask_question_with_file(
 ):
     question_text = question.strip()
     user_id, username = _get_user_info_from_req(request)
+    _verify_session_writable(session_id, username)
     request_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
-    
+
     from app.ai_logger import init_ai_log
     init_ai_log(
         user_id=user_id,
