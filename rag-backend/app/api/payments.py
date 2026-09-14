@@ -77,7 +77,7 @@ def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str)
     plan_name      = "pro" if duration_hours >= 3 else "basic"
 
     users_col = get_user_collection()
-    if users_col and username:
+    if users_col is not None and username:
         users_col.update_one(
             {"username": username},
             {"$set": {
@@ -288,7 +288,7 @@ async def razorpay_webhook(request: Request):
 
         # Resolve order → user via payment_orders (written by create_order)
         orders_col = get_payment_orders_collection()
-        order_doc  = orders_col.find_one({"order_id": order_id}) if orders_col else None
+        order_doc  = orders_col.find_one({"order_id": order_id}) if orders_col is not None else None
 
         if not order_doc:
             logger.warning(f"razorpay_webhook: no order record for order_id={order_id} payment_id={payment_id}")
