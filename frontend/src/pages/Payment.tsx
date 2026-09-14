@@ -8,6 +8,30 @@ import {
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 
+// Classifies POST /api/payments/verify's response status into what the
+// checkout handler should do. Pulled out as a pure function so this
+// specific decision is unit-testable without mounting the full Payment
+// page (Razorpay SDK script injection, auth context, router).
+//
+// 'duplicate' is the one that mattered live: a 409 means the idempotency
+// check correctly rejected this exact payment_id as already claimed —
+// almost always because Razorpay's own server-to-server webhook (which
+// can legitimately beat this browser-side call in a race; nothing wrong
+// with that, both paths are meant to succeed regardless of which lands
+// first) already credited it. The charge genuinely succeeded. Treating a
+// 409 as a plain failure — which this used to do, lumped in with the
+// generic default case — is what made a real paying customer see
+// "Payment verification failed" for a payment that had already gone
+// through, told them to contact support over it.
+export function classifyPaymentVerifyResult(
+  status: number
+): 'success' | 'duplicate' | 'session-expired' | 'failed' {
+  if (status === 200) return 'success';
+  if (status === 409) return 'duplicate';
+  if (status === 401) return 'session-expired';
+  return 'failed';
+}
+
 const B = {
   accent: '#4FB7C5',
   glow:   'rgba(79,183,197,0.12)',
@@ -178,7 +202,9 @@ const Payment: React.FC = () => {
               module:  moduleId,
             }),
           });
-          if (verifyRes.ok) {
+          const outcome = classifyPaymentVerifyResult(verifyRes.status);
+
+          if (outcome === 'success') {
             try {
               const verifyData = await verifyRes.json();
               if (session && verifyData.session_end_ms) {
@@ -190,7 +216,25 @@ const Payment: React.FC = () => {
               }
             } catch {}
             setSuccess(true);
-          } else if (verifyRes.status === 401) {
+          } else if (outcome === 'duplicate') {
+            // Already credited via the other path (see classifyPaymentVerifyResult's
+            // comment) — pull the actual current plan/expiry rather than assume
+            // success blindly, then show the same success state as 'success'.
+            try {
+              const meRes = await fetch(`${BASE_URL}/api/auth/me`, { headers: getAuthHeader() });
+              if (meRes.ok) {
+                const me = await meRes.json();
+                if (session && me.session_end) {
+                  login({
+                    ...session,
+                    tokens: { ...session.tokens, session_end_ms: new Date(me.session_end).getTime() },
+                    user:   { ...session.user,   plan: me.plan ?? session.user?.plan },
+                  }, true);
+                }
+              }
+            } catch {}
+            setSuccess(true);
+          } else if (outcome === 'session-expired') {
             setPayError('Your session expired during checkout. Please log in again — your payment was received and will be credited once you log back in.');
             setLoading(false);
           } else {
