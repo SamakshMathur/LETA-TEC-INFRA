@@ -1,28 +1,32 @@
-import React, { lazy } from 'react';
+import React from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { ROUTES, LIVE_MODULE_IDS } from '../constants/routes';
+import { lazyWithRetry } from '../utils/lazyWithRetry';
 
 // Every page is lazy-loaded — its JS chunk downloads only when the route is
 // first visited, not on initial app load. Combined with manualChunks in
 // vite.config.ts this drops the initial bundle from ~5 MB to ~300 KB.
-const Home                  = lazy(() => import('../pages/Home'));
-const About                 = lazy(() => import('../pages/About'));
-const Documentation         = lazy(() => import('../pages/Documentation'));
-const GST                   = lazy(() => import('../pages/GST'));
-const TemplateCustomization = lazy(() => import('../pages/TemplateCustomization'));
-const AdminTemplateDashboard= lazy(() => import('../pages/AdminTemplateDashboard'));
-const AdminUploadPortal     = lazy(() => import('../pages/AdminUploadPortal'));
-const SignupPage             = lazy(() => import('../pages/auth/signup'));
-const LetaWorkspace         = lazy(() => import('../pages/LetaWorkspace'));
-const ModuleDashboard       = lazy(() => import('../pages/ModuleDashboard'));
-const LegalPolicies         = lazy(() => import('../pages/LegalPolicies'));
-const MyDocs                = lazy(() => import('../pages/MyDocs'));
-const Payment               = lazy(() => import('../pages/Payment'));
-const LoginPage             = lazy(() => import('../pages/auth/login'));
+// lazyWithRetry (not React's lazy() directly) so a stale chunk reference
+// after a deploy — "Failed to fetch dynamically imported module" — recovers
+// with one automatic reload instead of dead-ending on the error screen.
+const Home                  = lazyWithRetry(() => import('../pages/Home'));
+const About                 = lazyWithRetry(() => import('../pages/About'));
+const Documentation         = lazyWithRetry(() => import('../pages/Documentation'));
+const GST                   = lazyWithRetry(() => import('../pages/GST'));
+const TemplateCustomization = lazyWithRetry(() => import('../pages/TemplateCustomization'));
+const AdminTemplateDashboard= lazyWithRetry(() => import('../pages/AdminTemplateDashboard'));
+const AdminUploadPortal     = lazyWithRetry(() => import('../pages/AdminUploadPortal'));
+const SignupPage             = lazyWithRetry(() => import('../pages/auth/signup'));
+const LetaWorkspace         = lazyWithRetry(() => import('../pages/LetaWorkspace'));
+const ModuleDashboard       = lazyWithRetry(() => import('../pages/ModuleDashboard'));
+const LegalPolicies         = lazyWithRetry(() => import('../pages/LegalPolicies'));
+const MyDocs                = lazyWithRetry(() => import('../pages/MyDocs'));
+const Payment               = lazyWithRetry(() => import('../pages/Payment'));
+const LoginPage             = lazyWithRetry(() => import('../pages/auth/login'));
 
 // LawDashboard is a presentational component used with inline props —
 // lazy-load it so the dashboard chunk doesn't bloat the router chunk.
-const LawDashboard = lazy(() =>
+const LawDashboard = lazyWithRetry(() =>
   import('../components/dashboard').then(m => ({ default: m.LawDashboard }))
 );
 
