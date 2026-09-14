@@ -5,22 +5,11 @@ import {
   X, Send, Sparkles, Menu, Paperclip,
   ChevronLeft, Folder, Star, Landmark, FileCheck,
   Bookmark, BookmarkCheck, Trash2, Calendar, ShieldCheck, Plus, Square, Upload,
-  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio
+  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio, LockKeyhole, Users
 } from 'lucide-react';
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
-
-// Reads the stored JWT and returns an Authorization header object.
-// Used on every call so each request is tied to the logged-in user.
-const getAuthHeaders = (): Record<string, string> => {
-  try {
-    const stored = localStorage.getItem('pro.auth.session');
-    if (!stored) return {};
-    const s = JSON.parse(stored);
-    const token = s?.tokens?.accessToken;
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  } catch { return {}; }
-};
+import { getAuthHeaders } from '../utils/authHeaders';
 
 const getSessionFirstName = (): string => {
   try {
@@ -202,6 +191,36 @@ function extractStreamMarkers(buffer: string, handlers: StreamMarkerHandlers): s
   return buffer;
 }
 
+// Decides what to show when GET /api/sessions/{id} fails inside
+// handleSelectSession — extracted as a pure function so this specific
+// decision is directly unit-testable without mounting the full workspace
+// component (which pulls in three.js/pdf.js and a live API client).
+//
+// isExplicitUrlRestore + a 404 is the common real case for a shared link:
+// opened under an account it wasn't shared with, or a stale/mistyped id.
+// That gets the honest restoreError message instead of the older generic
+// "Unable to load this consultation, please try again" — which used to be
+// shown for every failure alike, including this one, and reads as a
+// transient glitch worth retrying when it's actually neither transient
+// nor fixable by retrying.
+export function classifySessionLoadError(
+  status: number | undefined,
+  isExplicitUrlRestore: boolean
+): { restoreError: string | null; fallbackMessage: string | null } {
+  if (isExplicitUrlRestore && status === 404) {
+    return {
+      restoreError:
+        "This chat isn't available under your current login. It may not have " +
+        'been shared with this account, or the link may be out of date.',
+      fallbackMessage: null,
+    };
+  }
+  return {
+    restoreError: null,
+    fallbackMessage: 'Unable to load this consultation. Please try again.',
+  };
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const LetaWorkspace: React.FC = () => {
@@ -302,6 +321,21 @@ const LetaWorkspace: React.FC = () => {
   // ─── Core State ─────────────────────────────────────────────────────────────
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // Ownership of the CURRENTLY open session, as reported by the backend
+  // (GET /api/sessions/{id} returns is_owner/is_shared) — null for a brand
+  // new chat that has no backend session yet. A shared chat opened by
+  // someone other than its owner comes back with isOwner:false: read-only,
+  // composer hidden, no rename/tag/delete/share actions (those all 404 for
+  // a non-owner server-side anyway; hiding them client-side is just honest
+  // UI, not the actual security boundary).
+  const [sessionOwnership, setSessionOwnership] = useState<{ isOwner: boolean; isShared: boolean } | null>(null);
+  // Set when the URL names a specific chat (shared link, bookmark) that the
+  // backend refused — not shared, and not owned by the current account.
+  // Distinct from a normal sidebar click gone wrong (which keeps the older,
+  // generic in-chat error message) because this is the common case for a
+  // share link opened under the wrong login, and deserves an explanation
+  // instead of looking like the feature is just broken.
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   // Corpus-freshness ticker on the landing screen — real titles pulled from
   // the same document library the retriever indexes, not placeholder copy.
   // Shows the most recently effective notifications/circulars so the corpus
@@ -730,13 +764,25 @@ const LetaWorkspace: React.FC = () => {
         const list: Session[] = res.data;
         setSessions(list);
 
-        // A session id already in the URL (shared link, bookmark, refresh
-        // of a per-chat URL) wins over the sessionStorage "last active"
-        // fallback — that's the whole point of giving each chat its own URL.
-        const savedId = sessionStorage.getItem(`leta_active_session_${domainId}`);
-        const restoreId = urlSessionId || savedId;
-        if (restoreId && list.some(s => s.session_id === restoreId)) {
-          handleSelectSession(restoreId);
+        if (urlSessionId) {
+          // An explicit URL id (shared link, bookmark, refresh of a
+          // per-chat URL) is attempted directly against the backend rather
+          // than pre-filtered against this account's OWN session list —
+          // a shared chat deliberately belongs to someone else's list, so
+          // checking membership here would reject a genuinely valid shared
+          // link before ever asking the backend whether it's shared.
+          // handleSelectSession's own 404 handling turns a real access
+          // failure into the honest restoreError message.
+          handleSelectSession(urlSessionId, { isExplicitUrlRestore: true });
+        } else {
+          // No URL id — fall back to "whatever was last open", which
+          // (unlike a shared link) really is expected to be one of THIS
+          // account's own sessions, so the list-membership check still
+          // makes sense here.
+          const savedId = sessionStorage.getItem(`leta_active_session_${domainId}`);
+          if (savedId && list.some(s => s.session_id === savedId)) {
+            handleSelectSession(savedId);
+          }
         }
       } catch (err) {
         console.error('Failed to fetch sessions:', err);
@@ -813,6 +859,8 @@ const LetaWorkspace: React.FC = () => {
   useEffect(() => {
     setMessages([]);
     setCurrentSessionId(null);
+    setSessionOwnership(null);
+    setRestoreError(null);
     setQuery('');
     setOpenDocuments([]);
     setActiveDocId(null);
@@ -872,15 +920,20 @@ const LetaWorkspace: React.FC = () => {
     }
   };
 
-  const handleSelectSession = async (sessionId: string) => {
+  const handleSelectSession = async (
+    sessionId: string,
+    opts: { isExplicitUrlRestore?: boolean } = {}
+  ) => {
     const requestId = ++sessionLoadRequestRef.current;
     const cachedMessages = sessionMessagesRef.current.get(sessionId);
+    setRestoreError(null);
     setQuery('');
     setSelectedFile(null);
     setOpenDocuments([]);
     setActiveDocId(null);
     setMessages(cachedMessages || []);
     setCurrentSessionId(sessionId);
+    setSessionOwnership(null); // unknown until the response confirms it
     setIsLoading(!cachedMessages && !streamingSessionsRef.current.has(sessionId));
     setIsStreaming(streamingSessionsRef.current.has(sessionId));
     // Reflect the open chat in the URL so it has a real, copyable address —
@@ -891,6 +944,14 @@ const LetaWorkspace: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/api/sessions/${sessionId}`, { headers: getAuthHeaders() });
       if (requestId !== sessionLoadRequestRef.current) return;
+
+      // Defaults to owner:true for any legacy/unpatched backend response
+      // that omits these fields — matches how every session behaved before
+      // sharing existed at all.
+      setSessionOwnership({
+        isOwner: res.data?.is_owner !== false,
+        isShared: Boolean(res.data?.is_shared),
+      });
 
       const loadedMessages = Array.isArray(res.data?.messages) ? res.data.messages : [];
       const nextMessages = loadedMessages.map((msg: any) => ({
@@ -906,11 +967,19 @@ const LetaWorkspace: React.FC = () => {
         sessionMessagesRef.current.set(sessionId, nextMessages);
         setMessages(nextMessages);
       }
-    } catch (err) {
+    } catch (err: any) {
       if (requestId !== sessionLoadRequestRef.current) return;
       console.error('Failed to load session:', err);
       setCurrentSessionId(null);
-      setMessages([{ role: 'assistant', content: 'Unable to load this consultation. Please try again.', confidence: 0, citations: [] }]);
+      setSessionOwnership(null);
+      const { restoreError: err404Message, fallbackMessage } = classifySessionLoadError(
+        err?.response?.status, Boolean(opts.isExplicitUrlRestore)
+      );
+      if (err404Message) {
+        setRestoreError(err404Message);
+      } else if (fallbackMessage) {
+        setMessages([{ role: 'assistant', content: fallbackMessage, confidence: 0, citations: [] }]);
+      }
     } finally {
       if (requestId === sessionLoadRequestRef.current) setIsLoading(false);
     }
@@ -919,6 +988,8 @@ const LetaWorkspace: React.FC = () => {
   const handleNewSession = () => {
     ++sessionLoadRequestRef.current;
     setCurrentSessionId(null);
+    setSessionOwnership(null);
+    setRestoreError(null);
     setMessages([]);
     setQuery('');
     setSelectedFile(null);
@@ -987,6 +1058,14 @@ const LetaWorkspace: React.FC = () => {
 
   // ─── Main ask handler ─────────────────────────────────────────────────────────
   const handleAsk = async (queryOverride?: string) => {
+    // Defense in depth: the composer controls are disabled for a read-only
+    // shared session, but a still-empty shared chat shows the suggested-
+    // query cards too (isEmptyState && isReadOnlyView can both be true) —
+    // those aren't individually gated, so guard the one function every
+    // entry point funnels through instead. The real boundary is still
+    // server-side (_verify_session_writable in app.py, 403s regardless);
+    // this just avoids a doomed request and a confusing failure.
+    if (isReadOnlyView) return;
     const activeQuery = typeof queryOverride === 'string' ? queryOverride : query;
     if (!activeQuery.trim() && !selectedFile) return;
 
@@ -1523,6 +1602,12 @@ const LetaWorkspace: React.FC = () => {
   // own start screens. Reverts to the normal bottom-docked composer the
   // moment a message exists; no change to in-conversation behavior.
   const isEmptyState = messages.length === 0;
+  // A chat someone else shared with us — viewable, never writable. The
+  // real security boundary is server-side (sessions.get_session only
+  // returns it because is_shared is true; app.py's _verify_session_writable
+  // rejects a post to it regardless of what the UI does) — this just keeps
+  // the composer from offering an action that would 403 anyway.
+  const isReadOnlyView = sessionOwnership !== null && !sessionOwnership.isOwner;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#000000] text-sm font-body overflow-hidden">
@@ -1986,7 +2071,25 @@ const LetaWorkspace: React.FC = () => {
           >
             <div className={`max-w-[920px] mx-auto w-full px-6 md:px-12 flex flex-col gap-8 ${isEmptyState ? '' : 'pt-10 pb-40'}`}>
 
-              {messages.length === 0 ? (
+              {messages.length === 0 && restoreError ? (
+                <div className="w-full max-w-[520px] mx-auto flex flex-col items-center text-center py-10 animate-in fade-in duration-300">
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#F59E0B]/10 text-[#F59E0B] mb-4">
+                    <LockKeyhole size={20} />
+                  </div>
+                  <h2 className="text-base font-semibold text-white mb-2">
+                    This chat isn't available
+                  </h2>
+                  <p className="text-sm leading-relaxed text-[#8592A8] mb-6">
+                    {restoreError}
+                  </p>
+                  <button
+                    onClick={handleNewSession}
+                    className="px-5 py-2.5 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] text-black bg-[#4FB7C5] hover:bg-[#3EA6B4] transition-colors"
+                  >
+                    Start New Consultation
+                  </button>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="w-full max-w-[760px] mx-auto flex flex-col">
                   {/* Corpus-freshness ticker — real recent notifications/circulars */}
                   {latestUpdates.length > 0 && (
@@ -2048,6 +2151,14 @@ const LetaWorkspace: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex flex-col gap-8 w-full">
+                  {sessionOwnership && !sessionOwnership.isOwner && (
+                    <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-[#4FB7C5]/15 bg-[#4FB7C5]/[0.04] text-[#4FB7C5]">
+                      <Users size={14} className="flex-shrink-0" />
+                      <span className="text-xs">
+                        Shared with you — read-only. You can view this conversation but not add to it.
+                      </span>
+                    </div>
+                  )}
                   {messages.map((msg, idx) => {
                     const isUser = msg.role === 'user';
                     const saveStatus = !isUser ? getSaveStatus(msg.content) : null;
@@ -2339,8 +2450,9 @@ const LetaWorkspace: React.FC = () => {
                 ref={textareaRef}
                 value={query}
                 onChange={e => { setQuery(e.target.value); autoResize(); }}
-                placeholder={domainConfig.placeholder}
-                className="w-full p-4 pr-40 pb-14 font-body text-xs leading-relaxed outline-none resize-none transition-all duration-200 bg-[#000000] border border-[#4FB7C5]/15 rounded-2xl text-[#F4F7FA] overflow-y-auto"
+                placeholder={isReadOnlyView ? "Shared chats are read-only — start a new consultation to ask your own question." : domainConfig.placeholder}
+                disabled={isReadOnlyView}
+                className="w-full p-4 pr-40 pb-14 font-body text-xs leading-relaxed outline-none resize-none transition-all duration-200 bg-[#000000] border border-[#4FB7C5]/15 rounded-2xl text-[#F4F7FA] overflow-y-auto disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ minHeight: '90px', maxHeight: '300px' }}
                 onFocus={e => {
                   e.currentTarget.style.borderColor = 'rgba(79,183,197,0.4)';
@@ -2395,7 +2507,7 @@ const LetaWorkspace: React.FC = () => {
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isLoading || isRecording}
+                  disabled={isLoading || isRecording || isReadOnlyView}
                   className="p-2.5 rounded-lg text-[#475569] hover:text-white hover:bg-white/[0.02] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                   title="Attach document"
                 >
@@ -2406,7 +2518,7 @@ const LetaWorkspace: React.FC = () => {
                 {(
                   <button
                     onClick={startVoiceRecording}
-                    disabled={isLoading || isStreaming}
+                    disabled={isLoading || isStreaming || isReadOnlyView}
                     title={isRecording ? 'Stop voice recording' : 'Voice input (click to speak)'}
                     className={`relative p-2.5 rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed ${
                       isRecording
@@ -2432,16 +2544,16 @@ const LetaWorkspace: React.FC = () => {
                 ) : (
                   <button
                     onClick={() => handleAsk()}
-                    disabled={(!query.trim() && !selectedFile) || isLoading}
+                    disabled={(!query.trim() && !selectedFile) || isLoading || isReadOnlyView}
                     className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl font-sans font-semibold text-[10px] uppercase tracking-wider transition-all duration-200"
                     style={{
-                      background: (!query.trim() && !selectedFile) || isLoading
+                      background: (!query.trim() && !selectedFile) || isLoading || isReadOnlyView
                         ? 'rgba(79,183,197,0.15)'
                         : '#4FB7C5',
-                      color: (!query.trim() && !selectedFile) || isLoading
+                      color: (!query.trim() && !selectedFile) || isLoading || isReadOnlyView
                         ? 'rgba(79,183,197,0.7)'
                         : '#000000',
-                      cursor: (!query.trim() && !selectedFile) || isLoading ? 'not-allowed' : 'pointer',
+                      cursor: (!query.trim() && !selectedFile) || isLoading || isReadOnlyView ? 'not-allowed' : 'pointer',
                     }}
                   >
                     <Send size={11} />

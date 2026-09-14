@@ -97,6 +97,13 @@ class Session(BaseModel):
     updated_at: datetime
     message_count: int = 0
     messages: List[Message] = []
+    # is_shared: stored on the doc, toggled by the owner via /share and
+    # /unshare. is_owner: computed per-request (never stored) — whether the
+    # CURRENT requester is the owner. The frontend uses is_owner to decide
+    # whether to show the composer/session-management actions at all; a
+    # shared, non-owned session is a read-only view, always.
+    is_shared: bool = False
+    is_owner: bool = True
 
 
 class SessionSummary(BaseModel):
@@ -170,11 +177,16 @@ def _load_session_messages(session_id: str, embedded_fallback: list) -> list:
     return docs if docs else embedded_fallback
 
 
-def _coerce_session_doc(doc: dict) -> dict:
+def _coerce_session_doc(doc: dict, requesting_username: Optional[str] = None) -> dict:
     """
     Build a clean session dict from a raw MongoDB document, coercing every
     message so the FastAPI response-model validator never sees legacy
     documents that are missing required fields (e.g. message_id).
+
+    requesting_username: who's asking, used only to compute is_owner. None
+    means "assume owner" — every existing caller of this helper (list/search/
+    rename/etc.) already scopes its own query to the owner, so is_owner is
+    only ever meaningfully False from get_session's shared-access branch.
     """
     raw_messages = _load_session_messages(doc.get("session_id", ""), doc.get("messages", []))
     coerced_messages = []
@@ -197,6 +209,8 @@ def _coerce_session_doc(doc: dict) -> dict:
         "updated_at": doc.get("updated_at") or utc_now(),
         "message_count": effective_count,
         "messages": coerced_messages,
+        "is_shared": bool(doc.get("is_shared", False)),
+        "is_owner": requesting_username is None or doc.get("user_id") == requesting_username,
     }
 
 
@@ -378,17 +392,20 @@ def get_session(
             detail="Database connection failed"
         )
 
-    doc = collection.find_one(
-        {
-            "session_id": session_id,
-            "user_id": current_user["username"],
-        },
-        {
-            "_id": 0,
-        }
-    )
+    # Look up by session_id alone (not pre-scoped to the owner) — the
+    # owner-vs-shared decision below needs to see the doc either way.
+    # Access here is still exactly two cases, nothing looser: the owner
+    # (full access), or a non-owner ONLY when the owner has explicitly
+    # turned sharing on for this specific chat (POST /{id}/share). Any other
+    # authenticated user with an unshared or unknown id still gets a plain
+    # 404 — identical to before this endpoint supported sharing at all.
+    doc = collection.find_one({"session_id": session_id}, {"_id": 0})
 
-    if not doc:
+    username = current_user["username"]
+    is_owner = bool(doc) and doc.get("user_id") == username
+    is_shared = bool(doc) and bool(doc.get("is_shared", False))
+
+    if not doc or not (is_owner or is_shared):
         raise HTTPException(
             status_code=404,
             detail="Session not found"
@@ -398,12 +415,57 @@ def get_session(
     # documents that are missing required fields (e.g. message_id was absent
     # before the field was introduced, causing ResponseValidationError 500s).
     try:
-        return _coerce_session_doc(doc)
+        return _coerce_session_doc(doc, requesting_username=username)
     except Exception as exc:
         logger.exception(
             f"get_session: coercion failed for session={session_id} | {exc}"
         )
         raise HTTPException(status_code=500, detail="Failed to load session")
+
+
+# =============================================================================
+# SHARE / UNSHARE SESSION
+# Grants (or revokes) READ-ONLY access to any other logged-in account via
+# this chat's own URL (/:domainId/leta/:session_id). Never grants write
+# access — /ask's ownership check (app.py) rejects a message post to a
+# session_id that doesn't belong to the poster, shared or not, so a shared
+# chat can only ever be viewed by someone else, never continued.
+# =============================================================================
+
+@router.post("/{session_id}/share")
+def share_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    collection = get_session_collection()
+    if collection is None:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    result = collection.update_one(
+        {"session_id": session_id, "user_id": current_user["username"]},
+        {"$set": {"is_shared": True, "updated_at": utc_now()}},
+    )
+    if result.matched_count == 0:
+        # Scoped to the owner, same as rename/delete — a non-owner (or a
+        # bogus id) gets the same 404 either way, no distinction leaked.
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    logger.info(f"Session shared | user={current_user['username']} | session={session_id}")
+    return {"session_id": session_id, "is_shared": True}
+
+
+@router.post("/{session_id}/unshare")
+def unshare_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    collection = get_session_collection()
+    if collection is None:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    result = collection.update_one(
+        {"session_id": session_id, "user_id": current_user["username"]},
+        {"$set": {"is_shared": False, "updated_at": utc_now()}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    logger.info(f"Session unshared | user={current_user['username']} | session={session_id}")
+    return {"session_id": session_id, "is_shared": False}
 
 
 # =============================================================================
