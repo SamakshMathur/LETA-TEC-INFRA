@@ -63,6 +63,54 @@ def _razorpay_client():
     return razorpay.Client(auth=(key_id, key_secret))
 
 
+def _send_payment_receipt(username: str, plan_cfg: dict, payment_id: str, session_end_dt) -> None:
+    """
+    Best-effort only — this runs AFTER the plan is already activated, so a
+    problem here (missing RESEND_API_KEY, Resend being down, no email on
+    file) must never look like the payment itself failed. Every exit path
+    is a log line, nothing raises.
+    """
+    try:
+        users_col = get_user_collection()
+        if users_col is None:
+            return
+        user = users_col.find_one({"username": username}, {"_id": 0, "email": 1, "full_name": 1})
+        email = (user or {}).get("email")
+        if not email:
+            # Phone-only signups have nowhere to send this yet — not an
+            # error, just nothing to do until they add an email or we add
+            # a checkout-time prompt for one.
+            logger.info(f"No email on file for {username} — skipping payment receipt")
+            return
+
+        from app.services.email import send_email
+        name = (user or {}).get("full_name") or "there"
+        amount_rupees = plan_cfg.get("amount", 0) / 100
+        sent = send_email(
+            to=email,
+            subject="Your LETA TEC payment receipt",
+            html=f"""
+            <div style="font-family:Arial;padding:30px">
+                <h2>LETA TEC</h2>
+                <p>Hi {name},</p>
+                <p>Thank you for your payment. Here are your receipt details:</p>
+                <table style="border-collapse:collapse;margin-top:12px">
+                    <tr><td style="padding:4px 16px 4px 0;color:#666">Payment ID</td><td>{payment_id}</td></tr>
+                    <tr><td style="padding:4px 16px 4px 0;color:#666">Plan</td><td>{plan_cfg.get('name', '')}</td></tr>
+                    <tr><td style="padding:4px 16px 4px 0;color:#666">Amount</td><td>₹{amount_rupees:.2f}</td></tr>
+                    <tr><td style="padding:4px 16px 4px 0;color:#666">Valid until</td><td>{session_end_dt.strftime('%d %b %Y, %I:%M %p')} UTC</td></tr>
+                    <tr><td style="padding:4px 16px 4px 0;color:#666">Status</td><td>PAID</td></tr>
+                </table>
+                <p style="margin-top:20px">Thank you for using LETA TEC.</p>
+            </div>
+            """,
+        )
+        if sent:
+            logger.info(f"Payment receipt emailed | user={username} payment={payment_id}")
+    except Exception as e:
+        logger.error(f"Payment receipt send failed (non-fatal, plan is already active): {e}")
+
+
 def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str) -> dict:
     """
     Apply session extension to the user record.
@@ -91,6 +139,7 @@ def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str)
             f"Session credited: user={username} plan={plan_name} "
             f"payment={payment_id} order={order_id} expires={session_end_dt.isoformat()}"
         )
+        _send_payment_receipt(username, plan_cfg, payment_id, session_end_dt)
 
     return {
         "verified":       True,

@@ -9,8 +9,6 @@ from datetime import datetime, timedelta, timezone
 from app.utils.time import utc_now, normalize_to_utc
 from typing import Literal, Optional
 
-import requests as _requests
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator, model_validator
 from pymongo.errors import DuplicateKeyError
@@ -55,7 +53,6 @@ ADMIN_MASTER_SECRET = os.getenv("ADMIN_MASTER_SECRET", "")
 PRIMARY_ADMIN_PHONE = normalize_phone(os.getenv("PRIMARY_ADMIN_PHONE", ""))
 
 FAST2SMS_API_KEY = os.getenv("FAST2SMS_API_KEY", "")
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 
 # =============================================================================
 # MODELS
@@ -298,40 +295,19 @@ def verify_sms_otp(phone: str, submitted_otp: str, expected_otp: str) -> bool:
 
 
 def _send_email_otp(email: str, otp: str) -> None:
-
-    if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY missing — Email not sent")
-        return
-
-    try:
-        response = _requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "from": "LETA TEC <noreply@letatec.com>",
-                "to": [email],
-                "subject": "Your LETA TEC OTP",
-                "html": f"""
-                <div style="font-family:Arial;padding:30px">
-                    <h2>LETA TEC Login Verification</h2>
-                    <p>Your OTP is:</p>
-                    <h1>{otp}</h1>
-                    <p>This OTP expires in {OTP_EXPIRY_MINUTES} minutes.</p>
-                </div>
-                """,
-            },
-            timeout=10,
-        )
-
-        response.raise_for_status()
-
-        logger.info(f"Email OTP sent to {email}")
-
-    except Exception as e:
-        logger.error(f"Email sending failed: {e}")
+    from app.services.email import send_email
+    send_email(
+        to=email,
+        subject="Your LETA TEC OTP",
+        html=f"""
+        <div style="font-family:Arial;padding:30px">
+            <h2>LETA TEC Login Verification</h2>
+            <p>Your OTP is:</p>
+            <h1>{otp}</h1>
+            <p>This OTP expires in {OTP_EXPIRY_MINUTES} minutes.</p>
+        </div>
+        """,
+    )
 
 
 def _build_auth_response(user_info: dict, session_end_ms: Optional[int] = None):

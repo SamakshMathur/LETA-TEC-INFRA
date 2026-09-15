@@ -70,6 +70,44 @@ class _RealisticFakeCollection:
         return type("Result", (), {"matched_count": 1, "modified_count": 1})()
 
 
+class _RealisticFakeUserCollection:
+    """Same __bool__-raises-NotImplementedError contract as
+    _RealisticFakeCollection above, but keyed by username (with email/
+    full_name fields) for the payment-receipt tests, which look a user up
+    by username rather than an order_id."""
+
+    def __init__(self, docs=None):
+        self._docs = {d["username"]: dict(d) for d in (docs or [])}
+        self.update_calls = []
+
+    def __bool__(self):
+        raise NotImplementedError(
+            "Collection objects do not implement truth value testing or bool(). "
+            "Please compare with None instead: collection is not None"
+        )
+
+    __len__ = __bool__
+
+    def find_one(self, query, projection=None):
+        doc = self._docs.get(query.get("username"))
+        if doc is None:
+            return None
+        result = dict(doc)
+        if projection:
+            include = {k for k, v in projection.items() if v}
+            for k in list(result.keys()):
+                if include and k not in include:
+                    result.pop(k, None)
+        return result
+
+    def update_one(self, query, update):
+        doc = self._docs.setdefault(query.get("username"), {"username": query.get("username")})
+        self.update_calls.append((query, update))
+        for k, v in update.get("$set", {}).items():
+            doc[k] = v
+        return type("Result", (), {"matched_count": 1, "modified_count": 1})()
+
+
 def test_credit_session_does_not_crash_on_a_real_collection(monkeypatch):
     """The exact vulnerability in _credit_session: `if users_col and
     username:` used to raise NotImplementedError for ANY real (non-None)
@@ -142,3 +180,95 @@ async def test_webhook_order_lookup_does_not_crash_on_a_real_collection(monkeypa
 
     assert result == {"status": "ok"}
     assert len(fake_users.update_calls) == 1  # _credit_session actually ran
+
+
+# ── Payment receipt email ───────────────────────────────────────────────────
+
+def test_send_payment_receipt_emails_when_user_has_an_email_on_file(monkeypatch):
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollection([
+        {"username": "alice", "email": "alice@example.com", "full_name": "Alice Singh"},
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+
+    sent_calls = []
+    monkeypatch.setattr(
+        "app.services.email.send_email",
+        lambda to, subject, html: sent_calls.append((to, subject, html)) or True,
+    )
+
+    from datetime import datetime, timezone
+    session_end = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    payments._send_payment_receipt("alice", payments.PLANS["1hr"], "pay_123", session_end)
+
+    assert len(sent_calls) == 1
+    to, subject, html = sent_calls[0]
+    assert to == "alice@example.com"
+    assert "receipt" in subject.lower()
+    assert "pay_123" in html
+    assert "199.00" in html  # ₹19900 paise → ₹199.00
+
+
+def test_send_payment_receipt_skips_silently_when_no_email_on_file(monkeypatch):
+    """Phone-only signups have nowhere to send this yet — must not raise,
+    must not block anything (the plan is already active by this point)."""
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollection([
+        {"username": "bob"},  # no email field at all
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+
+    sent_calls = []
+    monkeypatch.setattr(
+        "app.services.email.send_email",
+        lambda *a, **k: sent_calls.append((a, k)) or True,
+    )
+
+    from datetime import datetime, timezone
+    session_end = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    payments._send_payment_receipt("bob", payments.PLANS["1hr"], "pay_123", session_end)  # must not raise
+
+    assert sent_calls == []
+
+
+def test_send_payment_receipt_never_raises_if_email_sending_itself_fails(monkeypatch):
+    """A Resend outage must never surface as a payment-verify error — the
+    plan is already credited by the time this runs."""
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollection([
+        {"username": "alice", "email": "alice@example.com", "full_name": "Alice"},
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+    monkeypatch.setattr(
+        "app.services.email.send_email",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("resend is down")),
+    )
+
+    from datetime import datetime, timezone
+    session_end = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    # Must not raise despite send_email raising internally.
+    payments._send_payment_receipt("alice", payments.PLANS["1hr"], "pay_123", session_end)
+
+
+def test_credit_session_still_credits_even_if_receipt_email_blows_up(monkeypatch):
+    """The actual end-to-end guarantee: whatever goes wrong with the
+    receipt, the session is still credited — _credit_session's own
+    return value and DB write must be unaffected."""
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollection([
+        {"username": "alice", "email": "alice@example.com", "full_name": "Alice"},
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+    monkeypatch.setattr(
+        "app.services.email.send_email",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("resend is down")),
+    )
+
+    result = payments._credit_session("alice", "1hr", "pay_123", "order_456")
+
+    assert result["verified"] is True
+    assert fake_users._docs["alice"]["plan"] == "basic"
