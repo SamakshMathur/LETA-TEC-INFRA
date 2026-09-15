@@ -35,3 +35,16 @@ class MockSMSProvider(BaseSMSProvider):
                 error="Simulated provider delivery failure",
                 status_code=500,
             )
+
+    def send_transactional(self, phone: str, template_id: str, message: str) -> SMSResult:
+        masked = mask_phone(phone)
+        if self.simulate_success:
+            self.sent_messages.append({
+                "phone": phone,
+                "template_id": template_id,
+                "message": message,
+            })
+            logger.info(f"[MOCK SMS] Transactional SMS dispatched | phone={masked} | template_id={template_id}")
+            return SMSResult(success=True, provider="mock", message_id=f"mock_msg_{len(self.sent_messages)}", status_code=200)
+        logger.warning(f"[MOCK SMS] Simulated transactional failure | phone={masked}")
+        return SMSResult(success=False, provider="mock", error="Simulated provider delivery failure", status_code=500)

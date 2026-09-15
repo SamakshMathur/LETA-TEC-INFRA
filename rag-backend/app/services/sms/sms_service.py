@@ -90,6 +90,24 @@ class SMSService:
         logger.error(f"All SMS providers failed to dispatch OTP to phone={masked}")
         return last_result
 
+    def send_transactional(self, phone: str, template_id: str, message: str) -> SMSResult:
+        """
+        Dispatch an already-DLT-approved non-OTP transactional message
+        (a payment receipt, for example).
+
+        Deliberately Airtel-only for now, no SNS/Fast2SMS fallback — each
+        of those providers would need this exact message wording
+        separately DLT-registered on THEIR platform too (Fast2SMS's OTP
+        "route", for instance, is a different registration entirely from
+        Airtel's), and building fallback support nobody has requested or
+        registered templates for yet is speculative complexity, not a
+        real gap. Revisit once (if) receipt-SMS delivery volume actually
+        needs the redundancy OTP delivery does.
+        """
+        if self.dev_mode:
+            return self.mock_provider.send_transactional(phone, template_id, message)
+        return self.airtel_provider.send_transactional(phone, template_id, message)
+
 
 # Singleton instance
 default_sms_service = SMSService()
@@ -98,3 +116,9 @@ default_sms_service = SMSService()
 def send_sms_otp(phone: str, otp: str, template_type: str = "registration") -> SMSResult:
     """Convenience function to send OTP SMS via default service."""
     return default_sms_service.send_otp(phone, otp, template_type=template_type)
+
+
+def send_transactional_sms(phone: str, template_id: str, message: str) -> SMSResult:
+    """Convenience function to send a non-OTP transactional SMS via the
+    default service. See SMSService.send_transactional for scope notes."""
+    return default_sms_service.send_transactional(phone, template_id, message)

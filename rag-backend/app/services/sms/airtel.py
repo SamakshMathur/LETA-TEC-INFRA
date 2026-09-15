@@ -17,6 +17,15 @@ AIRTEL_DLT_REGISTRATION_TEMPLATE = (
     "during account registration. It is valid for 2 minutes. Do not share this OTP with anyone."
 )
 
+# Payment-receipt SMS — DELIBERATELY a separate, empty-by-default template
+# id. DLT requires every distinct message WORDING to be pre-registered
+# with the telecom operator before it can be sent at all; the receipt
+# text is different wording than the OTP template above, so it needs its
+# own registration and its own approved id, which doesn't exist yet.
+# Until AIRTEL_DLT_RECEIPT_TEMPLATE_ID is set (once that registration is
+# approved), send_transactional() degrades safely — see its own docstring.
+AIRTEL_DLT_RECEIPT_TEMPLATE_ID = os.getenv("AIRTEL_DLT_RECEIPT_TEMPLATE_ID", "")
+
 
 class AirtelSMSProvider(BaseSMSProvider):
     """
@@ -81,33 +90,73 @@ class AirtelSMSProvider(BaseSMSProvider):
         Send DLT-compliant OTP via Airtel SMS Gateway.
         Logs delivery status without exposing OTP or credentials.
         """
-        masked = mask_phone(phone)
         if not self.is_configured():
+            masked = mask_phone(phone)
             logger.warning(f"Airtel SMS credentials not configured — skipping Airtel delivery for phone={masked}")
             return SMSResult(
                 success=False,
                 provider="airtel",
                 error="Airtel SMS credentials not configured",
             )
-
         payload = self.build_payload(phone, otp, template_type)
+        return self._dispatch(phone, payload, log_template_id=AIRTEL_DLT_REGISTRATION_TEMPLATE_ID)
+
+    def send_transactional(self, phone: str, template_id: str, message: str) -> SMSResult:
+        """
+        Send an already-DLT-approved transactional message that ISN'T an
+        OTP (a payment receipt, for example). Unlike send_otp, this
+        doesn't select a template itself — the caller supplies both the
+        exact registered template_id and the exact final message text,
+        since (unlike OTP, which only ever has one shape) there's no
+        single fixed wording for every kind of transactional message this
+        could ever send.
+
+        Returns a clean failure (not an exception, not an HTTP call) when
+        template_id is empty — the expected state until that template's
+        DLT registration is actually approved and its id configured.
+        """
+        masked = mask_phone(phone)
+        if not template_id:
+            logger.info(f"No DLT template configured for this message type — skipping SMS for phone={masked}")
+            return SMSResult(success=False, provider="airtel", error="No DLT template_id configured for this message type")
+        if not self.is_configured():
+            logger.warning(f"Airtel SMS credentials not configured — skipping Airtel delivery for phone={masked}")
+            return SMSResult(success=False, provider="airtel", error="Airtel SMS credentials not configured")
+
+        clean_phone = normalize_phone_10_digits(phone)
+        msisdn = f"91{clean_phone}" if len(clean_phone) == 10 else clean_phone
+        payload = {
+            "customerId": self.customer_id,
+            "sourceAddress": self.sender_id,
+            "destinationAddress": [msisdn],
+            "message": message,
+            "entityId": self.entity_id,
+            "dltTemplateId": template_id,
+            "messageType": "SERVICE_IMPLICIT",
+        }
+        return self._dispatch(phone, payload, log_template_id=template_id)
+
+    def _dispatch(self, phone: str, payload: Dict[str, Any], log_template_id: str) -> SMSResult:
+        """Shared HTTP dispatch for both send_otp and send_transactional —
+        same auth-header construction, same response handling, same error
+        cases either way; only the payload (and which DLT template it
+        declares) differs between an OTP and any other transactional SMS."""
+        masked = mask_phone(phone)
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
 
-        # Auth header construction
         auth = None
         resolved_user = self.username or self.customer_id
         resolved_pass = self.password or self.api_secret
-
         if resolved_user and resolved_pass:
             auth = (resolved_user, resolved_pass)
         elif self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            logger.info(f"Dispatching DLT OTP via Airtel SMS Gateway | phone={masked} | template_id={AIRTEL_DLT_REGISTRATION_TEMPLATE_ID}")
+            logger.info(f"Dispatching SMS via Airtel Gateway | phone={masked} | template_id={log_template_id}")
             response = requests.post(
                 self.api_url,
                 json=payload,
