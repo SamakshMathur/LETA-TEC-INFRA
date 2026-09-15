@@ -153,6 +153,37 @@ def _send_payment_receipt_sms(username: str, plan_cfg: dict, payment_id: str, se
         logger.error(f"Payment receipt SMS failed (non-fatal, plan is already active): {e}")
 
 
+def _create_invoice(username: str, plan_cfg: dict, payment_id: str, order_id: str) -> None:
+    """
+    Creates the permanent invoice record backing the "Download Invoice"
+    button, assigning it its sequential GST invoice number. Same non-fatal
+    contract as the email/SMS receipts: the plan is already active by the
+    time this runs, so a DB hiccup here must never look like the payment
+    failed — it just means that one invoice can't be downloaded until
+    someone notices and backfills it, not that the customer wasn't
+    charged or credited correctly.
+    """
+    try:
+        users_col = get_user_collection()
+        user = users_col.find_one({"username": username}, {"_id": 0, "email": 1, "phone": 1, "full_name": 1}) if users_col is not None else None
+
+        from app.services.invoice import create_invoice_record
+        record = create_invoice_record(
+            payment_id=payment_id,
+            order_id=order_id,
+            username=username,
+            customer_name=(user or {}).get("full_name") or username,
+            customer_email=(user or {}).get("email"),
+            customer_phone=(user or {}).get("phone"),
+            plan_name=plan_cfg.get("name", ""),
+            amount_paise=plan_cfg.get("amount", 0),
+        )
+        if record:
+            logger.info(f"Invoice created | number={record['invoice_number']} payment={payment_id}")
+    except Exception as e:
+        logger.error(f"Invoice creation failed (non-fatal, plan is already active): {e}")
+
+
 def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str) -> dict:
     """
     Apply session extension to the user record.
@@ -183,6 +214,7 @@ def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str)
         )
         _send_payment_receipt(username, plan_cfg, payment_id, session_end_dt)
         _send_payment_receipt_sms(username, plan_cfg, payment_id, session_end_dt)
+        _create_invoice(username, plan_cfg, payment_id, order_id)
 
     return {
         "verified":       True,
@@ -403,3 +435,32 @@ async def razorpay_webhook(request: Request):
         logger.debug(f"razorpay_webhook: unhandled event type '{event_type}' — ACK")
 
     return {"status": "ok"}
+
+
+@router.get("/invoice/{payment_id}")
+def download_invoice(payment_id: str, current_user: dict = Depends(get_jwt_user)):
+    """
+    Serves the GST invoice PDF for a specific payment. Ownership-scoped —
+    the invoice record's own username field, not the requester's claim,
+    decides access: a user can only ever download their OWN invoices,
+    same as every other payment/session endpoint in this app.
+    """
+    from app.services.invoice import get_invoice_record, render_invoice_pdf
+    from fastapi.responses import Response
+
+    record = get_invoice_record(payment_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if record.get("username") != current_user.get("username"):
+        # Identical 404 as "doesn't exist" — same reasoning as every other
+        # ownership check in this codebase: don't reveal that a payment_id
+        # belongs to someone else, just say it isn't there.
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    pdf_bytes = render_invoice_pdf(record)
+    filename = f"{record['invoice_number'].replace('/', '-')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
