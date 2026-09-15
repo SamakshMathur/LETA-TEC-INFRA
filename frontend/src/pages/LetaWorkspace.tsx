@@ -322,13 +322,15 @@ const LetaWorkspace: React.FC = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   // Ownership of the CURRENTLY open session, as reported by the backend
-  // (GET /api/sessions/{id} returns is_owner/is_shared) — null for a brand
-  // new chat that has no backend session yet. A shared chat opened by
+  // (GET /api/sessions/{id} returns is_owner — every session is viewable
+  // by any logged-in account that has its URL, so this is what actually
+  // decides read-only vs full UI, not whether it was "shared") — null for
+  // a brand new chat that has no backend session yet. A chat opened by
   // someone other than its owner comes back with isOwner:false: read-only,
-  // composer hidden, no rename/tag/delete/share actions (those all 404 for
-  // a non-owner server-side anyway; hiding them client-side is just honest
+  // composer hidden, no rename/tag/delete actions (those all 404 for a
+  // non-owner server-side anyway; hiding them client-side is just honest
   // UI, not the actual security boundary).
-  const [sessionOwnership, setSessionOwnership] = useState<{ isOwner: boolean; isShared: boolean } | null>(null);
+  const [sessionOwnership, setSessionOwnership] = useState<{ isOwner: boolean } | null>(null);
   // Set when the URL names a specific chat (shared link, bookmark) that the
   // backend refused — not shared, and not owned by the current account.
   // Distinct from a normal sidebar click gone wrong (which keeps the older,
@@ -946,12 +948,9 @@ const LetaWorkspace: React.FC = () => {
       if (requestId !== sessionLoadRequestRef.current) return;
 
       // Defaults to owner:true for any legacy/unpatched backend response
-      // that omits these fields — matches how every session behaved before
+      // that omits this field — matches how every session behaved before
       // sharing existed at all.
-      setSessionOwnership({
-        isOwner: res.data?.is_owner !== false,
-        isShared: Boolean(res.data?.is_shared),
-      });
+      setSessionOwnership({ isOwner: res.data?.is_owner !== false });
 
       const loadedMessages = Array.isArray(res.data?.messages) ? res.data.messages : [];
       const nextMessages = loadedMessages.map((msg: any) => ({
@@ -1602,11 +1601,12 @@ const LetaWorkspace: React.FC = () => {
   // own start screens. Reverts to the normal bottom-docked composer the
   // moment a message exists; no change to in-conversation behavior.
   const isEmptyState = messages.length === 0;
-  // A chat someone else shared with us — viewable, never writable. The
-  // real security boundary is server-side (sessions.get_session only
-  // returns it because is_shared is true; app.py's _verify_session_writable
-  // rejects a post to it regardless of what the UI does) — this just keeps
-  // the composer from offering an action that would 403 anyway.
+  // A chat someone else owns — any logged-in account can view it via its
+  // URL, but only the owner can write to it. The real security boundary
+  // is server-side (app.py's _verify_session_writable rejects a post to
+  // a session_id that isn't the poster's, regardless of what the UI does)
+  // — this just keeps the composer from offering an action that would
+  // 403 anyway.
   const isReadOnlyView = sessionOwnership !== null && !sessionOwnership.isOwner;
 
   return (
