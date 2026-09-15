@@ -125,6 +125,19 @@ def _ensure_indexes(db) -> None:
             [("order_id", ASCENDING)], unique=True, name="order_id_unique"
         )
 
+        # invoices: one doc per issued invoice. unique on both payment_id (so
+        # a payment can never get two invoice numbers, however many times its
+        # crediting path runs) and invoice_number (belt-and-suspenders on top
+        # of the atomic counter that assigns it — GST numbering must never
+        # collide).
+        db["invoices"].create_index(
+            [("payment_id", ASCENDING)], unique=True, name="invoice_payment_id_unique"
+        )
+        db["invoices"].create_index(
+            [("invoice_number", ASCENDING)], unique=True, name="invoice_number_unique"
+        )
+        db["invoices"].create_index([("username", ASCENDING)])
+
         logger.info("MongoDB indexes ensured")
     except OperationFailure as e:
         # Non-fatal: Atlas free tier may restrict index creation
@@ -207,6 +220,20 @@ def get_payment_ledger_collection():
 def get_payment_orders_collection():
     """Maps Razorpay order_id → user context for server-side webhook processing."""
     return db.get_collection("payment_orders")
+
+def get_invoice_collection():
+    """One doc per issued invoice — see app/services/invoice.py for the
+    schema and PDF generation."""
+    return db.get_collection("invoices")
+
+def get_invoice_counter_collection():
+    """Single-document atomic counter backing invoice numbering. GST
+    requires invoice numbers to be sequential with no gaps — a
+    find_one_and_update with $inc is the only safe way to hand out the
+    next number under concurrent requests; two payments crediting at the
+    same instant must never receive the same number or silently skip
+    one."""
+    return db.get_collection("invoice_counters")
 
 def get_db():
     if not db.client:
