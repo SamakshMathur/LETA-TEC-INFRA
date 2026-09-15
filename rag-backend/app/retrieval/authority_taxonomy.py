@@ -615,32 +615,81 @@ _CIR_LEADING_RE = re.compile(r'^(\d{2,3})[-_]\d+[-_]\d{4}', re.IGNORECASE)
 
 def verify_mandatory_coverage(chunks: list, taxonomy: dict) -> dict:
     """
-    Verifies that EVERY mandatory authority predicted by the taxonomy is
-    actually present in the retrieved chunks.
-
-    This is the difference between:
-      "retrieval found relevant chunks"       (probabilistic — what we had before)
-      "retrieval verified governing authorities"  (deterministic — what we need)
-
-    For cross-charge: confirms Section 25, Section 20, Rule 28, Rule 39, and
-    Circular 199 are each individually confirmed present — not just "a circular".
-
-    Returns:
-        {
-            "coverage_pct":       int     — 0–100
-            "found":              list    — confirmed mandatory authorities
-            "missing_sections":   list    — provision keys not found in any chunk
-            "missing_rules":      list    — rule keys not found in any chunk
-            "missing_circulars":  list    — circular keys not found in any chunk
-            "missing":            list    — all missing (sections + rules + circulars)
-            "total_mandatory":    int
-        }
+    Verifies legal authority coverage distinguishing:
+      1. Explicit user-requested references (hard mandatory obligation)
+      2. Inferred taxonomy related authorities (soft contextual suggestions)
     """
+    explicit_refs = taxonomy.get("explicit_refs") or taxonomy.get("explicit_authorities") or []
     mandatory_sections  = taxonomy.get("sections",  [])
     mandatory_rules     = taxonomy.get("rules",     [])
     mandatory_circulars = taxonomy.get("circulars", [])
-    total_mandatory = len(mandatory_sections) + len(mandatory_rules) + len(mandatory_circulars)
 
+    # ── Collect what's present in retrieved chunks ─────────────────────────
+    present_provisions: set[str] = set()
+    present_circulars:  set[str] = set()
+
+    for chunk in chunks:
+        meta = chunk.get("metadata", {})
+        if chunk.get("_pinned_by_ref"):
+            for ref_k in (taxonomy.get("explicit_refs") or []):
+                present_provisions.add(ref_k)
+
+        for p in meta.get("provisions", []) + meta.get("provision_keys", []) + meta.get("citations", []):
+            if p:
+                present_provisions.add(str(p))
+
+        if chunk.get("provision"):
+            present_provisions.add(str(chunk["provision"]))
+
+        rel  = (chunk.get("rel_path") or meta.get("rel_path", "")).replace("\\", "/")
+        fname = rel.split("/")[-1]
+        m = _CIR_NUM_RE.search(fname) or _CIR_LEADING_RE.match(fname)
+        if m:
+            present_circulars.add(f"CIRCULAR_{m.group(1)}")
+
+    def _provision_present(key: str) -> bool:
+        if key in present_provisions:
+            return True
+        prefix = key + "_"
+        base = key.split("(")[0]
+        return any(p == key or p.startswith(prefix) or p == base or p.startswith(base + "_") for p in present_provisions)
+
+    # ── Explicit user reference evaluation ────────────────────────────────
+    if explicit_refs:
+        explicit_found = [r for r in explicit_refs if _provision_present(r)]
+        explicit_missing = [r for r in explicit_refs if r not in explicit_found]
+        explicit_coverage_pct = round(100 * len(explicit_found) / len(explicit_refs)) if explicit_refs else 100
+
+        # Inferred authorities are optional context when explicit refs are specified
+        inferred_all = mandatory_sections + mandatory_rules + mandatory_circulars
+        inferred_found = [a for a in inferred_all if _provision_present(a) or a in present_circulars]
+        inferred_missing = [a for a in inferred_all if a not in inferred_found]
+
+        # Overall coverage_pct for narrow query is driven by explicit requested reference
+        coverage_pct = explicit_coverage_pct
+
+        logger.info(
+            f"Mandatory coverage (explicit-reference mode): {coverage_pct}% | "
+            f"explicit_found={explicit_found} | explicit_missing={explicit_missing} | "
+            f"inferred_found={len(inferred_found)}/{len(inferred_all)}"
+        )
+        return {
+            "coverage_pct":                coverage_pct,
+            "explicit_reference_coverage": explicit_coverage_pct,
+            "required_authority_coverage": explicit_coverage_pct,
+            "optional_authority_coverage": round(100 * len(inferred_found) / max(1, len(inferred_all))),
+            "found":                       explicit_found,
+            "missing":                     explicit_missing,
+            "missing_sections":            [s for s in explicit_missing if "SEC" in s],
+            "missing_rules":               [r for r in explicit_missing if "RUL" in r],
+            "missing_circulars":           [c for c in explicit_missing if "CIRCULAR" in c],
+            "inferred_found":              inferred_found,
+            "inferred_missing":            inferred_missing,
+            "total_mandatory":             len(explicit_refs),
+        }
+
+    # ── Broad taxonomy evaluation (no explicit user refs) ──────────────────
+    total_mandatory = len(mandatory_sections) + len(mandatory_rules) + len(mandatory_circulars)
     if total_mandatory == 0:
         return {
             "coverage_pct": 100,
@@ -651,36 +700,6 @@ def verify_mandatory_coverage(chunks: list, taxonomy: dict) -> dict:
             "missing": [],
             "total_mandatory": 0,
         }
-
-    # ── Collect what's present in retrieved chunks ─────────────────────────
-    present_provisions: set[str] = set()
-    present_circulars:  set[str] = set()
-
-    for chunk in chunks:
-        meta = chunk.get("metadata", {})
-
-        # Provision/citation keys (e.g. CGST_SEC_25, CGST_RUL_28)
-        for p in meta.get("provisions", []) + meta.get("citations", []):
-            if p:
-                present_provisions.add(p)
-
-        # Circular number from filename
-        rel  = (chunk.get("rel_path") or meta.get("rel_path", "")).replace("\\", "/")
-        fname = rel.split("/")[-1]
-        m = _CIR_NUM_RE.search(fname) or _CIR_LEADING_RE.match(fname)
-        if m:
-            present_circulars.add(f"CIRCULAR_{m.group(1)}")
-
-    # ── Check each mandatory authority ─────────────────────────────────────
-    # For sections/rules, check the provision key AND a fallback numeric match.
-    # CGST_SEC_25 present if it's in any chunk's provisions OR if any provision
-    # key starts with "CGST_SEC_25" / "IGST_SEC_25" (sub-clause variants).
-    def _provision_present(key: str) -> bool:
-        if key in present_provisions:
-            return True
-        # Fuzzy: CGST_SEC_25 matches CGST_SEC_25_4, CGST_SEC_25_5 etc.
-        prefix = key + "_"
-        return any(p.startswith(prefix) for p in present_provisions)
 
     missing_sections  = [s for s in mandatory_sections  if not _provision_present(s)]
     missing_rules     = [r for r in mandatory_rules     if not _provision_present(r)]

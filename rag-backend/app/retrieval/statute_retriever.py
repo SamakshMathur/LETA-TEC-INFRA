@@ -74,10 +74,19 @@ class StatuteRetriever:
         self._citation_to_indices: Dict[str, List[int]] = {}
         for i, chunk in enumerate(chunks):
             metadata = chunk.get("metadata", {})
-            for cit in (metadata.get("citations") or []):
-                if cit not in self._citation_to_indices:
-                    self._citation_to_indices[cit] = []
-                self._citation_to_indices[cit].append(i)
+            cits = (
+                list(metadata.get("citations") or [])
+                + list(metadata.get("provision_keys") or [])
+                + list(metadata.get("provisions") or [])
+                + ([chunk.get("provision")] if chunk.get("provision") else [])
+            )
+            for cit in cits:
+                if not cit:
+                    continue
+                cit_str = str(cit).strip()
+                if cit_str not in self._citation_to_indices:
+                    self._citation_to_indices[cit_str] = []
+                self._citation_to_indices[cit_str].append(i)
         logger.info(
             f"StatuteRetriever: citation lookup built — "
             f"{len(self._citation_to_indices)} unique citations across {len(chunks)} chunks"

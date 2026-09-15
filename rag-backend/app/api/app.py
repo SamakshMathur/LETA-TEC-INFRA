@@ -94,11 +94,50 @@ def compute_context_fingerprint(
     }
 
 
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _lifespan(app):
+    """Seed feed store and pre-warm AI models in background."""
+    import asyncio as _asyncio
+    global _warmup_complete
+
+    # 1. Seed in-memory event log
+    try:
+        from app.feed_store import _event_log, make_event
+        if not _event_log:
+            _event_log.append(make_event("LETA TEC Legal Intelligence Engine initialized", "SYSTEM"))
+        logger.info(f"Feed store initialized with {len(_event_log)} events")
+    except Exception as e:
+        logger.warning(f"Feed store seed failed (non-fatal): {e}")
+
+    # 2. Pre-load embedding model + FAISS index so the first /ask-sync request
+    #    doesn't pay the ~15-20s cold-start cost and timeout at API Gateway.
+    async def _warmup():
+        global _warmup_complete
+        try:
+            from app.dependencies import preload_all_models
+            await _asyncio.to_thread(preload_all_models)
+            logger.info("Startup model warmup complete")
+        except Exception as e:
+            logger.warning(f"Startup warmup failed (non-fatal): {e}")
+        finally:
+            _warmup_complete = True  # always unblock health check, even on error
+
+    _asyncio.ensure_future(_warmup())
+
+    yield  # application runs
+
+    # Shutdown cleanup (if needed in future — currently no resources to release)
+
+
 # ---------- App ----------
 app = FastAPI(
     title="GST Legal RAG API",
     version="1.0",
     description="In-house GST knowledge assistant",
+    lifespan=_lifespan,
 )
 
 # Readiness gate: ALB health check returns 503 until models are loaded.
@@ -117,37 +156,6 @@ _DRAFT_KW_CANONICAL = [
     "tax position", "gst treatment of", "advise on", "legal opinion",
     "our client is", "we are engaged in", "facts of the case",
 ]
-
-@app.on_event("startup")
-async def _startup_tasks():
-    """Seed feed store and pre-warm AI models in background."""
-    import asyncio as _asyncio
-
-    # 1. Seed in-memory event log
-    try:
-        from app.api.documents import get_activity_feed
-        from app.feed_store import _event_log
-        items = get_activity_feed()
-        for item in reversed(items):
-            _event_log.append(item)
-        logger.info(f"Feed store seeded with {len(items)} events from filesystem")
-    except Exception as e:
-        logger.warning(f"Feed store seed failed (non-fatal): {e}")
-
-    # 2. Pre-load embedding model + FAISS index so the first /ask-sync request
-    #    doesn't pay the ~15-20s cold-start cost and timeout at API Gateway.
-    async def _warmup():
-        global _warmup_complete
-        try:
-            from app.dependencies import preload_all_models
-            await _asyncio.to_thread(preload_all_models)
-            logger.info("Startup model warmup complete")
-        except Exception as e:
-            logger.warning(f"Startup warmup failed (non-fatal): {e}")
-        finally:
-            _warmup_complete = True  # always unblock health check, even on error
-
-    _asyncio.ensure_future(_warmup())
 
 
 @app.get("/")
@@ -469,20 +477,18 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
     import time
     t_gen_start = time.monotonic()
     try:
+        # Phase 1: Collect full answer internally (Pre-Stream Hard Gate)
         for chunk in generator:
             full_answer += chunk
-            yield chunk
 
         if chunks and full_answer.strip():
             # Use the session-level draft flag passed in — do not re-detect from
             # user_query alone, which breaks on follow-up/correction messages.
-            # Uses _DRAFT_KW_CANONICAL so detection matches the /ask routing logic.
             is_draft = is_draft_session or any(kw in user_query.lower() for kw in _DRAFT_KW_CANONICAL)
 
-            # ── Post-generation verification pipeline ─────────────────────────
-            # Runs citation validation, hallucination guard, authority verifier,
-            # and answer verifier in parallel.  All checks are non-fatal —
-            # errors in individual checks are logged and skipped.
+            # ── Pre-exposure verification pipeline ───────────────────────────
+            # Runs canonical citation validation, hallucination guard, authority verifier,
+            # and answer verifier BEFORE exposing answer to client.
             from app.generation.verification_pipeline import run_verification_pipeline
             vr = await run_verification_pipeline(
                 answer=full_answer,
@@ -494,32 +500,41 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                 is_draft=is_draft,
             )
 
-            # Stream verifier warning to user if a logical contradiction was found
-            if vr.verifier_warning:
-                yield vr.verifier_warning
+            if vr.gate_verdict == "BLOCK":
+                _logger.warning(f"[GATE_BLOCK] Withholding unverified answer for query: {user_query[:60]}")
+                # Stream only the safe fallback disclosure — unverified citations never reach client
+                yield vr.safe_fallback_answer
+                full_answer = vr.safe_fallback_answer
+            else:
+                # Gate PASSED: Stream verified answer text to client
+                # Stream in chunks for smooth client rendering
+                chunk_size = 120
+                for i in range(0, len(vr.verified_answer), chunk_size):
+                    yield vr.verified_answer[i:i + chunk_size]
 
-            # Emit resolved [Sn] citation block for frontend link resolution
-            if vr.citations_block:
-                yield vr.citations_block
+                # Stream verifier warning to user if a logical contradiction was found
+                if vr.verifier_warning:
+                    yield vr.verifier_warning
 
-            # ── Safety guards: compute confidence and append caveat if needed ──
-            # Runs unconditionally — not only when citation markers were resolved.
-            # An answer with no [Sn] markers (drafts, simple queries, marker_map=None)
-            # must still go through the safety/confidence check.
-            try:
-                from app.generation.confidence import estimate_confidence
-                from app.generation.safety import apply_safety_guards
-                _confidence = estimate_confidence(context, chunks or [])
-                _logger.debug(f"Confidence (context-based): {_confidence:.3f}")
-                _safe_answer = apply_safety_guards(full_answer, _confidence, "")
-                # If safety guard appended a caveat, stream it now
-                if _safe_answer != full_answer:
-                    caveat = _safe_answer[len(full_answer):]
-                    yield caveat
-            except Exception as _sg_exc:
-                _logger.debug(f"Safety guard error (non-fatal): {_sg_exc}")
+                # Emit resolved [Sn] citation block for frontend link resolution
+                if vr.citations_block:
+                    yield vr.citations_block
 
-            # template_block intentionally not streamed — surfaced via /api/templates instead
+                # ── Safety guards: compute confidence and append caveat if needed ──
+                try:
+                    from app.generation.confidence import estimate_confidence
+                    from app.generation.safety import apply_safety_guards
+                    _confidence = estimate_confidence(context, chunks or [])
+                    _logger.debug(f"Confidence (context-based): {_confidence:.3f}")
+                    _safe_answer = apply_safety_guards(vr.verified_answer, _confidence, "")
+                    if _safe_answer != vr.verified_answer:
+                        caveat = _safe_answer[len(vr.verified_answer):]
+                        yield caveat
+                except Exception as _sg_exc:
+                    _logger.debug(f"Safety guard error (non-fatal): {_sg_exc}")
+        elif full_answer.strip():
+            # No chunks retrieved (e.g. conversational/definition) — stream collected answer
+            yield full_answer
 
     except Exception as e:
         _logger.error(f"Error in stream_and_save: {e}", exc_info=True)
@@ -551,18 +566,19 @@ async def stream_and_save(generator, session_id, user_query, chunks=None, contex
                 except Exception as dbe:
                     _logger.warning(f"DB save error (non-fatal): {dbe}")
 
-        # Confidence-gated cache store — also off the event loop
+        # Confidence-gated cache store — only cache if answer passed verification
         if full_answer.strip() and query_vec is not None:
             try:
-                from app.cache import cache_store
-                from app.generation.confidence import estimate_confidence
-                # Pass the RETRIEVED CONTEXT string (not the generated answer) so
-                # confidence reflects evidence volume, not answer verbosity.
-                confidence = await asyncio.to_thread(estimate_confidence, context, chunks or [])
-                await asyncio.to_thread(cache_store, user_query, query_vec, full_answer, confidence, unique_sources if chunks else [])
-                _logger.debug(f"Cache store attempt | confidence={confidence:.3f}")
+                # Do not cache blocked answers
+                if not full_answer.startswith("\n\n⚠ **LETA TEC Legal Integrity Notice"):
+                    from app.cache import cache_store
+                    from app.generation.confidence import estimate_confidence
+                    confidence = await asyncio.to_thread(estimate_confidence, context, chunks or [])
+                    await asyncio.to_thread(cache_store, user_query, query_vec, full_answer, confidence, unique_sources if chunks else [])
+                    _logger.debug(f"Cache store attempt | confidence={confidence:.3f}")
             except Exception as ce:
                 _logger.warning(f"Cache store error (non-fatal): {ce}")
+
 
         # Commit AI log analytics
         try:
@@ -875,6 +891,10 @@ async def ask_question(request: Request, req: QuestionRequest):
 
         yield f"__STATUS__:{json.dumps({'msg': f'Searching Statutory Database ({domain_label})...'})}__END_STATUS__"
 
+        # Extract canonical references for trace and lifecycle consistency
+        from app.retrieval.reference_resolver import ReferenceResolver
+        _extracted_refs = [r.canonical_key for r in ReferenceResolver.resolve_references(question)]
+
         if _is_draft:
             # Draft: keyword sub-queries via shared helper (no LLM call)
             _adv = build_keyword_queries(_retrieval_q, is_draft=True)
@@ -882,6 +902,7 @@ async def ask_question(request: Request, req: QuestionRequest):
             _trace.record_preprocessing(
                 original_query=question, refined_query=_retrieval_q,
                 sub_queries=_adv["queries"][1:],
+                detected_refs=_extracted_refs,
                 topic="General", domain_route=domain_paths,
                 complexity_score=_complexity, response_mode="draft",
             )
@@ -957,6 +978,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                     hyde_doc=_adv_qs.get("hyde_document", ""),
                     topic=_adv_qs.get("topic", "General"),
                     subtopic=_adv_qs.get("subtopic"),
+                    detected_refs=_extracted_refs,
                     domain_route=domain_paths,
                     complexity_score=_complexity,
                     response_mode=(
@@ -996,16 +1018,15 @@ async def ask_question(request: Request, req: QuestionRequest):
                 yield "\n\n⚠ **LETA TEC encountered a retrieval error.** The statutory database search failed for this query. Please try again — if the problem persists, try rephrasing your question."
                 return
 
-        # ── Stage 6: Context assembly (pure Python, no blocking I/O) ─────────────
         try:
             from app.retrieval.evidence_resolver import resolve_evidence
+            from app.generation.context_builder import select_generation_chunks, build_marker_map
             chunks = resolve_evidence(chunks, question)
-            citation_block   = build_context(chunks, is_draft=_is_draft)
-            compressed_block = compress_context(chunks, question, is_draft=_is_draft)
+            gen_chunks = select_generation_chunks(chunks, question) if not _is_draft else chunks
+            citation_block   = build_context(gen_chunks, is_draft=_is_draft)
 
             # Build the [S1]→chunk mapping for server-side citation resolution (Phase 2)
-            from app.generation.context_builder import build_marker_map
-            _marker_map = build_marker_map(chunks) if chunks else []
+            _marker_map = build_marker_map(gen_chunks) if gen_chunks else []
         except Exception as _ctx_exc:
             import traceback as _tb
             logger.error(
@@ -1046,8 +1067,6 @@ async def ask_question(request: Request, req: QuestionRequest):
             + (f"--- {_history_label} ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
             + citation_block
             + (f"\n\n{calc_block}" if calc_block else "")
-            + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
-            + compressed_block
         )
 
         try:
@@ -1101,7 +1120,7 @@ async def ask_question(request: Request, req: QuestionRequest):
         try:
             async for chunk in stream_and_save(
                 response_stream, session_id, question,
-                chunks=chunks, context=citation_block, truth_rules_text=truth_rules_text,
+                chunks=gen_chunks, context=citation_block, truth_rules_text=truth_rules_text,
                 query_vec=query_vec, is_draft_session=_is_draft,
                 marker_map=_marker_map,
             ):
@@ -1109,7 +1128,7 @@ async def ask_question(request: Request, req: QuestionRequest):
                 # Track whether any non-control text was produced.
                 # Control tokens (__STATUS__:, __METADATA__:, __CITATIONS__:) are
                 # not "real" answer text; we check for at least one plain text chunk.
-                if chunk and not chunk.startswith("__") and not chunk.startswith("\n\n⚠"):
+                if chunk and not chunk.startswith("__"):
                     _synthesis_yielded_text = True
         except Exception as _synth_exc:
             import traceback as _tb
@@ -1329,19 +1348,17 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
         skip_rerank=False,
     )
 
-    citation_block = build_context(chunks, is_draft=_is_draft)
-    compressed_block = compress_context(chunks, question, is_draft=_is_draft)
+    from app.generation.context_builder import build_context, build_marker_map, select_generation_chunks, parse_markers as _parse_markers
+    gen_chunks = select_generation_chunks(chunks, question) if not _is_draft else chunks
+    citation_block = build_context(gen_chunks, is_draft=_is_draft)
 
     # Build the (S1)→chunk mapping for server-side citation resolution (Phase 2)
-    from app.generation.context_builder import build_marker_map, parse_markers as _parse_markers
-    _marker_map_sync = build_marker_map(chunks) if chunks else []
+    _marker_map_sync = build_marker_map(gen_chunks) if gen_chunks else []
 
     full_rag_context = (
         (f"--- CHAT HISTORY ---\n{history_context}\n--- END HISTORY ---\n\n" if history_context else "")
         + citation_block
         + (f"\n\n{calc_block}" if calc_block else "")
-        + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
-        + compressed_block
     )
 
     # Draft/advisory queries: Haiku + 4000 tokens (~23-27s) — fits API Gateway's 29s limit.
@@ -1352,49 +1369,75 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
     )
     t_gen_end = time.monotonic()
 
-    # Resolve (S1), (S2), … markers in the generated answer → structured citation list
-    _citation_result_sync = _parse_markers(answer, _marker_map_sync)
+    # Pre-exposure verification gate for sync ask
+    from app.generation.verification_pipeline import run_verification_pipeline
+    vr = await run_verification_pipeline(
+        answer=answer,
+        query=question,
+        chunks=gen_chunks,
+        context=citation_block,
+        truth_rules_text="",
+        marker_map=_marker_map_sync,
+        is_draft=_is_draft,
+    )
 
-    unique_sources = build_unique_sources(chunks, max_sources=8)
+    if vr.gate_verdict == "BLOCK":
+        logger.warning(f"[SYNC_GATE_BLOCK] Withholding unverified answer for query: {question[:60]}")
+        final_answer = vr.safe_fallback_answer
+        verified_status = False
+        resolved_citations = []
+    else:
+        final_answer = vr.verified_answer
+        verified_status = True
+        # Resolve (S1), (S2), … markers in the generated answer → structured citation list
+        _citation_result_sync = _parse_markers(final_answer, _marker_map_sync)
+        resolved_citations = _citation_result_sync.get("citations", [])
 
-    if session_id and answer.strip():
+    unique_sources = build_unique_sources(gen_chunks, max_sources=8)
+
+    if session_id and final_answer.strip():
         collection = get_session_collection()
         if collection is not None:
-            from datetime import timezone as _tz
-            _now = utc_now()
-            collection.update_one(
-                {"session_id": session_id},
-                {
-                    "$push": {"messages": {
-                        "message_id": str(uuid.uuid4()),
-                        "role": "assistant",
-                        "content": answer,
-                        "timestamp": _now,
-                    }},
-                    "$set": {"updated_at": _now},
-                    "$inc": {"message_count": 1},
-                }
-            )
+            try:
+                from datetime import timezone as _tz
+                _now = utc_now()
+                collection.update_one(
+                    {"session_id": session_id},
+                    {
+                        "$push": {"messages": {
+                            "message_id": str(uuid.uuid4()),
+                            "role": "assistant",
+                            "content": final_answer,
+                            "timestamp": _now,
+                        }},
+                        "$set": {"updated_at": _now},
+                        "$inc": {"message_count": 1},
+                    }
+                )
+            except Exception as _sync_db_exc:
+                logger.warning(f"Sync DB save error (non-fatal): {_sync_db_exc}")
 
     # Commit AI log analytics
     try:
         from app.ai_logger import update_ai_log, commit_ai_log
         update_ai_log(
             generation_time_ms=round((t_gen_end - t_gen_start) * 1000, 2),
-            estimated_completion_tokens=len(answer) // 4,
-            response_length=len(answer),
+            estimated_completion_tokens=len(final_answer) // 4,
+            response_length=len(final_answer),
             citations_count=len(unique_sources)
         )
-        commit_ai_log(success=bool(answer.strip()))
+        commit_ai_log(success=bool(final_answer.strip()))
     except Exception as cle:
         logger.warning(f"AI logger commit error (non-fatal): {cle}")
 
     return _JSONResponse({
-        "answer":              answer,
+        "answer":              final_answer,
         "sources":             unique_sources,
-        "citations":           _citation_result_sync["citations"],
-        "unresolved_citations": _citation_result_sync["unresolved"],
+        "citations":           resolved_citations,
+        "verified":            verified_status,
+        "gate_verdict":        vr.gate_verdict,
     })
+
 
 
 async def _execute_ask_question_with_file(
@@ -1512,11 +1555,8 @@ async def _execute_ask_question_with_file(
         domain_paths=route.get("domain_paths", []),
     )
     from app.generation.context_builder import build_context
-    from app.generation.context_compressor import compress_context
     rag_context = (
         build_context(chunks)
-        + "\n\n--- COMPRESSED STATUTORY EXCERPTS (for quick reference) ---\n\n"
-        + compress_context(chunks, question_text)
     )
 
     # Combine File Content with RAG Context

@@ -86,24 +86,88 @@ def _count_tokens_approx(text: str) -> int:
     return len(text) // 4
 
 
+def _determine_intent_guidance(question: str) -> dict:
+    """
+    Classify query intent to inject targeted legal generation guidance into the prompt.
+    Always provides a safe, grounded fallback for unknown/general queries.
+    """
+    import re as _re
+    q_lower = question.lower()
+
+    # 1. Case law discovery
+    if any(k in q_lower for k in ["case law", "case-law", "caselaw", "judgment", "judgement", "precedent", "court", "high court", "supreme court", "tribunal", "cestat"]):
+        return {
+            "intent_type": "CASE_LAW_DISCOVERY",
+            "guidance": (
+                "INTENT FOCUS — CASE LAW DISCOVERY:\n"
+                "The user is requesting judicial precedent. Prioritize the case laws retrieved in evidence.\n"
+                "For each retrieved precedent, clearly state: (i) the court and parties, (ii) key factual issue, "
+                "(iii) ratio decidendi, and (iv) final holding. Do not require, fabricate, or demand unretrieved circulars."
+            )
+        }
+
+    # 2. Export / Refund / Cross-border
+    if any(k in q_lower for k in ["export", "refund", "lut", "zero rated", "zero-rated", "intermediary", "rule 96", "section 16 igst"]):
+        return {
+            "intent_type": "EXPORT_REFUND",
+            "guidance": (
+                "INTENT FOCUS — EXPORT / REFUND COMPLIANCE:\n"
+                "Maintain strict statute identity: Rule 96 belongs to the CGST Rules, 2017. "
+                "Zero-rated supply provisions belong to Section 16 of the IGST Act, 2017. "
+                "Verify procedural requirements strictly against retrieved source chunks."
+            )
+        }
+
+    # 3. Specific statutory provision query (e.g., Section 17(5)(d), Rule 88D)
+    if _re.search(r'\b(?:section|sec\.?|rule)\s+\d+[a-z]*(?:\([a-z0-9]+\))*', q_lower):
+        return {
+            "intent_type": "SPECIFIC_PROVISION",
+            "guidance": (
+                "INTENT FOCUS — SPECIFIC STATUTORY PROVISION:\n"
+                "The user is querying a specific section or rule. Focus directly on the statutory text and scope "
+                "of that provision as supported by retrieved evidence. Do not pad the answer with unrequested chapters or demand boilerplate."
+            )
+        }
+
+    # 4. Broad topical inquiry (e.g. "comprehensive ITC conditions")
+    if any(k in q_lower for k in ["input tax credit", "itc", "eligibility", "conditions", "overview", "comprehensive"]):
+        return {
+            "intent_type": "BROAD_TOPICAL",
+            "guidance": (
+                "INTENT FOCUS — TOPICAL COMPREHENSIVE SYNTHESIS:\n"
+                "Systematically synthesize the statutory eligibility conditions and restrictions present in the retrieved evidence.\n"
+                "Ground each condition with its exact provision and (S#) marker.\n"
+                "Strictly restrict cited authorities to those listed in <allowed_authorities>.\n"
+                "Do NOT introduce external circulars, notifications, or sections from pretrained memory that are not present in the retrieved chunks."
+            )
+        }
+
+    # Safe default / fallback
+    return {
+        "intent_type": "GENERAL_INQUIRY",
+        "guidance": (
+            "INTENT FOCUS — DIRECT LEGAL SYNTHESIS:\n"
+            "Provide a direct, concise legal answer grounded exclusively in the retrieved authorities."
+        )
+    }
+
+
 def _select_response_mode(complexity: float) -> tuple:
     """
     Maps complexity score to (mode_name, prompt_template, max_tokens).
 
-    All tiers now follow LETA TEC master prompt v2 structure:
-      Quick Take (≤300w) + Key Extracts + Detailed Advisory (500–3000w)
-      → minimum viable response is ~1200 tokens; generous headroom given.
-
-    brief    (< BRIEF_RESPONSE_THRESHOLD)    → Quick Take + KE + DA,  ~6000 tokens
-    standard (< STANDARD_RESPONSE_THRESHOLD) → Quick Take + KE + DA,  ~8000 tokens
-    detailed (>= STANDARD_RESPONSE_THRESHOLD)→ Quick Take + KE + DA, ~12000 tokens
+    Tuned token budgets for high-velocity legal synthesis:
+      brief    (< BRIEF_RESPONSE_THRESHOLD)    → 2000 tokens (~10s)
+      standard (< STANDARD_RESPONSE_THRESHOLD) → 3500 tokens (~18s)
+      detailed (>= STANDARD_RESPONSE_THRESHOLD)→ 5000 tokens (~28s)
     """
     if complexity < BRIEF_RESPONSE_THRESHOLD:
-        return "brief", BRIEF_PROMPT, 6000
+        return "brief", BRIEF_PROMPT, 2000
     elif complexity < STANDARD_RESPONSE_THRESHOLD:
-        return "standard", STANDARD_PROMPT, 8000
+        return "standard", STANDARD_PROMPT, 3500
     else:
-        return "detailed", SYSTEM_PROMPT, 12000
+        return "detailed", SYSTEM_PROMPT, 5000
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -449,21 +513,25 @@ def synthesize_answer_stream(
         session_is_draft or any(kw in question.lower() for kw in _DRAFT_KW)
     )
 
+    intent_info = _determine_intent_guidance(question)
+    guidance_prefix = f"{intent_info['guidance']}\n\n"
+    context_with_guidance = guidance_prefix + context if context else guidance_prefix
+
     if is_draft:
         prompt_template = DRAFTING_PROMPT
         use_haiku = force_haiku  # allow override even for draft in sync mode
         use_thinking = False  # Thinking disabled — DRAFTING_PROMPT is self-sufficient; all tokens go to output
-        max_tokens = 4000 if force_haiku else 16000
+        max_tokens = 3500 if force_haiku else 8000
     else:
         mode_name, prompt_template, max_tokens = _select_response_mode(complexity)
         use_haiku = force_haiku or (complexity < HAIKU_COMPLEXITY_THRESHOLD)
         use_thinking = (not use_haiku) and (complexity >= SONNET_THINKING_THRESHOLD)
         if force_haiku:
-            # Haiku 4.5 max output is 8192; cap at 6000 to leave headroom
-            max_tokens = min(max_tokens, 6000)
+            # Haiku 4.5 max output is 8192; cap at 3500 to maintain quick responsiveness
+            max_tokens = min(max_tokens, 3500)
 
     truth_rules_text = rules_engine.get_all_rules_as_text()
-    system_prompt = prompt_template.format(context=context, truth_rules=truth_rules_text)
+    system_prompt = prompt_template.format(context=context_with_guidance, truth_rules=truth_rules_text)
 
     model_name = "unknown"
     if LLM_PROVIDER == "anthropic":

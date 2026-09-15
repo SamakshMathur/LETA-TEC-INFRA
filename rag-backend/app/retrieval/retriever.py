@@ -27,6 +27,13 @@ from app.retrieval.authority_taxonomy import (
 from app.retrieval.citation_graph import DocumentCitationGraph
 from app.retrieval.topic_ontology import expand_query_with_ontology
 
+# Set single-threaded PyTorch execution to prevent OpenMP / Loky / FAISS multi-thread collision on macOS/Linux
+try:
+    import torch as _torch
+    _torch.set_num_threads(1)
+except Exception:
+    pass
+
 # ── Retrieval memory logger (lazy singleton — import deferred to avoid startup cost) ──
 _mem_logger = None
 
@@ -674,25 +681,29 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
     selected = []
     remaining = list(results)
 
-    max_score = max(r.get("_final_legal_score", 0) for r in remaining) or 1.0
+    raw_max = max((r.get("_final_legal_score", 0) for r in remaining), default=1.0)
+    max_score = raw_max if raw_max > 0 else 1.0
 
-    def jaccard(a: str, b: str) -> float:
-        set_a = set(a.lower().split())
-        set_b = set(b.lower().split())
+    # Pre-tokenize all candidate texts into word sets for O(1) set lookups
+    token_sets = {id(r): set(r.get("text", "").lower().split()) for r in remaining}
+
+    def jaccard(r_a: dict, r_b: dict) -> float:
+        set_a = token_sets.get(id(r_a), set())
+        set_b = token_sets.get(id(r_b), set())
         if not set_a or not set_b:
             return 0.0
         return len(set_a & set_b) / len(set_a | set_b)
 
     while remaining and len(selected) < top_k:
         best_item = None
-        best_mmr = -1.0
+        best_mmr = float("-inf")
 
         for candidate in remaining:
             relevance = candidate.get("_final_legal_score", 0) / max_score
 
             if selected:
                 max_sim = max(
-                    jaccard(candidate.get("text", ""), s.get("text", ""))
+                    jaccard(candidate, s)
                     for s in selected
                 )
             else:
@@ -704,9 +715,11 @@ def _mmr_deduplicate(results, top_k: int, lambda_param: float = MMR_LAMBDA):
                 best_mmr = mmr_score
                 best_item = candidate
 
-        if best_item:
+        if best_item is not None:
             selected.append(best_item)
             remaining.remove(best_item)
+        else:
+            selected.append(remaining.pop(0))
 
     return selected
 
@@ -838,6 +851,86 @@ class Retriever:
                         _meta["year"] = _yr
                         _year_patched += 1
         logger.info(f"Year backfill: patched {_year_patched} chunks from path/filename")
+
+        # ── Sequential section heading inheritance for statute chunks ─────────────
+        # In multi-page PDFs (e.g. IGST Act.pdf, CGST Acts), section headings appear
+        # in the first chunk of a provision, but continuation chunks contain only
+        # operative paragraphs/subsections. Inherit the active section heading and
+        # provision key across consecutive chunks of the same document so child chunks
+        # do not lose document-level legal identity.
+        from collections import defaultdict as _defaultdict
+        _doc_chunks = _defaultdict(list)
+        for _ci, _chunk in enumerate(self.chunks):
+            _meta = _chunk.get("metadata", {})
+            _rel = _chunk.get("rel_path") or _meta.get("rel_path", "")
+            if _rel:
+                _c_idx = _chunk.get("chunk_index")
+                if _c_idx is None:
+                    _c_idx = _meta.get("chunk_index")
+                if _c_idx is None:
+                    _c_idx = _ci
+                try:
+                    _doc_chunks[_rel].append((int(_c_idx), _ci))
+                except (ValueError, TypeError):
+                    _doc_chunks[_rel].append((_ci, _ci))
+
+        _heading_inherited = 0
+        _sec_heading_re = re.compile(r'\bsection\s*[-–—\.]\s*(\d+[A-Za-z]*)\s*,\s*(?:integrated|central|state|union)', re.IGNORECASE)
+        _rule_heading_re = re.compile(r'\brule\s*[-–—\.]\s*(\d+[A-Za-z]*)\s*,\s*(?:central|integrated|state|union)', re.IGNORECASE)
+
+        for _rel, _c_list in _doc_chunks.items():
+            _rel_lower = _rel.lower()
+            _is_statute_doc = "act" in _rel_lower or "rule" in _rel_lower
+            if not _is_statute_doc:
+                continue
+
+            _statute = "IGST" if ("igst" in _rel_lower or "integrated" in _rel_lower) else "CGST"
+            _c_list.sort(key=lambda x: x[0])  # ensure sequential chunk order
+
+            _active_sec_label = None
+            _active_prov_key = None
+            _active_subsec = None
+
+            for _order, _ci in _c_list:
+                _chunk = self.chunks[_ci]
+                _meta = _chunk.get("metadata", {})
+                _txt = _chunk.get("text") or _chunk.get("content") or ""
+
+                _m_sec = _sec_heading_re.search(_txt)
+                _m_rule = _rule_heading_re.search(_txt)
+
+                if _m_sec:
+                    _sec_num = _m_sec.group(1).upper()
+                    _active_sec_label = f"section {_sec_num.lower()}"
+                    _active_prov_key = f"{_statute}_SEC_{_sec_num}"
+                    _active_subsec = None
+                elif _m_rule:
+                    _rule_num = _m_rule.group(1).upper()
+                    _active_sec_label = f"rule {_rule_num.lower()}"
+                    _active_prov_key = f"{_statute}_RUL_{_rule_num}"
+                    _active_subsec = None
+
+                # Find any numbered statutory subsections in this chunk: e.g. (1), (5), (8)
+                _subsec_matches = list(re.finditer(r'(?:^|\n|\.\s+|;\s*)\s*\((\d+[A-Za-z]*)\)\s+([A-Za-z0-9"“\'\[])', _txt))
+                if _subsec_matches:
+                    _active_subsec = _subsec_matches[-1].group(1)
+
+                # Apply active heading, key, and subsection if chunk is part of this section
+                if _active_prov_key:
+                    _pkeys = _meta.get("provision_keys")
+                    if _pkeys is None:
+                        _meta["provision_keys"] = [_active_prov_key]
+                        _heading_inherited += 1
+                    elif _active_prov_key not in _pkeys:
+                        if isinstance(_pkeys, list):
+                            _pkeys.append(_active_prov_key)
+                        else:
+                            _meta["provision_keys"] = list(_pkeys) + [_active_prov_key]
+                        _heading_inherited += 1
+                    _meta["section_label"] = _active_sec_label
+                    if _active_subsec:
+                        _meta["active_subsection"] = _active_subsec
+        logger.info(f"Section heading inheritance: propagated to {_heading_inherited} continuation chunks")
 
         # Build circular number index for O(1) direct circular lookup and propagate
         # document-level circular identity to all sibling chunks in memory.
@@ -1221,6 +1314,7 @@ class Retriever:
         _ce_t0 = _time.monotonic()
         try:
             import torch as _torch
+            _torch.set_num_threads(1)
             _ce_device = "cuda" if _torch.cuda.is_available() else "cpu"
             logger.info(f"  CrossEncoder device: {_ce_device}")
             from sentence_transformers import CrossEncoder
@@ -1301,6 +1395,8 @@ class Retriever:
 
         if self.cross_encoder:
             try:
+                import torch as _torch
+                _torch.set_num_threads(1)
                 logger.info(f"CrossEncoder.predict.start: pairs={len(pool)} | batch_size=32")
                 pairs = [
                     (query, (c.get("context_text") or c.get("text", ""))[:512])
@@ -1525,10 +1621,11 @@ class Retriever:
             cid = chunk.get("chunk_id")
             if cid and cid not in seen_ids:
                 c = chunk.copy()
-                c["_pinned_by_ref"]    = True
-                c["_statute_priority"] = 1.0
-                c["_anchor_provision"] = provision_key   # which provision key found this
-                c["_debug_score"]      = anchor_score    # P2.5: ensures survival past MMR
+                c["_pinned_by_ref"]        = True
+                c["_pinned_canonical_key"] = provision_key
+                c["_statute_priority"]     = 1.0
+                c["_anchor_provision"]     = provision_key   # which provision key found this
+                c["_debug_score"]          = anchor_score    # P2.5: ensures survival past MMR
                 pinned.append(c)
                 seen_ids.add(cid)
                 return True
@@ -1540,7 +1637,7 @@ class Retriever:
         # results that supply notifications, keywords, and sub-section content.
         # A per-key cap of 3 leaves semantic search results room in the final context.
         _PER_KEY_CAP   = 3    # max chunks pinned per provision key
-        _GLOBAL_CAP    = 20   # max total pinned chunks across all keys
+        _GLOBAL_CAP    = 25   # max total pinned chunks across all keys
 
         for ref in refs:
             _ref_count = 0  # track per-key count
@@ -1549,7 +1646,7 @@ class Retriever:
             # P2.5b: sort by statute-path priority so Act/ chunks are pinned before AAR/ICAI
             _raw_indices = self._provision_index.get(ref, [])
             _sorted_indices = sorted(_raw_indices, key=_idx_sort_key)
-            _key_cap = 4 if ref.startswith(("CIRCULAR_", "NOTIF_")) else _PER_KEY_CAP
+            _key_cap = 6 if ref.startswith(("CIRCULAR_", "NOTIF_")) else _PER_KEY_CAP
             for idx in _sorted_indices:
                 if _ref_count >= _key_cap:
                     break
@@ -1575,8 +1672,12 @@ class Retriever:
 
             # Circular number keys (CIRCULAR_183) — resolved from filename-based index
             if ref.startswith("CIRCULAR_") and hasattr(self, "_circular_index"):
-                for idx in self._circular_index.get(ref, []):
-                    if _ref_count >= _PER_KEY_CAP:
+                _cir_indices = sorted(
+                    self._circular_index.get(ref, []),
+                    key=lambda i: -len(self.chunks[i].get("text") or self.chunks[i].get("content") or "")
+                )
+                for idx in _cir_indices:
+                    if _ref_count >= _key_cap:
                         break
                     if _pin(idx, ref):
                         _ref_count += 1
@@ -1585,8 +1686,12 @@ class Retriever:
 
             # Notification number keys (NOTIF_12_2017) — resolved from filename-based index
             if ref.startswith("NOTIF_") and hasattr(self, "_notification_index"):
-                for idx in self._notification_index.get(ref, []):
-                    if _ref_count >= _PER_KEY_CAP:
+                _notif_indices = sorted(
+                    self._notification_index.get(ref, []),
+                    key=lambda i: -len(self.chunks[i].get("text") or self.chunks[i].get("content") or "")
+                )
+                for idx in _notif_indices:
+                    if _ref_count >= _key_cap:
                         break
                     if _pin(idx, ref):
                         _ref_count += 1
@@ -1647,6 +1752,7 @@ class Retriever:
         # Combines: (a) explicit citations from the query text itself, and
         #           (b) predicted governing authorities from the taxonomy.
         _explicit_refs = _extract_query_refs(query)
+        _taxonomy["explicit_refs"] = _explicit_refs
         _has_explicit_cir = any(r.startswith("CIRCULAR_") for r in _explicit_refs)
 
         # --- Priority 13: LLM-based Generic Provision Resolver ---
@@ -1669,6 +1775,15 @@ class Retriever:
                 f"Direct ref lookup (explicit={len(_explicit_refs)} llm={len(_llm_refs)} "
                 f"taxonomy={len(_taxonomy_refs)}): {_query_refs[:8]} → {len(_pinned)} pinned chunks"
             )
+        if trace:
+            if _taxonomy:
+                trace.preprocessing["taxonomy"] = _taxonomy
+                if _taxonomy.get("topics"):
+                    trace.preprocessing["topic"] = _taxonomy["topics"][0]
+            if not trace.preprocessing.get("detected_refs") and _explicit_refs:
+                trace.preprocessing["detected_refs"] = list(_explicit_refs)
+            for pc in _pinned:
+                trace.record_injected(pc, "direct_ref_pinned", score=float(pc.get("_debug_score", 0.05)))
 
         # --- Layer 1: Statute-First Retrieval (Deterministic) ---
         statute_results = self.statute_retriever.search_statutes(self.chunks, topic, subtopic)
@@ -2576,7 +2691,10 @@ class Retriever:
                         c.get("rel_path") or c.get("metadata", {}).get("rel_path", "")
                         for c in reranked_results if c.get("rel_path") or c.get("metadata", {}).get("rel_path")
                     })
-                    _critique = retrieval_self_critique(query, _src_paths, _taxonomy)
+                    _critique = retrieval_self_critique(
+                        query, _src_paths, _taxonomy,
+                        retrieved_chunks=reranked_results,   # enables canonical ref verification
+                    )
                     if _critique.get("missing"):
                         logger.warning(
                             f"Self-Critique flagged missing: {_critique['missing']} "
@@ -2775,23 +2893,27 @@ class Retriever:
         """
         import time as _time_sr
         _t_sr_start = _time_sr.monotonic()
-        logger.info(f"supplement_and_rerank.start: base={len(base_chunks)} | query='{query[:60]}'")
+        logger.info(f"[S&R TIMING] supplement_and_rerank.start: base={len(base_chunks)} | query='{query[:60]}'")
 
         if not advanced_queries:
             _elapsed = round((_time_sr.monotonic() - _t_sr_start) * 1000, 2)
-            logger.info(f"supplement_and_rerank.complete (no advanced queries): elapsed_ms={_elapsed} | final={len(base_chunks[:top_k])}")
+            logger.info(f"[S&R TIMING] supplement_and_rerank.complete (no advanced queries): elapsed_ms={_elapsed} | final={len(base_chunks[:top_k])}")
             return base_chunks[:top_k]
         topic = advanced_queries.get("topic", "General")
 
         # Authority taxonomy: predicts governing authorities from query intent
+        _t_tax_start = _time_sr.monotonic()
         _sr_taxonomy = classify_query_authority(query)
+        _t_tax_elapsed = round((_time_sr.monotonic() - _t_tax_start) * 1000, 2)
         if _sr_taxonomy["confidence"] > 0:
             logger.info(
-                f"S&R taxonomy: topics={_sr_taxonomy['topics']} "
+                f"[S&R TIMING] S&R taxonomy (elapsed_ms={_t_tax_elapsed}): topics={_sr_taxonomy['topics']} "
                 f"sections={_sr_taxonomy['sections']} circulars={_sr_taxonomy['circulars']}"
             )
 
         # Direct ref lookup: pin explicit citations + taxonomy-predicted authorities
+        _t_dref_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] direct reference lookup.start")
         _explicit_refs = _extract_query_refs(query)
         _has_explicit_cir = any(r.startswith("CIRCULAR_") for r in _explicit_refs)
         _tax_circulars = [] if _has_explicit_cir else [
@@ -2803,6 +2925,17 @@ class Retriever:
         )
         _query_refs = list(dict.fromkeys(_explicit_refs + _tax_refs))
         _pinned = self._direct_ref_lookup(_query_refs) if _query_refs else []
+        _t_dref_elapsed = round((_time_sr.monotonic() - _t_dref_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] direct reference lookup.complete: pinned={len(_pinned)} | elapsed_ms={_t_dref_elapsed}")
+        if trace:
+            if _sr_taxonomy:
+                trace.preprocessing["taxonomy"] = _sr_taxonomy
+                if _sr_taxonomy.get("topics"):
+                    trace.preprocessing["topic"] = _sr_taxonomy["topics"][0]
+            if not trace.preprocessing.get("detected_refs") and _explicit_refs:
+                trace.preprocessing["detected_refs"] = list(_explicit_refs)
+            for pc in _pinned:
+                trace.record_injected(pc, "direct_ref_pinned", score=float(pc.get("_debug_score", 0.05)))
 
         existing_ids = {c.get("chunk_id") for c in base_chunks}
         for c in _pinned:
@@ -2814,11 +2947,16 @@ class Retriever:
             extra_queries.append(hyde)
 
         combined = _pinned + list(base_chunks)
+        _t_embed_exp_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] embed_query expanded queries.start: count={len(extra_queries)}")
         if self.index:
             for eq in extra_queries:
                 if not eq or not isinstance(eq, str) or not eq.strip():
                     continue
+                _t_eq_start = _time_sr.monotonic()
                 vec = embed_query(eq)
+                _t_eq_ms = round((_time_sr.monotonic() - _t_eq_start) * 1000, 2)
+                logger.info(f"[S&R TIMING] embed_query single.complete: query='{eq[:40]}' | elapsed_ms={_t_eq_ms}")
                 if vec is not None:
                     D, I = self.index.search(np.array([vec]).astype('float32'), VECTOR_EXPANDED_TOP_K)
                     for idx in I[0]:
@@ -2828,11 +2966,16 @@ class Retriever:
                             if cid and cid not in existing_ids:
                                 existing_ids.add(cid)
                                 combined.append(chunk)
+        _t_embed_exp_elapsed = round((_time_sr.monotonic() - _t_embed_exp_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] embed_query expanded queries.complete: total_combined={len(combined)} | elapsed_ms={_t_embed_exp_elapsed}")
 
         # Enforce category quotas — circulars/notifications only fill in when BM25
         # confirms topical relevance; statutes always get their floor.
+        _t_quota_start = _time_sr.monotonic()
         _sr_quotas = {"statute": 6, "case_law": 4, "circular": 4, "notification": 3}
         combined = self._enforce_pool_quotas(combined, query, _sr_quotas)
+        _t_quota_elapsed = round((_time_sr.monotonic() - _t_quota_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] enforce quotas.complete: combined={len(combined)} | elapsed_ms={_t_quota_elapsed}")
         # No priority-front promotion — fills compete on merit via FlashRank + LegalReranker.
 
         RERANK_CAP = 80
@@ -2840,17 +2983,27 @@ class Retriever:
         reranked = rerank_input
 
         if rerank_input:
+            _t_crerank_start = _time_sr.monotonic()
             reranked = self._cascade_rerank(query, rerank_input, taxonomy=_sr_taxonomy)
+            _t_crerank_elapsed = round((_time_sr.monotonic() - _t_crerank_start) * 1000, 2)
+            logger.info(f"[S&R TIMING] cascade_rerank.complete: count={len(reranked)} | elapsed_ms={_t_crerank_elapsed}")
+
         # ── TRACE: CrossEncoder (supplement_and_rerank path) ──────────────────
+        _t_tr_ce_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] record_crossencoder_scores.start")
         if trace is not None:
             try:
                 trace.record_crossencoder_scores(reranked)
-            except Exception:
-                pass
+            except Exception as _e_tr:
+                logger.warning(f"[S&R TIMING] record_crossencoder_scores error: {_e_tr}")
+        _t_tr_ce_elapsed = round((_time_sr.monotonic() - _t_tr_ce_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] record_crossencoder_scores.complete | elapsed_ms={_t_tr_ce_elapsed}")
 
         # P2.1 EXPERIMENT: LegalReranker disabled — same reason as search() above.
         # reranked = LegalReranker.rerank(query, reranked, query_topic=topic, is_draft=False)
         # P2.2 source-type weighting (mirrors search() block — same multipliers).
+        _t_src_weight_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] source weighting.start")
         _SRC_WEIGHTS_SR = {
             "statute": 1.50, "notification": 1.20, "circular": 1.10,
             "case_law": 0.75, "other": 0.80,
@@ -2860,14 +3013,23 @@ class Retriever:
             _cat  = _chunk_category(_ch)
             _ch["_source_type"]       = _cat
             _ch["_final_legal_score"] = _base * _SRC_WEIGHTS_SR.get(_cat, 1.0)
+        _t_src_weight_elapsed = round((_time_sr.monotonic() - _t_src_weight_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] source weighting.complete | elapsed_ms={_t_src_weight_elapsed}")
+
         # ── TRACE: LegalReranker (supplement_and_rerank path) ─────────────────
+        _t_lr_trace_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] legal reranker trace.start")
         if trace is not None:
             try:
                 trace.record_legalreranker_scores(reranked)
-            except Exception:
-                pass
+            except Exception as _e_lr:
+                logger.warning(f"[S&R TIMING] legal reranker trace error: {_e_lr}")
+        _t_lr_trace_elapsed = round((_time_sr.monotonic() - _t_lr_trace_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] legal reranker trace.complete | elapsed_ms={_t_lr_trace_elapsed}")
 
         # Document-level ranking boost (mirrors search() Layer 3b)
+        _t_doc_freq_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] document frequency boost.start")
         import math as _math_sr
         _sr_doc_hits: dict = {}
         for _ch in reranked:
@@ -2879,19 +3041,35 @@ class Retriever:
             if _n > 1:
                 _ch["_final_legal_score"] = _ch.get("_final_legal_score", 0) + _math_sr.log(_n) * 0.02
         reranked.sort(key=lambda x: x.get("_final_legal_score", 0), reverse=True)
+        _t_doc_freq_elapsed = round((_time_sr.monotonic() - _t_doc_freq_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] document frequency boost.complete | elapsed_ms={_t_doc_freq_elapsed}")
 
+        _t_mmr_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] MMR.start: input={len(reranked)} top_k={top_k}")
         _pre_mmr_sr = list(reranked)   # snapshot for trace
         mmr_results = _mmr_deduplicate(reranked, top_k=top_k)
+        _t_mmr_elapsed = round((_time_sr.monotonic() - _t_mmr_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] MMR.complete: output={len(mmr_results)} | elapsed_ms={_t_mmr_elapsed}")
+
         # ── TRACE: MMR (supplement_and_rerank path) ───────────────────────────
+        _t_mmr_trace_start = _time_sr.monotonic()
         if trace is not None:
             try:
                 trace.record_mmr(_pre_mmr_sr, mmr_results)
             except Exception:
                 pass
+        _t_mmr_trace_elapsed = round((_time_sr.monotonic() - _t_mmr_trace_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] MMR trace.complete | elapsed_ms={_t_mmr_trace_elapsed}")
 
         # Coverage validation — same as Layer 6 in search()
         # Ensures the fast-path also fills missing authority categories.
+        _t_cov_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] coverage validation.start")
+        _t_eq_q_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] embed_query(query).start")
         _sr_query_vec = embed_query(query)
+        _t_eq_q_elapsed = round((_time_sr.monotonic() - _t_eq_q_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] embed_query(query).complete | elapsed_ms={_t_eq_q_elapsed}")
         if _sr_query_vec is not None:
             _sr_expected = (
                 _sr_taxonomy["expected_cats"]
@@ -2901,6 +3079,8 @@ class Retriever:
             _sr_present  = {_chunk_category(c) for c in mmr_results}
             _sr_missing  = _sr_expected - _sr_present
             if _sr_missing:
+                logger.info(f"[S&R TIMING] sub-FAISS searches.start: missing={_sr_missing}")
+                _t_subfaiss_start = _time_sr.monotonic()
                 _sr_existing = {c.get("chunk_id") for c in mmr_results}
                 _sr_sub = {
                     "statute":      (getattr(self, "_faiss_statutes",     None), getattr(self, "_statute_idx_map",    []), 0.18),
@@ -2927,12 +3107,23 @@ class Retriever:
                                 _sr_existing.add(_cid)
                                 logger.info(f"S&R coverage fill: +1 {_mcat} (sim={float(_sim):.3f})")
                                 break
-                    except Exception:
-                        pass
+                    except Exception as _e_sf:
+                        logger.warning(f"[S&R TIMING] sub-FAISS search exception: {_e_sf}")
+                _t_subfaiss_elapsed = round((_time_sr.monotonic() - _t_subfaiss_start) * 1000, 2)
+                logger.info(f"[S&R TIMING] sub-FAISS searches.complete | elapsed_ms={_t_subfaiss_elapsed}")
+        _t_cov_elapsed = round((_time_sr.monotonic() - _t_cov_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] coverage validation.complete | elapsed_ms={_t_cov_elapsed}")
 
         # Context window expansion using the full-corpus doc map
+        _t_expand_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] context expansion.start: count={len(mmr_results)}")
         mmr_results = _expand_context_window(mmr_results, self._doc_map, self.chunks)
+        _t_expand_elapsed = round((_time_sr.monotonic() - _t_expand_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] context expansion.complete: count={len(mmr_results)} | elapsed_ms={_t_expand_elapsed}")
 
+        # Metadata flattening
+        _t_meta_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] metadata flattening.start")
         final = []
         for res in mmr_results:
             if "metadata" in res:
@@ -2941,8 +3132,12 @@ class Retriever:
                     if key not in res:
                         res[key] = val
             final.append(res)
+        _t_meta_elapsed = round((_time_sr.monotonic() - _t_meta_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] metadata flattening.complete | elapsed_ms={_t_meta_elapsed}")
 
         # Mandatory coverage verification for supplement_and_rerank path
+        _t_mand_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] mandatory coverage.start")
         _sr_coverage = {"coverage_pct": 100, "missing": [], "total_mandatory": 0}
         if _sr_taxonomy.get("confidence", 0) > 0:
             _sr_coverage = verify_mandatory_coverage(final, _sr_taxonomy)
@@ -2958,6 +3153,8 @@ class Retriever:
                 ]
                 _sr_all_refs = _sr_mae_refs + _sr_cir_refs
                 if _sr_all_refs:
+                    _t_mand_dref_start = _time_sr.monotonic()
+                    logger.info(f"[S&R TIMING] mandatory direct ref lookup.start: refs={_sr_all_refs}")
                     _sr_forced = self._direct_ref_lookup(_sr_all_refs)
                     _sr_existing = {c.get("chunk_id") for c in final}
                     for _fc in _sr_forced:
@@ -2966,11 +3163,21 @@ class Retriever:
                             _fc["_mandatory_inject"] = True
                             final.append(_fc)
                             _sr_existing.add(_fid)
+                    _t_mand_dref_elapsed = round((_time_sr.monotonic() - _t_mand_dref_start) * 1000, 2)
+                    logger.info(f"[S&R TIMING] mandatory direct ref lookup.complete: forced={len(_sr_forced)} | elapsed_ms={_t_mand_dref_elapsed}")
 
             logger.info(
                 f"S&R AUTHORITY COMPLETENESS: {_sr_coverage['coverage_pct']}% | "
                 f"mandatory={_sr_coverage['total_mandatory']} | missing={_sr_coverage['missing']}"
             )
+        _t_mand_elapsed = round((_time_sr.monotonic() - _t_mand_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] mandatory coverage.complete | elapsed_ms={_t_mand_elapsed}")
+
+        # Citation graph expansion check
+        _t_cg_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] citation graph expansion check.start")
+        _t_cg_elapsed = round((_time_sr.monotonic() - _t_cg_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] citation graph expansion check.complete | elapsed_ms={_t_cg_elapsed}")
 
         # Store taxonomy + coverage for answer verification (Priority 10)
         # stream_and_save reads these via get_retriever()._last_taxonomy
@@ -2984,6 +3191,8 @@ class Retriever:
         )
 
         # Retrieval Memory logging (Priority 9)
+        _t_mem_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] memory logging.start")
         try:
             _ml = _get_mem_logger()
             if _ml:
@@ -2994,15 +3203,21 @@ class Retriever:
                     coverage_pct = _sr_coverage.get("coverage_pct", 100),
                     missing      = _sr_coverage.get("missing", []),
                 )
-        except Exception:
-            pass
+        except Exception as _e_mem:
+            logger.warning(f"[S&R TIMING] memory logging exception: {_e_mem}")
+        _t_mem_elapsed = round((_time_sr.monotonic() - _t_mem_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] memory logging.complete | elapsed_ms={_t_mem_elapsed}")
 
         # ── TRACE: finalize (supplement_and_rerank path) ──────────────────────
+        _t_fin_start = _time_sr.monotonic()
+        logger.info(f"[S&R TIMING] trace finalize.start")
         if trace is not None:
             try:
                 trace.finalize(final)
-            except Exception:
-                pass
+            except Exception as _e_fin:
+                logger.warning(f"[S&R TIMING] trace finalize exception: {_e_fin}")
+        _t_fin_elapsed = round((_time_sr.monotonic() - _t_fin_start) * 1000, 2)
+        logger.info(f"[S&R TIMING] trace finalize.complete | elapsed_ms={_t_fin_elapsed}")
 
         _elapsed = round((_time_sr.monotonic() - _t_sr_start) * 1000, 2)
         logger.info(f"supplement_and_rerank.complete: elapsed_ms={_elapsed} | final={len(final)}")

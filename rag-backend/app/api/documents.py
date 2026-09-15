@@ -55,10 +55,35 @@ def get_categories():
     return stats
 
 
-@router.get("/list/{category}")
+@router.get("/list/{category:path}")
 def list_documents(category: str):
-    """Lists PDF files in a category (max 200)."""
-    folder_name = CATEGORY_MAP.get(category.lower())
+    """Lists PDF files in a category, all categories, or by-year subpaths (max 200)."""
+    cat_lower = category.lower().strip("/")
+
+    # 1. Handle "all" documents
+    if cat_lower == "all":
+        all_docs = []
+        for cat_key, folder_name in CATEGORY_MAP.items():
+            folder_path = BASE_DIR / folder_name
+            if not folder_path.exists():
+                continue
+            for idx, file_path in enumerate(sorted(folder_path.rglob("*.pdf"))):
+                rel = str(file_path.relative_to(BASE_DIR)).replace("\\", "/")
+                year_part = file_path.parent.name if file_path.parent.name.isdigit() and len(file_path.parent.name) == 4 else None
+                all_docs.append({
+                    "id":       f"{cat_key}_{idx}",
+                    "title":    file_path.stem.replace("_", " ").replace("-", " "),
+                    "filename": file_path.name,
+                    "size":     f"{round(file_path.stat().st_size / 1024, 1)} KB",
+                    "path":     rel,
+                    "category": cat_key,
+                    "year":     year_part,
+                })
+        return all_docs[:200]
+
+    # 2. Handle "/by-year" subpaths (e.g. "circulars/by-year", "notifications/by-year")
+    base_cat = cat_lower.split("/")[0]
+    folder_name = CATEGORY_MAP.get(base_cat)
     if not folder_name:
         raise HTTPException(status_code=404, detail=f"Unknown category '{category}'")
 
@@ -74,15 +99,14 @@ def list_documents(category: str):
         )
         for idx, file_path in enumerate(all_files):
             rel = str(file_path.relative_to(BASE_DIR)).replace("\\", "/")
-            # Extract year from parent folder name if it's a 4-digit year
             year_part = file_path.parent.name if file_path.parent.name.isdigit() and len(file_path.parent.name) == 4 else None
             docs.append({
-                "id":       f"{category}_{idx}",
+                "id":       f"{base_cat}_{idx}",
                 "title":    file_path.stem.replace("_", " ").replace("-", " "),
                 "filename": file_path.name,
                 "size":     f"{round(file_path.stat().st_size / 1024, 1)} KB",
                 "path":     rel,
-                "category": category,
+                "category": base_cat,
                 "year":     year_part,
             })
     except Exception as e:

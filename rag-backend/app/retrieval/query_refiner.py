@@ -341,7 +341,12 @@ def resolve_provisions(query: str, provision_index: dict) -> list[str]:
     return validated
 
 
-def retrieval_self_critique(query: str, retrieved_sources: list, taxonomy: dict) -> dict:
+def retrieval_self_critique(
+    query: str,
+    retrieved_sources: list,
+    taxonomy: dict,
+    retrieved_chunks: list = None,
+) -> dict:
     """
     Priority 7 — Retrieval Self-Critique.
     Asks the utility model: 'Have we missed any governing authority?'
@@ -350,12 +355,37 @@ def retrieval_self_critique(query: str, retrieved_sources: list, taxonomy: dict)
       (a) taxonomy confidence = 0 (unknown topic — taxonomy can't predict authorities), OR
       (b) mandatory coverage < 70% (deterministic check found gaps, ask LLM for deeper look)
 
+    Args:
+        query:              Original user query.
+        retrieved_sources:  List of rel_path strings of retrieved chunks.
+        taxonomy:           Authority taxonomy dict (sections/rules/circulars).
+        retrieved_chunks:   Optional list of full chunk dicts.  When supplied, canonical
+                            legal references verified present via ReferenceResolver are
+                            included in the LLM prompt so the self-critique reflects
+                            actual statutory content rather than just document filenames.
+
     Returns: {"missing": [...], "confidence": "high/medium/low"}
     Cost: one Haiku call (~100-200 tokens) — cheap relative to the main LLM call.
     """
     import json as _json
 
     _source_summary = "; ".join(s.split("/")[-1] for s in retrieved_sources[:15] if s)
+
+    # Build canonical reference summary from actual chunk content when chunks are provided.
+    # This prevents the LLM from incorrectly flagging Section 17(5)(d) as missing when
+    # a pinned primary chunk for that provision survived MMR and is present in the pool.
+    _canonical_present: list[str] = []
+    if retrieved_chunks:
+        try:
+            from app.retrieval.reference_resolver import ReferenceResolver
+            _avail = ReferenceResolver.extract_available_chunk_references(retrieved_chunks)
+            _canonical_present = list({
+                r.canonical_key for r in _avail
+                if r.ref_type in ("SECTION", "RULE", "CIRCULAR", "NOTIFICATION")
+            })
+        except Exception as _e:
+            logger.debug(f"retrieval_self_critique: canonical ref extraction failed (non-fatal): {_e}")
+
     _known_mandatory = _json.dumps({
         "sections":  taxonomy.get("sections",  []),
         "rules":     taxonomy.get("rules",     []),
@@ -375,9 +405,14 @@ RULES:
 Respond with ONLY a valid JSON object:
 {"missing": ["Section 25(4) CGST Act", "Circular No. 199/11/2023", ...], "confidence": "high"}"""
 
+    _canonical_block = (
+        f"\nCanonically verified legal references present in retrieved chunks: {_canonical_present}\n"
+        if _canonical_present else ""
+    )
     user = (
         f"Legal question: {query}\n\n"
-        f"Retrieved documents include: {_source_summary}\n\n"
+        f"Retrieved documents include: {_source_summary}\n"
+        f"{_canonical_block}"
         f"Already identified mandatory authorities: {_known_mandatory}\n\n"
         "What key governing authority (if any) is MISSING from the retrieved sources?"
     )
@@ -451,11 +486,37 @@ def verify_answer_authority_coverage(
                     or f"/{num}/" in answer_lower)
         return False
 
-    all_mandatory = (
-        taxonomy.get("sections", []) +
-        taxonomy.get("rules",    []) +
-        taxonomy.get("circulars",[])
-    )
+    from app.retrieval.reference_resolver import ReferenceResolver
+    explicit_refs = ReferenceResolver.resolve_references(query)
+
+    if explicit_refs:
+        # User explicitly requested/cited specific legal authorities
+        all_mandatory = list(dict.fromkeys([
+            r.canonical_key for r in explicit_refs
+            if r.ref_type in ("SECTION", "RULE", "CIRCULAR", "NOTIFICATION", "CASE_LAW")
+        ]))
+    else:
+        # Check if query requests comprehensive statutory framework analysis
+        import re as _re
+        is_comprehensive = bool(_re.search(
+            r'\b(comprehensive|exhaustive|all\s+(?:applicable\s+)?(?:sections|rules|provisions|circulars)|statutory\s+framework|full\s+(?:legal\s+)?analysis)\b',
+            query,
+            _re.IGNORECASE,
+        ))
+        if is_comprehensive:
+            all_mandatory = (
+                taxonomy.get("sections", []) +
+                taxonomy.get("rules",    []) +
+                taxonomy.get("circulars",[])
+            )
+        else:
+            # Discovery / perspective queries (e.g. case law discovery, circular lookup, specific topical questions):
+            # Taxonomy provides retrieval context, not mandatory answer citation obligations.
+            all_mandatory = []
+
+    if not all_mandatory:
+        return {"cited": [], "missing": [], "verdict": "pass", "note": ""}
+
     cited   = [a for a in all_mandatory if _is_cited(a)]
     missing = [a for a in all_mandatory if not _is_cited(a)]
 

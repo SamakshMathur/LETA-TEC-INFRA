@@ -81,6 +81,9 @@ def compress_context(chunks: List[dict], query: str, is_draft: bool = False) -> 
 
     q_tokens = _query_tokens(query)
 
+    # Track original chunk index (0-indexed -> [S1], [S2]...) to preserve canonical source identity
+    chunk_to_orig_idx = {id(c): i for i, c in enumerate(chunks)}
+
     # Score each chunk: combine reranker score with query-overlap score
     scored = []
     for c in chunks:
@@ -88,21 +91,24 @@ def compress_context(chunks: List[dict], query: str, is_draft: bool = False) -> 
         text = c.get("text", "")
         overlap = _overlap_score(text, q_tokens)
         combined = 0.6 * rerank + 0.4 * overlap
-        scored.append((combined, c))
+        orig_i = chunk_to_orig_idx.get(id(c), 0)
+        scored.append((combined, orig_i, c))
 
+    # Compression may re-order excerpts for factual density, but must preserve canonical [Sn] identity
     scored.sort(key=lambda x: x[0], reverse=True)
     top = scored[:max_chunks]
 
     parts: List[str] = []
     total = 0
 
-    for rank, (score, chunk) in enumerate(top, 1):
+    for score, orig_i, chunk in top:
         if total >= max_total:
             break
 
         text = chunk.get("text", "").strip()
         source = os.path.basename(chunk.get("source", "Unknown"))
         page = chunk.get("page", "N/A")
+        s_marker = f"[S{orig_i + 1}]"
 
         excerpt = _best_window(text, q_tokens, max_chars=max_excerpt)
 
@@ -110,7 +116,7 @@ def compress_context(chunks: List[dict], query: str, is_draft: bool = False) -> 
         if len(excerpt) > remaining:
             excerpt = excerpt[:remaining] + "…"
 
-        entry = f"[{rank}] {source} p.{page}\n{excerpt}"
+        entry = f"{s_marker} {source} p.{page}\n{excerpt}"
         parts.append(entry)
         total += len(entry) + 4  # +4 for separator
 

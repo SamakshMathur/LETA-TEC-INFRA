@@ -23,6 +23,11 @@ _retriever = None
 def get_retriever():
     global _retriever
     if _retriever is None or _retriever.index is None:
+        try:
+            import torch as _torch
+            _torch.set_num_threads(1)
+        except Exception:
+            pass
         logger.info(
             f"Initializing Retriever (lazy load) | "
             f"index={FAISS_INDEX_PATH} | chunks={CHUNKS_PATH}"

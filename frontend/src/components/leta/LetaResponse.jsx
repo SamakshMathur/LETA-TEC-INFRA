@@ -198,20 +198,19 @@ function linkifyLegalRefs(markdown, sources) {
       const norm = 'gstr' + gstrM[1].replace(/[-‑]/g, '');
       const src =
         sources.find(s => (s.title || s.url || '').toLowerCase().replace(/[_\-.\s%20]/g, '').includes(norm)) ||
-        findSrc('gstr', 'form', 'return') ||
-        sources[0];
+        findSrc('gstr', 'form', 'return');
       return src?.url ? shield(`[${match}](${src.url})`) : match;
     }
     if (/(?:c|i|s|ut)?gst\s+act/i.test(t)) {
-      const src = findSrc('act', 'bare law', 'cgst', 'igst') || sources[0];
+      const src = findSrc('act', 'bare law', 'cgst', 'igst');
       return src?.url ? shield(`[${match}](${src.url})`) : match;
     }
     if (/section\s+\d/i.test(t)) {
-      const src = findSrc('act', 'cgst', 'igst', 'gst') || sources[0];
+      const src = findSrc('act', 'cgst', 'igst', 'gst');
       return src?.url ? shield(`[${match}](${src.url})`) : match;
     }
     if (/circular\s+no/i.test(t)) {
-      const src = findSrc('circular') || sources[0];
+      const src = findSrc('circular');
       return src?.url ? shield(`[${match}](${src.url})`) : match;
     }
     return match;
@@ -405,23 +404,30 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                 th: p => <th className="px-4 py-3 text-left font-bold text-white" {...p} />,
                 td: p => <td className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#CBD5E1' }} {...p} />,
                 a: p => {
-                  if (p.href && p.href.includes('view_by_path')) {
-                    return <>{p.children}</>;
-                  }
-                  const isDocLink = p.href && p.href.includes('/api/documents/');
-                  const openInViewer = (href, linkText) => {
-                    let baseUrl = href;
+                  const href = p.href || '';
+                  const isDocLink = href.includes('/api/documents/');
+                  const openInViewer = (linkHref, linkText) => {
+                    let baseUrl = linkHref;
                     let page = null;
                     let search = null;
-                    if (href.includes('#')) {
-                      const [base, hash] = href.split('#');
+                    if (linkHref.includes('#')) {
+                      const [base, hash] = linkHref.split('#');
                       baseUrl = base;
                       const hp = new URLSearchParams(hash);
                       if (hp.has('page')) page = hp.get('page');
                       if (hp.has('search')) search = hp.get('search');
                     }
                     if (baseUrl.startsWith('/api/')) baseUrl = BASE_URL + baseUrl;
-                    const urlTitle = (() => { try { return decodeURIComponent(baseUrl.split('filename=')[1]?.split('&')[0] || ''); } catch { return ''; } })();
+                    const urlTitle = (() => {
+                      try {
+                        return decodeURIComponent(
+                          baseUrl.split('filename=')[1]?.split('&')[0] ||
+                          baseUrl.split('path=')[1]?.split('&')[0] || ''
+                        );
+                      } catch {
+                        return '';
+                      }
+                    })();
                     const docTitle = (linkText && !linkText.startsWith('http')) ? linkText : urlTitle || 'Document';
                     if (onDocumentClick) onDocumentClick({ url: baseUrl, page, search, title: docTitle });
                   };
@@ -437,10 +443,10 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                       onClick={e => {
                         e.stopPropagation();
                         const linkText = p.children?.toString?.() || '';
-                        if (isDocLink && onDocumentClick) { e.preventDefault(); openInViewer(p.href, linkText); return; }
-                        if (onDocumentClick && sources.length > 0 && /section|rule|gstr|act|notification|circular|itc|lut|rcm/i.test(linkText)) {
+                        if (isDocLink && onDocumentClick) {
                           e.preventDefault();
-                          openInViewer(BASE_URL + sources[0].url, linkText);
+                          openInViewer(href, linkText);
+                          return;
                         }
                       }}
                     />

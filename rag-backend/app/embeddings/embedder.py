@@ -19,7 +19,10 @@ def _get_model():
     if _model is None:
         logger.info(f"Loading local embedding model: {EMBEDDING_MODEL}")
         from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer(EMBEDDING_MODEL)
+        try:
+            _model = SentenceTransformer(EMBEDDING_MODEL, local_files_only=True)
+        except Exception:
+            _model = SentenceTransformer(EMBEDDING_MODEL)
         logger.info(f"Embedding model loaded: {EMBEDDING_MODEL}")
     return _model
 

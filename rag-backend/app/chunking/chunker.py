@@ -8,31 +8,35 @@ OVERLAP_TOKENS = 80    # overlap in words
 
 # Legal section header patterns — never split in the middle of these
 SECTION_PATTERNS = [
-    r'^\s*Section\s+\d+[\w\(\)]*',          # Section 17(5)
-    r'^\s*Sec\.\s*\d+[\w\(\)]*',            # Sec. 17
-    r'^\s*Rule\s+\d+[\w\(\)]*',             # Rule 36(4)
-    r'^\s*Article\s+\d+[\w\(\)]*',          # Article 246A
-    r'^\s*\d+\.\s+[A-Z]',                   # Numbered top-level paragraphs: "1. Short title..."
-    r'^\s*\(\d+\)\s',                        # Sub-sections: "(1) ", "(2) "
-    r'^\s*\([a-z]\)\s',                      # Clauses: "(a) ", "(b) "
-    r'^\s*[A-Z]{2,}',                        # ALL-CAPS headings (CHAPTER, PART, SCHEDULE)
-    r'^\s*Provided\s+that',                  # Proviso — must stay with parent
-    r'^\s*Explanation[—\-\.]',               # Explanation clause
-    r'^\s*WHEREAS',                          # Notification preamble
-    r'^\s*NOW,\s+THEREFORE',                 # Notification body
+    r'^\s*Section\s*[-:\s]+\s*\d+[\w\(\)]*',   # Section 17(5), Section - 16
+    r'^\s*Sec\.\s*[-:\s]*\s*\d+[\w\(\)]*',     # Sec. 17
+    r'^\s*Rule\s*[-:\s]+\s*\d+[\w\(\)]*',      # Rule 36(4), Rule - 89
+    r'^\s*Article\s*[-:\s]+\s*\d+[\w\(\)]*',   # Article 246A
+    r'^\s*\d+\.\s+[A-Z]',                      # Numbered top-level paragraphs: "1. Short title..."
+    r'^\s*\d+\.\s*\(\d+\)',                    # Section with subsection: "16. (1)"
+    r'^\s*\(\d+\)\s',                          # Sub-sections: "(1) ", "(2) "
+    r'^\s*\([a-z]\)\s',                        # Clauses: "(a) ", "(b) "
+    r'^\s*[A-Z]{2,}',                          # ALL-CAPS headings (CHAPTER, PART, SCHEDULE)
+    r'^\s*Provided\s+that',                    # Proviso — must stay with parent
+    r'^\s*Explanation[—\-\.]',                 # Explanation clause
+    r'^\s*WHEREAS',                            # Notification preamble
+    r'^\s*NOW,\s+THEREFORE',                   # Notification body
 ]
 
 _section_re = re.compile('|'.join(SECTION_PATTERNS), re.MULTILINE)
 
 # Patterns to extract section/rule numbers from a heading line for metadata
 _SECTION_NUM_RE = re.compile(
-    r'(?:Section|Sec\.)\s*(\d+[\w\(\)]*)', re.IGNORECASE
+    r'(?:Section|Sec\.)\s*[-:\s]*\s*(\d+[\w\(\)]*)', re.IGNORECASE
+)
+_STANDALONE_SEC_RE = re.compile(
+    r'^\s*(\d+[A-Z]?)\.\s*(?:\(\s*\d+\s*\)|\"?[A-Z])', re.MULTILINE
 )
 _RULE_NUM_RE = re.compile(
-    r'Rule\s+(\d+[\w\(\)]*)', re.IGNORECASE
+    r'Rule\s*[-:\s]*\s*(\d+[\w\(\)]*)', re.IGNORECASE
 )
 _ARTICLE_NUM_RE = re.compile(
-    r'Article\s+(\d+[\w\(\)]*)', re.IGNORECASE
+    r'Article\s*[-:\s]*\s*(\d+[\w\(\)]*)', re.IGNORECASE
 )
 
 
@@ -55,10 +59,14 @@ def extract_section_label(para: str) -> Optional[str]:
     """
     Returns a short section label from a boundary paragraph if detectable.
     e.g. "Section 17(5) Apportionment..." → "Section 17(5)"
+         "Section - 16 Integrated..."     → "Section 16"
          "Rule 36(4) ..."                 → "Rule 36(4)"
     Returns None if no structured label found.
     """
     m = _SECTION_NUM_RE.search(para)
+    if m:
+        return f"Section {m.group(1)}"
+    m = _STANDALONE_SEC_RE.search(para)
     if m:
         return f"Section {m.group(1)}"
     m = _RULE_NUM_RE.search(para)

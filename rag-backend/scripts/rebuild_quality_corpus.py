@@ -107,7 +107,10 @@ def _paragraphs(text: str) -> list[str]:
     return [block for block in blocks if block]
 
 
-def _section_aware_chunks(paragraphs: list[str]) -> list[dict]:
+from app.ingestion.provision_extractor import StructuralProvisionExtractor
+
+
+def _section_aware_chunks(paragraphs: list[str], rel_path: str = "", category: str = "") -> list[dict]:
     chunks = []
     current: list[str] = []
     current_words = 0
@@ -119,15 +122,12 @@ def _section_aware_chunks(paragraphs: list[str]) -> list[dict]:
         if not current:
             return
         text = " ".join(current).strip()
-        labels = []
-        for match in _SECTION_RE.finditer(text):
-            label = re.sub(r"\s+", " ", match.group(0)).strip()
-            if label not in labels:
-                labels.append(label)
+        extracted = StructuralProvisionExtractor.extract(text, rel_path, category)
         chunks.append({
             "text": text,
-            "section_label": labels[0] if labels else None,
-            "section_labels": labels,
+            "section_label": extracted.primary_section_label,
+            "section_labels": extracted.primary_section_labels,
+            "provision_keys": extracted.all_provision_keys,
         })
         tail = text.split()[-overlap_words:]
         current = [" ".join(tail)] if tail else []
@@ -152,49 +152,13 @@ def _section_aware_chunks(paragraphs: list[str]) -> list[dict]:
     return chunks
 
 
-def _canonical_key(value: str, category: str) -> str | None:
-    value = str(value).strip().upper().replace("CGST_RUL_", "CGST_RULE_")
-    value = value.replace("CGST_RULE_", "CGST_RULE_")
-    if value.startswith("CGST_SEC_") or value.startswith("IGST_SEC_"):
-        return value
-    if value.startswith("CGST_RULE_") or value.startswith("IGST_RULE_"):
-        return value
-    match = re.search(r"(?:CIRC(?:ULAR)?)[_ -]?(\d+)", value)
-    if match:
-        return f"CIRCULAR_{match.group(1)}"
-    match = re.search(r"(?:NOTIF(?:ICATION)?)[_ -]?(\d+)[-_/]?(\d{4})?", value)
-    if match:
-        year = f"_{match.group(2)}" if match.group(2) else ""
-        return f"NOTIF_{match.group(1)}{year}"
-    return None
-
-
 def _provision_keys(text: str, existing: list, category: str, rel_path: str) -> list[str]:
-    prefix = "IGST" if "igst" in rel_path.lower() else "CGST"
-    keys = {_canonical_key(value, category) for value in existing}
-    keys.discard(None)
-    for match in _SECTION_RE.finditer(text):
-        number = re.sub(r"\s+", "", match.group(1)).replace("(", "_").replace(")", "")
-        keys.add(f"{prefix}_SEC_{number.upper()}")
-    for match in _RULE_RE.finditer(text):
-        number = re.sub(r"\s+", "", match.group(1)).replace("(", "_").replace(")", "")
-        keys.add(f"{prefix}_RULE_{number.upper()}")
-    for match in _CIRCULAR_RE.finditer(text):
-        keys.add(f"CIRCULAR_{match.group(1)}")
-    for match in _NOTIFICATION_RE.finditer(text):
-        keys.add(f"NOTIFICATION_{match.group(1)}")
-
-    # Document-level circular/notification identity propagation from filename/rel_path
-    fname = rel_path.replace("\\", "/").split("/")[-1] if rel_path else ""
-    if category == "circulars" or "circular" in rel_path.lower():
-        cm = _CIR_NUM_RE.search(fname) or _CIR_LEADING_RE.match(fname)
-        if cm:
-            keys.add(f"CIRCULAR_{cm.group(1)}")
-    elif category == "notifications" or "notification" in rel_path.lower():
-        nm = _NOTIF_NUM_RE.search(fname)
-        if nm:
-            keys.add(f"NOTIF_{nm.group(1)}_{nm.group(2)}")
-
+    """Extract canonical provision keys using the data-driven structural provision extractor."""
+    extracted = StructuralProvisionExtractor.extract(text, rel_path, category)
+    keys = set(extracted.all_provision_keys)
+    for key in existing or []:
+        if key:
+            keys.add(key)
     return sorted(keys)
 
 
@@ -259,7 +223,7 @@ def build_corpus(use_ocr: bool = True) -> tuple[list[dict], dict]:
             continue
         seen_documents.add(document_hash)
 
-        source_chunks = _section_aware_chunks(_paragraphs(raw))
+        source_chunks = _section_aware_chunks(_paragraphs(raw), rel_path, category)
         for index, item in enumerate(source_chunks):
             text = _clean_text(item.get("text", ""))
             if len(text) < 120:
@@ -303,6 +267,74 @@ def build_corpus(use_ocr: bool = True) -> tuple[list[dict], dict]:
     return chunks, dict(stats)
 
 
+def retag_chunks_list(chunks: list[dict]) -> tuple[list[dict], dict]:
+    """
+    Re-tag an existing chunk collection with the StructuralProvisionExtractor
+    without needing to re-extract raw PDFs from scratch.
+    """
+    retagged = []
+    stats = Counter()
+    for c in chunks:
+        meta = dict(c.get("metadata", {}))
+        text = c.get("text", "") or c.get("content", "")
+        rel_path = meta.get("rel_path") or c.get("rel_path", "")
+        category = meta.get("category") or c.get("category", "")
+        extracted = StructuralProvisionExtractor.extract(text, rel_path, category)
+
+        meta["provision_keys"] = extracted.all_provision_keys
+        meta["section_label"] = extracted.primary_section_label
+        meta["section_labels"] = extracted.primary_section_labels
+
+        chunk_copy = dict(c)
+        chunk_copy["metadata"] = meta
+        retagged.append(chunk_copy)
+        stats["chunks_retagged"] += 1
+        if extracted.all_provision_keys:
+            stats["with_provisions"] += 1
+
+    return retagged, dict(stats)
+
+
+def write_candidate_index(
+    chunks: list[dict],
+    candidate_chunks_file: Path,
+    candidate_index_file: Path,
+    reuse_existing_faiss: bool = True,
+) -> None:
+    """Build a complete, isolated candidate FAISS index and metadata without touching production."""
+    candidate_chunks_file.parent.mkdir(parents=True, exist_ok=True)
+    candidate_index_file.parent.mkdir(parents=True, exist_ok=True)
+    candidate_meta_file = candidate_index_file.with_suffix(".meta.json")
+
+    import faiss
+    import numpy as np
+
+    metadata = [item["metadata"] for item in chunks]
+
+    if reuse_existing_faiss and INDEX_FILE.exists():
+        log.info("Reusing existing FAISS vectors from %s (text unchanged)", INDEX_FILE)
+        shutil.copy2(INDEX_FILE, candidate_index_file)
+        index = faiss.read_index(str(candidate_index_file))
+    else:
+        from app.embeddings.embedder import embed_texts
+        index = faiss.IndexFlatIP(VECTOR_DIM)
+        for start in range(0, len(chunks), 64):
+            batch = chunks[start:start + 64]
+            vectors = embed_texts([item.get("embed_text") or item.get("text", "") for item in batch]).astype("float32")
+            if vectors.ndim != 2 or vectors.shape[1] != VECTOR_DIM:
+                raise ValueError(f"Embedding dimension mismatch: got {vectors.shape}, expected (*, {VECTOR_DIM})")
+            index.add(np.ascontiguousarray(vectors))
+        faiss.write_index(index, str(candidate_index_file))
+
+    with candidate_chunks_file.open("w", encoding="utf-8") as handle:
+        for chunk in chunks:
+            handle.write(json.dumps(chunk, ensure_ascii=False) + "\n")
+    candidate_meta_file.write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
+    if index.ntotal != len(chunks):
+        raise RuntimeError(f"FAISS/chunk mismatch after candidate build: {index.ntotal} != {len(chunks)}")
+    log.info("Candidate build complete: %d chunks at %s", len(chunks), candidate_chunks_file)
+
+
 def write_and_rebuild(chunks: list[dict], backup_dir: Path) -> None:
     backup_dir.mkdir(parents=True, exist_ok=True)
     for path in (CHUNKS_FILE, INDEX_FILE, META_FILE):
@@ -336,15 +368,38 @@ def write_and_rebuild(chunks: list[dict], backup_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--apply", action="store_true", help="replace chunks and rebuild FAISS")
+    parser.add_argument("--candidate", action="store_true", help="build isolated candidate corpus and index")
+    parser.add_argument("--candidate-chunks", default="data/candidate_corpus/chunks.jsonl")
+    parser.add_argument("--candidate-index", default="vectordb/candidate/index.faiss")
+    parser.add_argument("--retag-existing", action="store_true", help="re-tag existing production chunks instead of re-reading PDFs")
+    parser.add_argument("--apply", action="store_true", help="replace production chunks and rebuild FAISS")
     parser.add_argument("--dry-run", action="store_true", help="report results without changing files")
     parser.add_argument("--no-ocr", action="store_true", help="disable OCR fallback")
     parser.add_argument("--backup-dir", default="vectordb/quality_rebuild_backup")
     args = parser.parse_args()
-    chunks, stats = build_corpus(use_ocr=not args.no_ocr)
-    log.info("Quality rebuild stats: %s", json.dumps(stats, sort_keys=True))
+
+    if args.retag_existing:
+        log.info("Loading existing production chunks from %s", CHUNKS_FILE)
+        existing_chunks = []
+        with CHUNKS_FILE.open("r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    existing_chunks.append(json.loads(line))
+        chunks, stats = retag_chunks_list(existing_chunks)
+        log.info("Re-tag stats: %s", json.dumps(stats, sort_keys=True))
+    else:
+        chunks, stats = build_corpus(use_ocr=not args.no_ocr)
+        log.info("Quality rebuild stats: %s", json.dumps(stats, sort_keys=True))
+
+    if args.candidate:
+        cand_chunks_path = BASE_DIR / args.candidate_chunks
+        cand_index_path = BASE_DIR / args.candidate_index
+        write_candidate_index(chunks, cand_chunks_path, cand_index_path)
+        log.info("Successfully built candidate index at %s and chunks at %s", cand_index_path, cand_chunks_path)
+        return
+
     if not args.apply:
-        log.info("Dry run only. Re-run with --apply after reviewing the counts.")
+        log.info("Dry run only. Re-run with --candidate or --apply after reviewing the counts.")
         return
     write_and_rebuild(chunks, BASE_DIR / args.backup_dir)
     log.info("Rebuilt %d chunks and matching FAISS index", len(chunks))
