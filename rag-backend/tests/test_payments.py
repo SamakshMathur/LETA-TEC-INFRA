@@ -272,3 +272,103 @@ def test_credit_session_still_credits_even_if_receipt_email_blows_up(monkeypatch
 
     assert result["verified"] is True
     assert fake_users._docs["alice"]["plan"] == "basic"
+
+
+# ── Payment receipt SMS ──────────────────────────────────────────────────────
+
+class _RealisticFakeUserCollectionWithPhone(_RealisticFakeUserCollection):
+    """Same contract as _RealisticFakeUserCollection, just documented
+    separately here since these tests specifically exercise the
+    phone-lookup path (find_one keyed by username, returning phone)."""
+    pass
+
+
+def test_send_payment_receipt_sms_sends_when_phone_and_template_exist(monkeypatch):
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollectionWithPhone([
+        {"username": "alice", "phone": "9876543210"},
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+    monkeypatch.setattr("app.services.sms.airtel.AIRTEL_DLT_RECEIPT_TEMPLATE_ID", "template_abc")
+
+    sent_calls = []
+    from app.services.sms.base import SMSResult
+    monkeypatch.setattr(
+        "app.services.sms.sms_service.send_transactional_sms",
+        lambda phone, template_id, message: sent_calls.append((phone, template_id, message))
+        or SMSResult(success=True, provider="airtel"),
+    )
+
+    from datetime import datetime, timezone
+    session_end = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    payments._send_payment_receipt_sms("alice", payments.PLANS["1hr"], "pay_123", session_end)
+
+    assert len(sent_calls) == 1
+    phone, template_id, message = sent_calls[0]
+    assert phone == "9876543210"
+    assert template_id == "template_abc"
+    assert "pay_123" in message
+    assert "199" in message
+
+
+def test_send_payment_receipt_sms_skips_silently_with_no_phone_on_file(monkeypatch):
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollectionWithPhone([{"username": "bob"}])  # no phone field
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+
+    sent_calls = []
+    monkeypatch.setattr(
+        "app.services.sms.sms_service.send_transactional_sms",
+        lambda *a, **k: sent_calls.append((a, k)),
+    )
+
+    from datetime import datetime, timezone
+    session_end = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    payments._send_payment_receipt_sms("bob", payments.PLANS["1hr"], "pay_123", session_end)  # must not raise
+
+    assert sent_calls == []
+
+
+def test_send_payment_receipt_sms_never_raises_if_sms_send_itself_fails(monkeypatch):
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollectionWithPhone([
+        {"username": "alice", "phone": "9876543210"},
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+    monkeypatch.setattr(
+        "app.services.sms.sms_service.send_transactional_sms",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("airtel gateway down")),
+    )
+
+    from datetime import datetime, timezone
+    session_end = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    # Must not raise despite send_transactional_sms raising internally.
+    payments._send_payment_receipt_sms("alice", payments.PLANS["1hr"], "pay_123", session_end)
+
+
+def test_credit_session_still_credits_even_if_receipt_sms_blows_up(monkeypatch):
+    """Same end-to-end guarantee as the email version: whatever goes
+    wrong with either receipt channel, the session is still credited.
+    Gives the fake user a phone number specifically so the SMS
+    send-attempt genuinely happens and raises — without one, the SMS
+    path would just skip silently and this would pass without actually
+    proving anything."""
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollection([
+        {"username": "alice", "phone": "9876543210"},
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+    monkeypatch.setattr(
+        "app.services.sms.sms_service.send_transactional_sms",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("airtel gateway down")),
+    )
+    monkeypatch.setattr("app.services.email.send_email", lambda *a, **k: False)
+
+    result = payments._credit_session("alice", "1hr", "pay_123", "order_456")
+
+    assert result["verified"] is True
+    assert fake_users._docs["alice"]["plan"] == "basic"  # crediting genuinely happened

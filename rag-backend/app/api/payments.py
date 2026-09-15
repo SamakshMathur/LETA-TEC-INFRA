@@ -111,6 +111,48 @@ def _send_payment_receipt(username: str, plan_cfg: dict, payment_id: str, sessio
         logger.error(f"Payment receipt send failed (non-fatal, plan is already active): {e}")
 
 
+def _send_payment_receipt_sms(username: str, plan_cfg: dict, payment_id: str, session_end_dt) -> None:
+    """
+    SMS counterpart to _send_payment_receipt — for users with no email on
+    file (a phone number is required to sign up at all, so this reaches
+    everyone email can't). Same non-fatal contract: a problem here must
+    never look like the payment failed.
+
+    Genuinely inert until AIRTEL_DLT_RECEIPT_TEMPLATE_ID is set — India's
+    DLT rules require this exact wording to be pre-registered with the
+    telecom operator before it can be sent at all, separately from the
+    OTP template already approved. See airtel.py's own comment on that
+    constant for the registration this is waiting on.
+    """
+    try:
+        users_col = get_user_collection()
+        if users_col is None:
+            return
+        user = users_col.find_one({"username": username}, {"_id": 0, "phone": 1})
+        phone = (user or {}).get("phone")
+        if not phone:
+            return
+
+        from app.services.sms.airtel import AIRTEL_DLT_RECEIPT_TEMPLATE_ID
+        from app.services.sms.sms_service import send_transactional_sms
+
+        amount_rupees = plan_cfg.get("amount", 0) / 100
+        message = (
+            f"Your LETA TEC payment of Rs.{amount_rupees:.0f} for {plan_cfg.get('name', '')} is confirmed. "
+            f"Payment ID: {payment_id}. Valid until {session_end_dt.strftime('%d %b %Y, %I:%M %p')} UTC. "
+            f"Thank you for choosing LETA TEC."
+        )
+        result = send_transactional_sms(phone, AIRTEL_DLT_RECEIPT_TEMPLATE_ID, message)
+        if result.success:
+            logger.info(f"Payment receipt texted | user={username} payment={payment_id}")
+        else:
+            # Expected/routine while the template isn't registered yet —
+            # send_transactional already logs the specific reason.
+            pass
+    except Exception as e:
+        logger.error(f"Payment receipt SMS failed (non-fatal, plan is already active): {e}")
+
+
 def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str) -> dict:
     """
     Apply session extension to the user record.
@@ -140,6 +182,7 @@ def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str)
             f"payment={payment_id} order={order_id} expires={session_end_dt.isoformat()}"
         )
         _send_payment_receipt(username, plan_cfg, payment_id, session_end_dt)
+        _send_payment_receipt_sms(username, plan_cfg, payment_id, session_end_dt)
 
     return {
         "verified":       True,
