@@ -3,10 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Clock, Lock,
-  ShieldCheck, Zap,
+  ShieldCheck, Zap, Download, Loader2,
 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
+// A third near-identical copy of this exact auth-header logic (after
+// LetaWorkspace.tsx and LetaResponse.jsx) used to live in this file —
+// replaced with the shared helper rather than left to drift a third time.
+import { getAuthHeaders as getAuthHeader } from '../utils/authHeaders';
 
 // Classifies POST /api/payments/verify's response status into what the
 // checkout handler should do. Pulled out as a pure function so this
@@ -97,15 +101,6 @@ function loadRazorpay(): Promise<boolean> {
   });
 }
 
-const getAuthHeader = (): Record<string, string> => {
-  try {
-    const raw = localStorage.getItem('pro.auth.session');
-    if (!raw) return {};
-    const token = JSON.parse(raw)?.tokens?.accessToken;
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  } catch { return {}; }
-};
-
 // Silently refresh access token before opening Razorpay so the 15-min expiry
 // doesn't bite if the user was already near the limit when they clicked Pay.
 const refreshAccessToken = async (): Promise<void> => {
@@ -145,6 +140,8 @@ const Payment: React.FC = () => {
   const [loading,  setLoading]  = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [success,  setSuccess]  = useState(false);
+  const [paidPaymentId, setPaidPaymentId] = useState<string | null>(null);
+  const [invoiceDownloading, setInvoiceDownloading] = useState(false);
   const [rzConfig, setRzConfig] = useState<{ key_id: string; configured: boolean } | null>(null);
 
   useEffect(() => {
@@ -215,6 +212,7 @@ const Payment: React.FC = () => {
                 }, true);
               }
             } catch {}
+            setPaidPaymentId(response.razorpay_payment_id);
             setSuccess(true);
           } else if (outcome === 'duplicate') {
             // Already credited via the other path (see classifyPaymentVerifyResult's
@@ -233,6 +231,7 @@ const Payment: React.FC = () => {
                 }
               }
             } catch {}
+            setPaidPaymentId(response.razorpay_payment_id);
             setSuccess(true);
           } else if (outcome === 'session-expired') {
             setPayError('Your session expired during checkout. Please log in again — your payment was received and will be credited once you log back in.');
@@ -247,6 +246,42 @@ const Payment: React.FC = () => {
     } catch (err: any) {
       setPayError(err.message || 'Something went wrong. Please try again.');
       setLoading(false);
+    }
+  };
+
+  const handleDownloadInvoice = async () => {
+    if (!paidPaymentId || invoiceDownloading) return;
+    setInvoiceDownloading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/payments/invoice/${paidPaymentId}`, {
+        headers: getAuthHeader(),
+      });
+      if (!res.ok) throw new Error(`Invoice not available yet (${res.status})`);
+      const blob = await res.blob();
+      // Read the real filename the backend chose (its own invoice-number
+      // sequence) rather than inventing one client-side, so what's saved
+      // to disk matches what the server actually issued.
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] || `LETA-TEC-invoice-${paidPaymentId}.pdf`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Invoice download failed:', err);
+      // Non-fatal to the payment itself — the plan is already active
+      // regardless of whether the invoice download succeeds. A brief,
+      // low-drama inline message is enough; the customer already has
+      // their access.
+      setPayError('Could not download the invoice right now. It will still be available later — try again shortly.');
+    } finally {
+      setInvoiceDownloading(false);
     }
   };
 
@@ -275,9 +310,26 @@ const Payment: React.FC = () => {
           <p className="text-sm mb-2" style={{ color: '#64748B' }}>
             Your {plan.duration} access to {mod.fullName} is now active.
           </p>
-          <p className="text-xs mb-8 font-mono" style={{ color: '#334155' }}>
+          <p className="text-xs mb-6 font-mono" style={{ color: '#334155' }}>
             A confirmation has been sent to {user?.email}
           </p>
+
+          {paidPaymentId && (
+            <button
+              onClick={handleDownloadInvoice}
+              disabled={invoiceDownloading}
+              className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200 mb-3 disabled:opacity-60"
+              style={{ background: 'transparent', color: B.accent, border: `1.5px solid ${B.border}` }}
+            >
+              {invoiceDownloading
+                ? <><Loader2 size={14} className="animate-spin" /> Preparing invoice…</>
+                : <><Download size={14} /> Download Invoice</>}
+            </button>
+          )}
+          {payError && (
+            <p className="text-xs mb-3" style={{ color: '#EF4444' }}>{payError}</p>
+          )}
+
           <button
             onClick={() => navigate(mod.route)}
             className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200"
