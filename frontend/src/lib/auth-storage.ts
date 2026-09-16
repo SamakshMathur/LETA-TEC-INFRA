@@ -1,6 +1,6 @@
 import { Session, Tokens } from '../types/auth';
 
-const STORAGE_KEY = 'pro.auth.session';
+export const STORAGE_KEY = 'pro.auth.session';
 
 export const storeAuthSession = (session: Session, persist: boolean = false): void => {
   // Always use localStorage to fix the multi-tab logout bug
