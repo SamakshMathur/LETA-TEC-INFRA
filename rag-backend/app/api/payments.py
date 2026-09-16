@@ -294,6 +294,33 @@ def create_order(request: Request, req: CreateOrderRequest, current_user: dict =
         raise HTTPException(status_code=400, detail=f"Unknown plan: {req.plan_id}")
 
     username = current_user.get("username", "")
+
+    # Block buying a new plan while the current one is still active.
+    # _credit_session always overwrites session_end with now()+duration rather
+    # than extending it — so letting a purchase through mid-plan would let a
+    # customer pay again and end up with LESS time than they already had
+    # (and get silently downgraded from "pro" back to "basic" on a 1hr
+    # top-up). Simplest correct fix: don't allow the purchase at all until
+    # the clock actually hits zero. Enforced here (not just the frontend's
+    # disabled button) since create-order is reachable directly by anyone
+    # with a valid JWT, active plan or not.
+    users_col = get_user_collection()
+    if users_col is not None:
+        existing_user = users_col.find_one({"username": username}, {"_id": 0, "session_end": 1})
+        if existing_user:
+            session_end = existing_user.get("session_end")
+            if session_end is not None:
+                if session_end.tzinfo is None:
+                    session_end = session_end.replace(tzinfo=timezone.utc)
+                if utc_now() < session_end:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "You already have an active plan until "
+                            f"{session_end.isoformat()}. You can buy a new plan once it expires."
+                        ),
+                    )
+
     client   = _razorpay_client()
     order    = client.order.create({
         "amount":   plan["amount"],

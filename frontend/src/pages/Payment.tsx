@@ -148,6 +148,33 @@ const Payment: React.FC = () => {
   const [invoiceDownloading, setInvoiceDownloading] = useState(false);
   const [rzConfig, setRzConfig] = useState<{ key_id: string; configured: boolean } | null>(null);
 
+  // Blocks buying a new plan while the current one is still active — the
+  // backend enforces this for real (create-order 409s), this is just so a
+  // customer sees WHY the button is disabled instead of hitting an error
+  // after clicking. Deliberately local to this page (its own tick, its own
+  // state) rather than reusing SessionClock — SessionClock's job is a
+  // force-logout-on-expiry countdown, and its own timer is intentionally
+  // suppressed on this exact page (see SessionClock.tsx) to stop it firing
+  // mid-checkout; this is a plain "is it still active" display with no
+  // logout/navigate side effect at all.
+  const activeUntilMs = session?.tokens?.session_end_ms;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!activeUntilMs || activeUntilMs <= Date.now()) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [activeUntilMs]);
+  const hasActivePlan = !!activeUntilMs && activeUntilMs > now;
+  const activeRemainingSec = hasActivePlan ? Math.max(0, Math.floor((activeUntilMs! - now) / 1000)) : 0;
+  const fmtRemaining = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return h > 0
+      ? `${h}h ${String(m).padStart(2, '0')}m`
+      : `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
   useEffect(() => {
     if (user?.role === 'admin') navigate(`/${moduleId}/leta`, { replace: true });
   }, [user, moduleId, navigate]);
@@ -529,8 +556,8 @@ const Payment: React.FC = () => {
               {/* CTA */}
               <div className="px-6 pb-6 pt-5">
                 <button
-                  onClick={rzConfig?.configured ? handlePay : () => navigate(mod.route)}
-                  disabled={loading}
+                  onClick={hasActivePlan ? undefined : (rzConfig?.configured ? handlePay : () => navigate(mod.route))}
+                  disabled={loading || hasActivePlan}
                   className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                   style={{ background: B.accent, color: '#000', boxShadow: `0 0 28px ${B.glow}` }}
                 >
@@ -538,6 +565,10 @@ const Payment: React.FC = () => {
                     <>
                       <span className="animate-spin w-4 h-4 border-2 border-black/30 border-t-black rounded-full" />
                       Processing...
+                    </>
+                  ) : hasActivePlan ? (
+                    <>
+                      <Clock size={13} /> Active plan · {fmtRemaining(activeRemainingSec)} left
                     </>
                   ) : (
                     <>
@@ -548,7 +579,13 @@ const Payment: React.FC = () => {
                   )}
                 </button>
 
-                {!rzConfig?.configured && (
+                {hasActivePlan && (
+                  <p className="text-center text-[9px] font-mono mt-2.5" style={{ color: '#1E293B' }}>
+                    You already have an active plan. You can buy a new plan once it expires.
+                  </p>
+                )}
+
+                {!hasActivePlan && !rzConfig?.configured && (
                   <p className="text-center text-[9px] font-mono mt-2.5" style={{ color: '#1E293B' }}>
                     Payment system coming soon — free access during beta
                   </p>

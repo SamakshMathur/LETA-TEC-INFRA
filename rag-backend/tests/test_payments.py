@@ -379,3 +379,100 @@ def test_credit_session_still_credits_even_if_receipt_sms_blows_up(monkeypatch):
 
     assert result["verified"] is True
     assert fake_users._docs["alice"]["plan"] == "basic"  # crediting genuinely happened
+
+
+# ── create_order — blocks buying a new plan while one is already active ────
+#
+# _credit_session always overwrites session_end with now()+duration rather
+# than extending it, so letting a purchase through mid-plan would let a
+# customer pay again and end up with LESS time than they had (and get
+# silently downgraded from "pro" back to "basic" on a 1hr top-up). These
+# tests exercise create_order for real — not a helper function — since
+# that's where the guard actually lives and it's reachable directly by
+# anyone with a valid JWT, active plan or not.
+#
+# slowapi's @limiter.limit decorator requires a genuine
+# starlette.requests.Request (rejects a Mock outright, confirmed while
+# writing this), so these build one against the real app instance rather
+# than stub it out.
+
+def _fake_request():
+    from starlette.requests import Request
+    from app.api.app import app as real_app
+    scope = {
+        "type": "http", "method": "POST", "path": "/api/payments/create-order",
+        "headers": [], "client": ("127.0.0.1", 12345), "app": real_app,
+        "query_string": b"",
+    }
+    return Request(scope)
+
+
+def test_create_order_blocks_purchase_while_a_plan_is_still_active(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from fastapi import HTTPException
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollection([
+        {"username": "alice", "session_end": datetime.now(timezone.utc) + timedelta(hours=2)},
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+
+    with pytest.raises(HTTPException) as exc_info:
+        payments.create_order(
+            _fake_request(),
+            payments.CreateOrderRequest(plan_id="1hr", module="gst"),
+            current_user={"username": "alice"},
+        )
+    assert exc_info.value.status_code == 409
+    assert "already have an active plan" in exc_info.value.detail
+
+
+class _FakeRazorpayClient:
+    """Stands in for a real razorpay.Client — no network call, no real
+    credentials needed. Records what it was asked to create so a test can
+    assert on it if it ever needs to."""
+
+    def __init__(self):
+        self.order = self
+        self.created_with = None
+
+    def create(self, payload):
+        self.created_with = payload
+        return {"id": "order_test123", "amount": payload["amount"], "currency": payload["currency"]}
+
+
+def test_create_order_allows_purchase_once_the_active_plan_has_expired(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollection([
+        {"username": "alice", "session_end": datetime.now(timezone.utc) - timedelta(minutes=1)},
+    ])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+    monkeypatch.setattr(payments, "_razorpay_client", lambda: _FakeRazorpayClient())
+    monkeypatch.setattr(payments, "get_payment_orders_collection", lambda: None)
+
+    result = payments.create_order(
+        _fake_request(),
+        payments.CreateOrderRequest(plan_id="1hr", module="gst"),
+        current_user={"username": "alice"},
+    )
+    assert result["order_id"] == "order_test123"
+
+
+def test_create_order_allows_purchase_with_no_prior_plan_at_all(monkeypatch):
+    """A brand-new user with no session_end field on their record yet —
+    must not be treated as blocked."""
+    from app.api import payments
+
+    fake_users = _RealisticFakeUserCollection([{"username": "bob"}])
+    monkeypatch.setattr(payments, "get_user_collection", lambda: fake_users)
+    monkeypatch.setattr(payments, "_razorpay_client", lambda: _FakeRazorpayClient())
+    monkeypatch.setattr(payments, "get_payment_orders_collection", lambda: None)
+
+    result = payments.create_order(
+        _fake_request(),
+        payments.CreateOrderRequest(plan_id="1hr", module="gst"),
+        current_user={"username": "bob"},
+    )
+    assert result["order_id"] == "order_test123"
