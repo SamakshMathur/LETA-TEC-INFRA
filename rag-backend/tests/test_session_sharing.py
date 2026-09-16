@@ -182,3 +182,39 @@ def test_get_session_unknown_id_still_404s(monkeypatch, sessions_module):
     with pytest.raises(HTTPException) as exc_info:
         sessions_module.get_session("does-not-exist", current_user={"username": "mallory"})
     assert exc_info.value.status_code == 404
+
+
+# ── user_id redaction for a non-owner viewer ────────────────────────────────
+#
+# Real gap found during a flow audit: since any logged-in account can view
+# any session it has the link for (see test_get_session_non_owner_can_view_it_too_read_only
+# above), the session response's own user_id field — the owner's derived
+# username (e.g. user_<last-6-phone-digits> or an email local-part, see
+# auth.py) — was being handed to every sharee too. Not a full phone/email,
+# but it identifies the owner's account to anyone who has the link, which
+# nothing about sharing a chat was ever meant to expose.
+
+def test_get_session_redacts_owner_user_id_from_a_non_owner(monkeypatch, sessions_module):
+    fake = _FakeSessionCollection([{
+        "session_id": "s1", "user_id": "alice", "title": "T",
+        "created_at": None, "updated_at": None, "messages": [],
+    }])
+    monkeypatch.setattr(sessions_module, "get_session_collection", lambda: fake)
+    monkeypatch.setattr(sessions_module, "_load_session_messages", lambda sid, fb: fb)
+
+    result = sessions_module.get_session("s1", current_user={"username": "mallory"})
+    assert result["is_owner"] is False
+    assert result["user_id"] is None  # NOT "alice" — the whole point of this fix
+
+
+def test_get_session_keeps_user_id_for_the_actual_owner(monkeypatch, sessions_module):
+    fake = _FakeSessionCollection([{
+        "session_id": "s1", "user_id": "alice", "title": "T",
+        "created_at": None, "updated_at": None, "messages": [],
+    }])
+    monkeypatch.setattr(sessions_module, "get_session_collection", lambda: fake)
+    monkeypatch.setattr(sessions_module, "_load_session_messages", lambda sid, fb: fb)
+
+    result = sessions_module.get_session("s1", current_user={"username": "alice"})
+    assert result["is_owner"] is True
+    assert result["user_id"] == "alice"  # only redacted for a NON-owner
