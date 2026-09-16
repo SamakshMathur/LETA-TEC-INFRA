@@ -49,6 +49,38 @@ const doTokenRefresh = async (): Promise<Tokens> => {
   }
 };
 
+// Proactively refreshes the access token if it's expired or within 10s of
+// expiring — the same check the request interceptor below does for every
+// axios call automatically. Exported for the few call sites that DON'T go
+// through axios (LetaWorkspace's /ask and /ask-with-file use raw fetch
+// directly, since streaming a response body is awkward through axios) and
+// so never got this proactive refresh at all: a long compose or a slow
+// upload could carry a token past its 15-minute expiry and hit a hard
+// "please log in again" with no retry, even though the 7-day refresh
+// token was still perfectly valid. Call this right before building
+// getAuthHeaders() for a raw fetch call that might run long.
+//
+// Shares `refreshPromise` with the interceptor below, so a refresh
+// triggered here and one triggered by a concurrent axios call from
+// elsewhere on the page naturally de-duplicate into the same in-flight
+// request rather than racing two separate /refresh calls.
+export const ensureFreshAccessToken = async (): Promise<void> => {
+  const session = getStoredAuthSession();
+  if (!session) return;
+  const expiresAt = new Date(session.tokens.expiresAt).getTime();
+  if (expiresAt < Date.now() + 10000) {
+    if (!refreshPromise) {
+      refreshPromise = doTokenRefresh().finally(() => { refreshPromise = null; });
+    }
+    try {
+      await refreshPromise;
+    } catch {
+      // doTokenRefresh already cleared the session and redirected to
+      // /login on failure — nothing further for a caller to do here.
+    }
+  }
+};
+
 export const setupInterceptors = () => {
   AXIOS_INSTANCE.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
