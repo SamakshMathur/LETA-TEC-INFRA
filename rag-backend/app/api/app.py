@@ -615,6 +615,55 @@ def _verify_session_writable(session_id: Optional[str], username: Optional[str])
         )
 
 
+def _verify_plan_active(username: Optional[str]) -> None:
+    """
+    Raise 401 if this user's paid plan session has already expired.
+
+    Before this, the paid time-limit was enforced ONLY client-side, by
+    SessionClock's per-tab countdown timer force-logging the user out when
+    it hits zero. /ask, /ask-sync, and /ask-with-file resolve identity via
+    _get_user_info_from_req, which just verifies the JWT itself is valid —
+    it never touches session_end. (Contrast with get_current_user, used
+    elsewhere e.g. /api/auth/me, which already does this check — these
+    write endpoints just never called it.) Net effect: anyone hitting the
+    API directly, or whose SessionClock timer was throttled in a
+    backgrounded/second tab, could keep using paid features indefinitely
+    after their time ran out — the JWT itself is refreshable for 7 days,
+    completely decoupled from the plan clock.
+
+    Same "Session expired. Please log in again." wording as
+    get_current_user's own check, so the frontend's existing
+    plan-expiry-vs-generic-401 distinction (see interceptors.ts's
+    PLAN_EXPIRED_DETAIL) recognizes this the same way it already does
+    elsewhere in the app, rather than introducing a third error shape.
+
+    A missing/anonymous username, a DB that isn't reachable, or a user
+    with no session_end on record at all are all let through unchanged —
+    this function only ever narrows access for a user with a real, expired
+    session_end, never widens or blocks anything else.
+    """
+    if not username or username == "admin":
+        return
+    from app.database import get_user_collection
+    users_col = get_user_collection()
+    if users_col is None:
+        return
+    user = users_col.find_one({"username": username}, {"_id": 0, "session_end": 1})
+    if not user:
+        return
+    session_end = user.get("session_end")
+    if session_end is None:
+        return
+    from datetime import timezone as _tz
+    if session_end.tzinfo is None:
+        session_end = session_end.replace(tzinfo=_tz.utc)
+    if utc_now() > session_end:
+        raise HTTPException(
+            status_code=401,
+            detail="Session expired. Please log in again.",
+        )
+
+
 @app.post("/ask")
 @limiter.limit("30/minute")
 async def ask_question(request: Request, req: QuestionRequest):
@@ -625,6 +674,7 @@ async def ask_question(request: Request, req: QuestionRequest):
 
     user_id, username = _get_user_info_from_req(request)
     _verify_session_writable(session_id, username)
+    _verify_plan_active(username)
     from app.ai_logger import init_ai_log
     init_ai_log(
         user_id=user_id,
@@ -1284,6 +1334,7 @@ async def ask_question_sync(request: Request, req: QuestionRequest):
 
     _, _sync_username = _get_user_info_from_req(request)
     _verify_session_writable(session_id, _sync_username)
+    _verify_plan_active(_sync_username)
 
     if session_id:
         collection = get_session_collection()
@@ -1619,6 +1670,7 @@ async def ask_question_with_file(
     question_text = question.strip()
     user_id, username = _get_user_info_from_req(request)
     _verify_session_writable(session_id, username)
+    _verify_plan_active(username)
     request_id = getattr(request.state, "query_id", str(uuid.uuid4())[:8])
 
     from app.ai_logger import init_ai_log
