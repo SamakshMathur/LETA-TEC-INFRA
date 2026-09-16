@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { ROUTES } from '../../constants/routes';
 
 const fmt = (s: number) => {
   const h = Math.floor(s / 3600);
@@ -15,14 +16,23 @@ const fmt = (s: number) => {
 const SessionClock = () => {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [remaining, setRemaining] = useState<number | null>(null);
   const expiredRef = useRef(false);
 
   const sessionEndMs = session?.tokens?.session_end_ms;
   const plan = session?.user?.plan as string | undefined;
 
+  // On the checkout page, the OLD plan's clock hitting zero doesn't mean
+  // "log this user out" — it's often exactly WHY they're here, buying a
+  // new one. Without this, the countdown could reach zero mid-Razorpay
+  // checkout (card entry + bank OTP genuinely takes a minute or two) and
+  // force-navigate to /login right as /verify was about to succeed,
+  // yanking the user off the success screen entirely.
+  const onPaymentPage = location.pathname.startsWith(ROUTES.PAYMENT);
+
   useEffect(() => {
-    if (!sessionEndMs) return;
+    if (!sessionEndMs || onPaymentPage) return;
 
     const tick = () => {
       const left = Math.max(0, Math.floor((sessionEndMs - Date.now()) / 1000));
@@ -38,10 +48,10 @@ const SessionClock = () => {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [sessionEndMs, logout, navigate]);
+  }, [sessionEndMs, logout, navigate, onPaymentPage]);
 
-  // Admin or no session_end → no clock
-  if (!sessionEndMs || remaining === null) return null;
+  // Admin, no session_end, or on the payment page itself → no clock
+  if (!sessionEndMs || remaining === null || onPaymentPage) return null;
 
   const urgent  = remaining <= 5 * 60;   // last 5 min → red
   const warning = remaining <= 10 * 60;  // last 10 min → amber
