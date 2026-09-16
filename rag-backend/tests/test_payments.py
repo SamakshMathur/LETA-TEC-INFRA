@@ -207,7 +207,11 @@ def test_send_payment_receipt_emails_when_user_has_an_email_on_file(monkeypatch)
     assert to == "alice@example.com"
     assert "receipt" in subject.lower()
     assert "pay_123" in html
-    assert "199.00" in html  # ₹19900 paise → ₹199.00
+    # Derived from PLANS["1hr"]["amount"] rather than hardcoded — that
+    # figure is a live business price (currently discounted for testing),
+    # not a fixed constant this test should need editing to track.
+    expected_rupees = payments.PLANS["1hr"]["amount"] / 100
+    assert f"{expected_rupees:.2f}" in html
 
 
 def test_send_payment_receipt_skips_silently_when_no_email_on_file(monkeypatch):
@@ -309,7 +313,10 @@ def test_send_payment_receipt_sms_sends_when_phone_and_template_exist(monkeypatc
     assert phone == "9876543210"
     assert template_id == "template_abc"
     assert "pay_123" in message
-    assert "199" in message
+    # Same reasoning as the email receipt test above — derive from the
+    # live PLANS value instead of hardcoding a price that's expected to
+    # change back after testing.
+    assert f"{payments.PLANS['1hr']['amount'] // 100}" in message
 
 
 def test_send_payment_receipt_sms_skips_silently_with_no_phone_on_file(monkeypatch):

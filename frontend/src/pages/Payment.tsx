@@ -65,8 +65,11 @@ const PLANS: Array<{
   {
     id: '1hr',
     label: '1-Hour Access',
-    price: '₹199',
-    rawAmount: 199,
+    // TEMPORARY: ₹10 for live testing instead of the real ₹199 — must stay
+    // in sync with rag-backend/app/api/payments.py's PLANS["1hr"]["amount"],
+    // the actual amount Razorpay charges. Revert both once testing is done.
+    price: '₹10',
+    rawAmount: 10,
     duration: '1 hour',
     badge: null,
     features: ['Full AI workspace', ACCESS_DOCS, 'Advisory & Research', 'Appeal and notice reply drafting', 'Export & save'],
