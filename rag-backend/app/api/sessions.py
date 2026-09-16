@@ -90,7 +90,15 @@ class Message(BaseModel):
 
 class Session(BaseModel):
     session_id: str
-    user_id: str
+    # Optional, not str: redacted (None) for anyone viewing this session who
+    # isn't its owner — see _coerce_session_doc's is_owner comment. Every
+    # session is now viewable by any logged-in account with the link (by
+    # design — that's the point of sharing), so this field's real value
+    # (the owner's derived username, e.g. user_<last-6-phone-digits> or an
+    # email local-part — see auth.py) would otherwise identify the owner's
+    # account to anyone who has the link, which nothing about sharing a
+    # chat was ever meant to expose.
+    user_id: Optional[str] = None
     title: str
     client_ref: Optional[str] = None
     created_at: datetime
@@ -201,16 +209,23 @@ def _coerce_session_doc(doc: dict, requesting_username: Optional[str] = None) ->
     stored_count = doc.get("message_count")
     effective_count = stored_count if stored_count is not None else len(coerced_messages)
 
+    is_owner = requesting_username is None or doc.get("user_id") == requesting_username
+
     return {
         "session_id": doc.get("session_id", ""),
-        "user_id": doc.get("user_id", ""),
+        # Redacted for a non-owner viewer — see the Session model's own
+        # comment on this field for why. requesting_username is None for
+        # every OTHER caller of this helper (list/search/rename/etc.),
+        # which already scopes its own query to the owner, so this only
+        # ever actually redacts on get_session's shared-access branch.
+        "user_id": doc.get("user_id", "") if is_owner else None,
         "title": doc.get("title") or "Untitled",
         "client_ref": doc.get("client_ref"),
         "created_at": doc.get("created_at") or utc_now(),
         "updated_at": doc.get("updated_at") or utc_now(),
         "message_count": effective_count,
         "messages": coerced_messages,
-        "is_owner": requesting_username is None or doc.get("user_id") == requesting_username,
+        "is_owner": is_owner,
     }
 
 
