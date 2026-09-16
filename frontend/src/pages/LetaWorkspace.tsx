@@ -10,6 +10,7 @@ import {
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/authHeaders';
+import { ensureFreshAccessToken } from '../utils/interceptors';
 
 const getSessionFirstName = (): string => {
   try {
@@ -221,6 +222,37 @@ export function classifySessionLoadError(
   };
 }
 
+// Matches app.py's /ask-with-file parsing branches exactly (pdf/png/jpg/
+// jpeg/txt/docx) — anything else falls through server-side with no
+// extracted content and no error either, so rejecting it here is the only
+// place it's actually caught.
+export const ACCEPTED_FILE_EXTENSIONS = ['.pdf', '.docx', '.txt', '.png', '.jpg', '.jpeg'];
+
+// Mirrors app.py's RequestSizeLimitMiddleware (20 MB request body cap,
+// returns 413) — checking client-side means a too-large file is rejected
+// immediately, not after a full upload attempt that was always going to
+// be rejected anyway.
+export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
+
+// Extracted as a pure function so this decision is unit-testable without
+// mounting the full workspace (same reasoning as classifySessionLoadError
+// above). Previously nothing checked size or type before attempting the
+// upload — an oversized or unsupported file only failed after the full
+// POST completed, surfacing through the same generic "Unable to reach
+// the advisory server" message as any other network error, with no
+// file-specific explanation at all.
+export function validateAttachedFile(file: File): string | null {
+  const ext = ('.' + (file.name.split('.').pop() || '')).toLowerCase();
+  if (!ACCEPTED_FILE_EXTENSIONS.includes(ext)) {
+    return `"${file.name}" isn't a supported file type. Attach a PDF, Word doc, text file, or image (PNG/JPG) instead.`;
+  }
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    return `"${file.name}" is ${mb} MB — the maximum is 20 MB. Try a smaller file.`;
+  }
+  return null;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const LetaWorkspace: React.FC = () => {
@@ -367,7 +399,21 @@ const LetaWorkspace: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Single entry point for every way a file gets attached (file picker,
+  // drag-and-drop, clipboard paste) so validation can't quietly be
+  // skipped by one of them.
+  const attachFile = (file: File) => {
+    const error = validateAttachedFile(file);
+    if (error) {
+      setFileError(error);
+      return;
+    }
+    setFileError(null);
+    setSelectedFile(file);
+  };
   // Object URLs created for image-attachment thumbnails in the message log —
   // revoked on unmount rather than per-message, since a session's worth of
   // attached screenshots is small and freeing them mid-conversation risks
@@ -1226,6 +1272,13 @@ const LetaWorkspace: React.FC = () => {
         // Placeholder assistant bubble already added immediately after the
         // user message, above — don't add a second one here.
         streamingSessionsRef.current.add(streamSessionKey);
+        // This bypasses axios (streaming a response body through it is
+        // awkward), so it never gets the interceptor's automatic
+        // proactive token refresh — do it explicitly here instead. Without
+        // this, a large/slow upload can carry the token past its 15-min
+        // expiry and hit a hard "please log in again" mid-upload, even
+        // though the 7-day refresh token was still perfectly valid.
+        await ensureFreshAccessToken();
         const fileRes = await fetchWithRetry(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
         if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
@@ -1344,6 +1397,11 @@ const LetaWorkspace: React.FC = () => {
         // Placeholder assistant bubble already added immediately after the
         // user message, above — don't add a second one here.
         streamingSessionsRef.current.add(streamSessionKey);
+        // Same reason as the /ask-with-file call above: raw fetch bypasses
+        // axios's automatic proactive token refresh, so a long compose
+        // that carries the token past its 15-min expiry needs this done
+        // explicitly instead.
+        await ensureFreshAccessToken();
         const streamRes = await fetchWithRetry(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -1987,10 +2045,8 @@ const LetaWorkspace: React.FC = () => {
           onDrop={e => {
             e.preventDefault(); e.stopPropagation();
             setIsDragging(false);
-            const dropped = Array.from(e.dataTransfer.files).find(f =>
-              /\.(pdf|docx|txt|png|jpg|jpeg)$/i.test(f.name)
-            );
-            if (dropped) setSelectedFile(dropped);
+            const dropped = e.dataTransfer.files[0];
+            if (dropped) attachFile(dropped);
           }}
         >
           {/* Drag-and-drop overlay */}
@@ -2446,6 +2502,27 @@ const LetaWorkspace: React.FC = () => {
                 )}
               </AnimatePresence>
 
+              <AnimatePresence>
+                {fileError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="absolute -top-12 left-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#EF4444]/30 bg-[#000000] z-30"
+                  >
+                    <span className="text-[11px] font-mono text-[#F87171] flex-1">
+                      {fileError}
+                    </span>
+                    <button
+                      onClick={() => setFileError(null)}
+                      className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-1 flex-shrink-0"
+                    >
+                      <X size={12} />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <textarea
                 ref={textareaRef}
                 value={query}
@@ -2485,7 +2562,7 @@ const LetaWorkspace: React.FC = () => {
                         file.name && file.name !== 'image.png' ? file.name : `pasted-image-${Date.now()}.${ext}`,
                         { type: file.type }
                       );
-                      setSelectedFile(named);
+                      attachFile(named);
                       break;
                     }
                   }
@@ -2501,9 +2578,9 @@ const LetaWorkspace: React.FC = () => {
                 <input
                   type="file"
                   ref={fileInputRef}
-                  onChange={e => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); }}
+                  onChange={e => { if (e.target.files?.[0]) attachFile(e.target.files[0]); e.target.value = ''; }}
                   className="hidden"
-                  accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                  accept={ACCEPTED_FILE_EXTENSIONS.join(',')}
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
