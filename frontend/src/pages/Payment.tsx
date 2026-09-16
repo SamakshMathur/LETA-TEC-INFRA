@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
+import { LIVE_MODULE_IDS } from '../constants/routes';
 // A third near-identical copy of this exact auth-header logic (after
 // LetaWorkspace.tsx and LetaResponse.jsx) used to live in this file —
 // replaced with the shared helper rather than left to drift a third time.
@@ -331,7 +332,14 @@ const Payment: React.FC = () => {
           )}
 
           <button
-            onClick={() => navigate(mod.route)}
+            onClick={() => navigate(
+              // Straight into the actual paid chat workspace, not the
+              // module's marketing/info page — a customer who just paid
+              // and clicked "Enter Workspace" means it literally. Falls
+              // back to the info page only for a module that isn't live
+              // yet, so this doesn't bounce anyone off LiveDomainGuard.
+              LIVE_MODULE_IDS.includes(moduleId) ? `/${moduleId}/leta` : mod.route
+            )}
             className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200"
             style={{ background: B.accent, color: '#000', boxShadow: `0 0 30px ${B.glow}` }}
           >
