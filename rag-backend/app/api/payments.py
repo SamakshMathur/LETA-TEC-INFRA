@@ -37,7 +37,9 @@ PLANS = {
     "1hr": {
         "name": "1-Hour Access",
         "description": "Full module access for 1 hour",
-        "amount": 19900,        # paise (₹199 × 100)
+        # TEMPORARY: ₹10 for live testing instead of the real ₹199 — revert
+        # to 19900 once testing is confirmed done. Not a permanent price.
+        "amount": 1000,          # paise (₹10 × 100)
         "currency": "INR",
         "duration_hours": 1,
     },
