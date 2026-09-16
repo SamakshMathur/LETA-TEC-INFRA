@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { Session, User } from '../types/auth';
-import { getStoredAuthSession, storeAuthSession, clearAuthSession } from '../lib/auth-storage';
+import { getStoredAuthSession, storeAuthSession, clearAuthSession, STORAGE_KEY } from '../lib/auth-storage';
 import { DEMO_MODE } from '../config/demo';
 
 // Minimal session used when DEMO_MODE=true. No session_end_ms → SessionClock hidden.
@@ -76,6 +76,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Restore session from localStorage on page load (set by the login flow)
     setSession(getValidStoredSession());
     setIsInitialised(true);
+  }, []);
+
+  // Cross-tab sync: the browser's `storage` event fires in every OTHER tab
+  // (never the tab that made the change) whenever localStorage is written.
+  // Without this, logging out in one tab left every other open tab still
+  // believing it was logged in — its React state was only ever read from
+  // localStorage once, on mount — and it would keep sending requests with
+  // a token that may no longer be valid until something else forced a
+  // re-check. Mirrors login, logout, AND a token refresh from another tab,
+  // since all three go through storeAuthSession/clearAuthSession and this
+  // one listener covers all of them the same way.
+  useEffect(() => {
+    if (DEMO_MODE) return;
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+      setSession(e.newValue === null ? null : getValidStoredSession());
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const login = useCallback((newSession: Session, persist: boolean) => {
