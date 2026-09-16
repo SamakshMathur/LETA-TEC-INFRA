@@ -10,6 +10,7 @@ import {
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/authHeaders';
+import { ensureFreshAccessToken } from '../utils/interceptors';
 
 const getSessionFirstName = (): string => {
   try {
@@ -1226,6 +1227,13 @@ const LetaWorkspace: React.FC = () => {
         // Placeholder assistant bubble already added immediately after the
         // user message, above — don't add a second one here.
         streamingSessionsRef.current.add(streamSessionKey);
+        // This bypasses axios (streaming a response body through it is
+        // awkward), so it never gets the interceptor's automatic
+        // proactive token refresh — do it explicitly here instead. Without
+        // this, a large/slow upload can carry the token past its 15-min
+        // expiry and hit a hard "please log in again" mid-upload, even
+        // though the 7-day refresh token was still perfectly valid.
+        await ensureFreshAccessToken();
         const fileRes = await fetchWithRetry(`${BASE_URL}/ask-with-file`, { method: 'POST', headers: getAuthHeaders(), body: formData, signal: controller.signal });
 
         if (!fileRes.ok) throw new Error(`Server returned status: ${fileRes.status}`);
@@ -1344,6 +1352,11 @@ const LetaWorkspace: React.FC = () => {
         // Placeholder assistant bubble already added immediately after the
         // user message, above — don't add a second one here.
         streamingSessionsRef.current.add(streamSessionKey);
+        // Same reason as the /ask-with-file call above: raw fetch bypasses
+        // axios's automatic proactive token refresh, so a long compose
+        // that carries the token past its 15-min expiry needs this done
+        // explicitly instead.
+        await ensureFreshAccessToken();
         const streamRes = await fetchWithRetry(`${BASE_URL}/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
