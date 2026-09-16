@@ -8,6 +8,8 @@ import {
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { LIVE_MODULE_IDS } from '../constants/routes';
+import { getStoredAuthSession } from '../lib/auth-storage';
+import type { Session } from '../types/auth';
 // A third near-identical copy of this exact auth-header logic (after
 // LetaWorkspace.tsx and LetaResponse.jsx) used to live in this file —
 // replaced with the shared helper rather than left to drift a third time.
@@ -107,13 +109,23 @@ function loadRazorpay(): Promise<boolean> {
 
 // Silently refresh access token before opening Razorpay so the 15-min expiry
 // doesn't bite if the user was already near the limit when they clicked Pay.
-const refreshAccessToken = async (): Promise<void> => {
+//
+// Takes `login` and writes the refreshed tokens through it (which updates
+// both localStorage AND AuthContext's React state) instead of just
+// localStorage directly. Writing only to localStorage used to leave
+// AuthContext's `session` state holding the stale pre-refresh tokens —
+// and later, on a successful payment, the success/duplicate handlers below
+// called `login({...session, ...})`, spreading that STALE state and
+// clobbering the fresh tokens this function had just written, right as
+// the customer's payment went through. Keeping both in sync here, at the
+// point of refresh, closes that gap at the source.
+export const refreshAccessToken = async (
+  login: (session: Session, persist: boolean) => void
+): Promise<void> => {
   try {
-    const raw = localStorage.getItem('pro.auth.session');
-    if (!raw) return;
-    const stored = JSON.parse(raw);
+    const stored = getStoredAuthSession();
     const refreshToken = stored?.tokens?.refreshToken;
-    if (!refreshToken) return;
+    if (!stored || !refreshToken) return;
     const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -121,10 +133,7 @@ const refreshAccessToken = async (): Promise<void> => {
     });
     if (res.ok) {
       const data = await res.json();
-      localStorage.setItem('pro.auth.session', JSON.stringify({
-        ...stored,
-        tokens: { ...stored.tokens, ...data.tokens },
-      }));
+      login({ ...stored, tokens: { ...stored.tokens, ...data.tokens } }, true);
     }
   } catch { /* non-fatal — existing token used as fallback */ }
 };
@@ -194,7 +203,7 @@ const Payment: React.FC = () => {
       if (!loaded) throw new Error('Razorpay SDK failed to load');
 
       // Refresh token first — gives a fresh 15-min window before the modal opens
-      await refreshAccessToken();
+      await refreshAccessToken(login);
       const authHeader = getAuthHeader();
       const orderRes = await fetch(`${BASE_URL}/api/payments/create-order`, {
         method: 'POST',
@@ -235,11 +244,19 @@ const Payment: React.FC = () => {
           if (outcome === 'success') {
             try {
               const verifyData = await verifyRes.json();
-              if (session && verifyData.session_end_ms) {
+              // Base the merge on whatever's CURRENTLY in localStorage, not
+              // the `session` captured in this closure — the checkout can
+              // run long enough for refreshAccessToken (and the axios
+              // interceptor, for any other in-flight request) to have
+              // written a newer token since this component last rendered.
+              // Merging onto a stale closure here is exactly what used to
+              // clobber a just-refreshed token right as payment succeeded.
+              const latestSession = getStoredAuthSession() || session;
+              if (latestSession && verifyData.session_end_ms) {
                 login({
-                  ...session,
-                  tokens: { ...session.tokens, session_end_ms: verifyData.session_end_ms },
-                  user:   { ...session.user,   plan: verifyData.plan_name ?? session.user?.plan },
+                  ...latestSession,
+                  tokens: { ...latestSession.tokens, session_end_ms: verifyData.session_end_ms },
+                  user:   { ...latestSession.user,   plan: verifyData.plan_name ?? latestSession.user?.plan },
                 }, true);
               }
             } catch {}
@@ -253,11 +270,12 @@ const Payment: React.FC = () => {
               const meRes = await fetch(`${BASE_URL}/api/auth/me`, { headers: getAuthHeader() });
               if (meRes.ok) {
                 const me = await meRes.json();
-                if (session && me.session_end) {
+                const latestSession = getStoredAuthSession() || session;
+                if (latestSession && me.session_end) {
                   login({
-                    ...session,
-                    tokens: { ...session.tokens, session_end_ms: new Date(me.session_end).getTime() },
-                    user:   { ...session.user,   plan: me.plan ?? session.user?.plan },
+                    ...latestSession,
+                    tokens: { ...latestSession.tokens, session_end_ms: new Date(me.session_end).getTime() },
+                    user:   { ...latestSession.user,   plan: me.plan ?? latestSession.user?.plan },
                   }, true);
                 }
               }
