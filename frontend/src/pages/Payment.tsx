@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -35,6 +35,31 @@ export function classifyPaymentVerifyResult(
   if (status === 409) return 'duplicate';
   if (status === 401) return 'session-expired';
   return 'failed';
+}
+
+// Pulled out as a pure function so this specific decision is unit-testable
+// without mounting the full Payment page (Razorpay SDK, timers, auth
+// context) — same reasoning as classifyPaymentVerifyResult above.
+//
+// Decides whether a payment actually got credited while the Razorpay
+// checkout modal was open, despite the modal being dismissed before any
+// success response arrived — a UPI payment in particular can confirm on
+// the user's phone a moment after the modal is already closed, and the
+// webhook credits it independently of what the browser saw. `newSessionEnd`
+// is whatever /api/auth/me reports right now; `previousSessionEndMs` is
+// what the plan's expiry was BEFORE this checkout attempt opened. A later
+// expiry than before means this attempt (or another one, doesn't matter
+// which) really did get credited — the customer must not be allowed to
+// pay again for it.
+export function wasCreditedWhileModalWasOpen(
+  previousSessionEndMs: number | undefined,
+  newSessionEnd: string | null | undefined
+): number | null {
+  if (!newSessionEnd) return null;
+  const newEndMs = new Date(newSessionEnd).getTime();
+  if (!Number.isFinite(newEndMs)) return null;
+  if (previousSessionEndMs && newEndMs <= previousSessionEndMs) return null;
+  return newEndMs;
 }
 
 const B = {
@@ -147,6 +172,13 @@ const Payment: React.FC = () => {
   const [paidPaymentId, setPaidPaymentId] = useState<string | null>(null);
   const [invoiceDownloading, setInvoiceDownloading] = useState(false);
   const [rzConfig, setRzConfig] = useState<{ key_id: string; configured: boolean } | null>(null);
+  const [checkingAfterDismiss, setCheckingAfterDismiss] = useState(false);
+  // The plan's expiry as it stood right before THIS checkout attempt opened
+  // — captured so ondismiss can tell "the plan really wasn't credited" apart
+  // from "it actually was, just asynchronously (UPI confirms on the phone
+  // after the checkout modal can already be closed), and the webhook just
+  // hadn't landed yet when the user closed the modal."
+  const preCheckoutSessionEndMsRef = useRef<number | undefined>(undefined);
 
   // Blocks buying a new plan while the current one is still active — the
   // backend enforces this for real (create-order 409s), this is just so a
@@ -206,6 +238,7 @@ const Payment: React.FC = () => {
         throw new Error(err.detail || 'Could not create order');
       }
       const order = await orderRes.json();
+      preCheckoutSessionEndMsRef.current = session?.tokens?.session_end_ms;
 
       new (window as any).Razorpay({
         key: rzConfig?.key_id || '',
@@ -272,10 +305,58 @@ const Payment: React.FC = () => {
             setLoading(false);
           }
         },
-        modal: { ondismiss: () => setLoading(false) },
+        modal: { ondismiss: handleModalDismiss },
       }).open();
     } catch (err: any) {
       setPayError(err.message || 'Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  // Razorpay's modal being dismissed does NOT mean the payment failed — a
+  // UPI payment in particular can confirm on the user's phone a moment
+  // AFTER they've already closed/backgrounded the checkout modal, and the
+  // webhook (the server-to-server safety net) will still credit it once it
+  // lands. Previously this just reset the button straight back to "Pay",
+  // so a confused customer who assumed it failed could click Pay again —
+  // create-order has no idea this is a retry of the same attempt, so it
+  // creates a brand-new order and a genuine second charge goes through.
+  //
+  // Instead: wait a few seconds for the webhook to have a real chance to
+  // land, then check whether the plan actually got credited while the
+  // modal was open. If it did, show the success screen instead of
+  // reopening checkout — closing the double-charge window instead of
+  // just hoping the customer notices before clicking Pay again.
+  const handleModalDismiss = async () => {
+    setCheckingAfterDismiss(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      const meRes = await fetch(`${BASE_URL}/api/auth/me`, { headers: getAuthHeader() });
+      if (meRes.ok) {
+        const me = await meRes.json();
+        const newEndMs = wasCreditedWhileModalWasOpen(preCheckoutSessionEndMsRef.current, me.session_end);
+        if (newEndMs) {
+          if (session) {
+            login({
+              ...session,
+              tokens: { ...session.tokens, session_end_ms: newEndMs },
+              user:   { ...session.user,   plan: me.plan ?? session.user?.plan },
+            }, true);
+          }
+          // No payment_id available on this path (the modal was dismissed
+          // before Razorpay's handler ever ran) — the Download Invoice
+          // button simply won't render, same as any other success state
+          // with paidPaymentId unset. The plan being active is what matters.
+          setSuccess(true);
+          return;
+        }
+      }
+    } catch {
+      // Non-fatal — if the check itself fails, fall through to the normal
+      // "nothing happened, you can try again" state rather than blocking
+      // the user on an ambiguous state indefinitely.
+    } finally {
+      setCheckingAfterDismiss(false);
       setLoading(false);
     }
   };
@@ -564,7 +645,7 @@ const Payment: React.FC = () => {
                   {loading ? (
                     <>
                       <span className="animate-spin w-4 h-4 border-2 border-black/30 border-t-black rounded-full" />
-                      Processing...
+                      {checkingAfterDismiss ? 'Checking payment status…' : 'Processing...'}
                     </>
                   ) : hasActivePlan ? (
                     <>
