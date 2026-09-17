@@ -15,9 +15,10 @@ const MODULES = [
 ];
 
 const NAV_LINKS = [
-  { label: 'Home',     path: '/'         },
-  { label: 'About Us', path: '/about'    },
-  { label: 'My Docs',  path: '/my-docs'  },
+  { label: 'Home',     path: '/'                  },
+  { label: 'About Us', path: '/about'             },
+  { label: 'Library',  path: '/document-library'  },
+  { label: 'My Docs',  path: '/my-docs'           },
 ];
 
 const getInitials = (name: string) => {
