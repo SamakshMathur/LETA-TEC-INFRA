@@ -9,6 +9,7 @@ import { BASE_URL } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { LIVE_MODULE_IDS } from '../constants/routes';
 import { getStoredAuthSession } from '../lib/auth-storage';
+import { CONTACT_EMAIL } from '../constants/contact';
 import type { Session } from '../types/auth';
 // A third near-identical copy of this exact auth-header logic (after
 // LetaWorkspace.tsx and LetaResponse.jsx) used to live in this file —
@@ -62,6 +63,18 @@ export function wasCreditedWhileModalWasOpen(
   if (!Number.isFinite(newEndMs)) return null;
   if (previousSessionEndMs && newEndMs <= previousSessionEndMs) return null;
   return newEndMs;
+}
+
+// Pulled out as a pure function (same reasoning as the others above) so
+// the mailto link's exact shape — including that the payment ID is
+// actually embedded in the body, not just told to the user to type
+// themselves — is unit-tested without mounting the full page.
+export function buildSupportMailtoHref(paymentId: string): string {
+  const subject = encodeURIComponent('Payment issue — need help');
+  const body = encodeURIComponent(
+    `My payment did not go through correctly.\n\nPayment ID: ${paymentId}`
+  );
+  return `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
 }
 
 const B = {
@@ -177,6 +190,13 @@ const Payment: React.FC = () => {
 
   const [loading,  setLoading]  = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  // Set only for a GENUINE payment failure (Razorpay actually charged the
+  // card, and our own /verify rejected it) — not for a session-expiry or
+  // duplicate/already-credited case, where the money is already accounted
+  // for. This is the one moment a customer most needs a way to reach a
+  // human directly, and previously had none — the only support contact in
+  // the whole product lived three clicks away in Terms & Conditions.
+  const [failedPaymentId, setFailedPaymentId] = useState<string | null>(null);
   const [success,  setSuccess]  = useState(false);
   const [paidPaymentId, setPaidPaymentId] = useState<string | null>(null);
   const [invoiceDownloading, setInvoiceDownloading] = useState(false);
@@ -230,6 +250,7 @@ const Payment: React.FC = () => {
   const handlePay = async () => {
     setLoading(true);
     setPayError(null);
+    setFailedPaymentId(null);
     try {
       const loaded = await loadRazorpay();
       if (!loaded) throw new Error('Razorpay SDK failed to load');
@@ -319,7 +340,8 @@ const Payment: React.FC = () => {
             setPayError('Your session expired during checkout. Please log in again — your payment was received and will be credited once you log back in.');
             setLoading(false);
           } else {
-            setPayError('Payment verification failed. Please contact support with your payment ID.');
+            setPayError('Payment verification failed.');
+            setFailedPaymentId(response.razorpay_payment_id);
             setLoading(false);
           }
         },
@@ -654,6 +676,21 @@ const Payment: React.FC = () => {
                 <div className="mx-6 mt-5 p-3 rounded-xl text-xs font-medium"
                   style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
                   {payError}
+                  {failedPaymentId && (
+                    <>
+                      {' '}
+                      <a
+                        href={buildSupportMailtoHref(failedPaymentId)}
+                        className="underline font-semibold"
+                        style={{ color: '#F87171' }}
+                      >
+                        Contact support ({CONTACT_EMAIL})
+                      </a>
+                      <span className="block mt-1 font-mono text-[10px] opacity-70">
+                        Payment ID: {failedPaymentId}
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
 
