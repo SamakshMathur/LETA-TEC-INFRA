@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, Mail, Phone, Clock, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, Clock, Save, Loader2, CheckCircle2, FileText, ChevronRight } from 'lucide-react';
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { getAuthHeaders } from '../utils/authHeaders';
+import { ROUTES } from '../constants/routes';
 
 const B = {
   accent: '#4FB7C5',
@@ -181,6 +182,16 @@ const Settings: React.FC = () => {
               <span className="text-sm" style={{ color: '#64748B' }}>No active plan right now</span>
             )}
           </div>
+          <button
+            onClick={() => navigate(ROUTES.INVOICES)}
+            className="w-full px-6 py-4 flex items-center justify-between gap-3 text-left transition-colors"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: '#F4F7FA' }}
+          >
+            <span className="flex items-center gap-2 text-sm">
+              <FileText size={14} style={{ color: '#475569' }} /> Invoice History
+            </span>
+            <ChevronRight size={14} style={{ color: '#475569' }} />
+          </button>
         </div>
       </div>
     </div>
