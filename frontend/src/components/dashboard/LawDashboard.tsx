@@ -189,7 +189,7 @@ const LawDashboard: React.FC<LawDashboardProps> = ({ title, domainId, contextDes
                 <p className="text-sm font-medium text-white mb-1">
                   Module-specific documents coming soon
                 </p>
-                <p className="text-xs" style={{ color: '#475569', maxWidth: '360px', lineHeight: 1.6 }}>
+                <p className="text-xs" style={{ color: '#64748B', maxWidth: '360px', lineHeight: 1.6 }}>
                   The {title} statutory archive is being curated independently. Documents, circulars, and case laws for this module will appear here once indexed.
                 </p>
               </div>

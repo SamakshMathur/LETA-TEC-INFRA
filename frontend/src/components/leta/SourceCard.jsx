@@ -39,7 +39,7 @@ const SourceCard = ({ source, onClick, index = 0 }) => {
         <h4 className="text-[11px] font-bold truncate leading-tight mb-1 transition-colors" style={{ color: '#CBD5E1' }}>
           {cleanTitle}
         </h4>
-        <span className="text-[9px] font-mono uppercase tracking-tighter" style={{ color: '#475569' }}>
+        <span className="text-[9px] font-mono uppercase tracking-tighter" style={{ color: '#64748B' }}>
           PROVISION AT PAGE {page}
         </span>
       </div>

@@ -77,7 +77,7 @@ const DocxViewer = ({ url }) => {
 
   if (error) return (
     <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
-      <FileQuestion size={36} className="text-[#475569]" />
+      <FileQuestion size={36} className="text-[#64748B]" />
       <p className="text-[12px] font-mono text-[#6B7280]">Could not render document: {error}</p>
       <a href={url} download className="mt-2 px-4 py-2 text-[11px] font-mono uppercase tracking-widest border border-[#4FB7C5]/30 text-[#4FB7C5] hover:bg-[#4FB7C5]/10 transition-colors rounded">
         Download Instead
@@ -132,9 +132,9 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 rounded transition-colors"
-            style={{ color: '#475569' }}
+            style={{ color: '#64748B' }}
             onMouseEnter={e => e.currentTarget.style.color = '#CBD5E1'}
-            onMouseLeave={e => e.currentTarget.style.color = '#475569'}
+            onMouseLeave={e => e.currentTarget.style.color = '#64748B'}
             title="Open / Download"
           >
             <Download size={13} />
@@ -142,18 +142,18 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
           <button
             onClick={() => setIsFullscreen(f => !f)}
             className="p-1.5 rounded transition-colors hidden lg:block"
-            style={{ color: '#475569' }}
+            style={{ color: '#64748B' }}
             onMouseEnter={e => e.currentTarget.style.color = '#CBD5E1'}
-            onMouseLeave={e => e.currentTarget.style.color = '#475569'}
+            onMouseLeave={e => e.currentTarget.style.color = '#64748B'}
           >
             {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
           </button>
           <button
             onClick={onClose}
             className="p-1.5 rounded transition-colors"
-            style={{ color: '#475569' }}
+            style={{ color: '#64748B' }}
             onMouseEnter={e => e.currentTarget.style.color = '#EF4444'}
-            onMouseLeave={e => e.currentTarget.style.color = '#475569'}
+            onMouseLeave={e => e.currentTarget.style.color = '#64748B'}
           >
             <X size={14} />
           </button>
@@ -184,7 +184,7 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
           <DocxViewer url={url} />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-            <FileQuestion size={40} style={{ color: '#475569' }} />
+            <FileQuestion size={40} style={{ color: '#64748B' }} />
             <p className="text-[12px] font-mono" style={{ color: '#6B7280' }}>
               Preview not available for .{fileType || 'unknown'} files
             </p>

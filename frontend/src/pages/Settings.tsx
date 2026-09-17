@@ -76,9 +76,9 @@ const Settings: React.FC = () => {
           transition={{ duration: 0.3 }}
           onClick={() => navigate('/dashboard')}
           className="flex items-center gap-2 text-xs mb-8 transition-colors"
-          style={{ color: '#475569' }}
+          style={{ color: '#64748B' }}
           onMouseEnter={e => (e.currentTarget.style.color = B.accent)}
-          onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}
         >
           <ArrowLeft size={13} /> Back to dashboard
         </motion.button>
@@ -86,7 +86,7 @@ const Settings: React.FC = () => {
         <h1 className="text-2xl font-bold text-white mb-1" style={{ letterSpacing: '-0.02em' }}>
           Account Settings
         </h1>
-        <p className="text-sm mb-8" style={{ color: '#475569' }}>
+        <p className="text-sm mb-8" style={{ color: '#64748B' }}>
           Manage your profile details
         </p>
 
@@ -127,7 +127,7 @@ const Settings: React.FC = () => {
                 onBlur={e => (e.currentTarget.style.borderColor = B.border)}
               />
               {!user?.email && (
-                <p className="text-[11px] mt-2" style={{ color: '#475569' }}>
+                <p className="text-[11px] mt-2" style={{ color: '#64748B' }}>
                   Add an email to receive payment receipts — your account doesn't have one on file yet.
                 </p>
               )}
@@ -140,7 +140,7 @@ const Settings: React.FC = () => {
               <div className="w-full px-4 py-3 rounded-xl text-sm" style={{ border: `1px solid ${B.border}`, color: '#64748B', background: 'rgba(255,255,255,0.01)' }}>
                 {user?.phone ? `+91 ${user.phone}` : '—'}
               </div>
-              <p className="text-[11px] mt-2" style={{ color: '#475569' }}>
+              <p className="text-[11px] mt-2" style={{ color: '#64748B' }}>
                 Contact support to change the mobile number linked to your account.
               </p>
             </div>
@@ -173,7 +173,7 @@ const Settings: React.FC = () => {
             <h2 className="text-sm font-bold text-white">Plan</h2>
           </div>
           <div className="px-6 py-5 flex items-center gap-3">
-            <Clock size={14} style={{ color: hasActivePlan ? B.accent : '#475569' }} />
+            <Clock size={14} style={{ color: hasActivePlan ? B.accent : '#64748B' }} />
             {hasActivePlan ? (
               <span className="text-sm" style={{ color: '#F4F7FA' }}>
                 Active until {new Date(activeUntilMs!).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -188,9 +188,9 @@ const Settings: React.FC = () => {
             style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: '#F4F7FA' }}
           >
             <span className="flex items-center gap-2 text-sm">
-              <FileText size={14} style={{ color: '#475569' }} /> Invoice History
+              <FileText size={14} style={{ color: '#64748B' }} /> Invoice History
             </span>
-            <ChevronRight size={14} style={{ color: '#475569' }} />
+            <ChevronRight size={14} style={{ color: '#64748B' }} />
           </button>
         </div>
       </div>

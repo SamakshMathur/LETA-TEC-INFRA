@@ -91,9 +91,9 @@ const InvoiceHistory: React.FC = () => {
           transition={{ duration: 0.3 }}
           onClick={() => navigate('/dashboard')}
           className="flex items-center gap-2 text-xs mb-8 transition-colors"
-          style={{ color: '#475569' }}
+          style={{ color: '#64748B' }}
           onMouseEnter={e => (e.currentTarget.style.color = B.accent)}
-          onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}
         >
           <ArrowLeft size={13} /> Back to dashboard
         </motion.button>
@@ -101,7 +101,7 @@ const InvoiceHistory: React.FC = () => {
         <h1 className="text-2xl font-bold text-white mb-1" style={{ letterSpacing: '-0.02em' }}>
           Invoice History
         </h1>
-        <p className="text-sm mb-8" style={{ color: '#475569' }}>
+        <p className="text-sm mb-8" style={{ color: '#64748B' }}>
           Every invoice issued to your account, newest first
         </p>
 
@@ -113,14 +113,14 @@ const InvoiceHistory: React.FC = () => {
           )}
 
           {invoices === null && !error && (
-            <div className="px-6 py-10 flex items-center justify-center gap-2" style={{ color: '#475569' }}>
+            <div className="px-6 py-10 flex items-center justify-center gap-2" style={{ color: '#64748B' }}>
               <Loader2 size={16} className="animate-spin" />
               <span className="text-sm">Loading invoices…</span>
             </div>
           )}
 
           {invoices !== null && invoices.length === 0 && (
-            <div className="px-6 py-10 flex flex-col items-center gap-2 text-center" style={{ color: '#475569' }}>
+            <div className="px-6 py-10 flex flex-col items-center gap-2 text-center" style={{ color: '#64748B' }}>
               <FileText size={20} />
               <span className="text-sm">No invoices yet — they'll show up here after your first payment.</span>
             </div>
@@ -134,7 +134,7 @@ const InvoiceHistory: React.FC = () => {
             >
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate" style={{ color: '#F4F7FA' }}>{inv.plan_name}</p>
-                <p className="text-[11px] font-mono mt-0.5" style={{ color: '#475569' }}>
+                <p className="text-[11px] font-mono mt-0.5" style={{ color: '#64748B' }}>
                   {inv.invoice_number} &middot; {formatIssuedDate(inv.issued_at)}
                 </p>
               </div>
