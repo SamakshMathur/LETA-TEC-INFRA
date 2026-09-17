@@ -8,6 +8,27 @@ import {
   GrainOverlay, ScrollProgress, PageTransition,
 } from './components';
 
+// Shown by Suspense while a lazy-loaded route chunk downloads. Same
+// background as the app itself (no flash), but with an actual spinner —
+// the previous fallback was a bare colored div, which meant any route
+// transition hitting an unfetched chunk looked frozen rather than loading.
+const RouteLoadingFallback: React.FC = () => (
+  <div
+    className="flex items-center justify-center min-h-screen"
+    style={{ background: '#060816' }}
+  >
+    <div
+      className="w-8 h-8 rounded-full animate-spin"
+      style={{
+        border: '2.5px solid rgba(79,183,197,0.15)',
+        borderTopColor: '#4FB7C5',
+      }}
+      role="status"
+      aria-label="Loading"
+    />
+  </div>
+);
+
 const NotFound: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-screen gap-6"
     style={{ background: '#000000' }}>
@@ -105,8 +126,14 @@ function App() {
         <ScrollToTop />
         <Layout>
           {/* Suspense catches lazy-loaded page chunks while they download.
-              Fallback is a plain dark screen — matches app background, no flash. */}
-          <Suspense fallback={<div style={{ background: '#060816', minHeight: '100vh' }} />}>
+              The fallback used to be a bare dark div — matched the app
+              background so there was no flash, but also gave zero feedback:
+              any route transition that hit an unfetched chunk looked like a
+              frozen, unresponsive screen for however long the download
+              took, with nothing to tell a user it was actually doing
+              something. A small centered spinner is still just as
+              flash-free (same background) but now actually says so. */}
+          <Suspense fallback={<RouteLoadingFallback />}>
             <Routes>
               {openRoutes.map(({ path, element }) => (
                 <Route key={path} path={path} element={element} />
