@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, GitBranch, Link2, Activity, Shield } from 'lucide-react';
+import { Activity, Shield } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const logMessages = [
@@ -56,20 +56,10 @@ const SystemFooter = () => {
               Advanced statutory intelligence for the modern Chartered Accountant.
               Autonomous deconstruction of complex legal frameworks.
             </p>
-            <div className="flex gap-4">
-              {[X, GitBranch, Link2].map((Icon, i) => (
-                <a
-                  key={i}
-                  href="#"
-                  className="transition-colors duration-200"
-                  style={{ color: '#6B7280' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#4FB7C5'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; }}
-                >
-                  <Icon size={17} />
-                </a>
-              ))}
-            </div>
+            {/* Social icons removed — they pointed at href="#" with no real
+                account behind them. A row of icons that looks clickable and
+                does nothing is a worse trust signal than no row at all;
+                add these back only once real social accounts exist to link. */}
           </div>
 
           {/* Platform links */}
@@ -111,10 +101,13 @@ const SystemFooter = () => {
               Resources
             </h4>
             <ul className="flex flex-col gap-3 text-sm font-mono">
+              {/* "API Reference" and "System Status" removed — neither
+                  corresponds to anything this product actually has (LETA
+                  TEC has no public API, and there's no uptime status page)
+                  and both pointed at href="#". Add them back only once a
+                  real destination exists for each. */}
               {[
                 { label: 'Documentation', to: '/docs' },
-                { label: 'API Reference',  to: '#' },
-                { label: 'System Status',  to: '#' },
                 { label: 'About Us',       to: '/about' },
                 { label: 'Legal Policies', to: '/legal' },
               ].map(({ label, to }) => (
