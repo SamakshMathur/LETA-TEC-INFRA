@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Landmark, Globe, Briefcase, ChevronDown, Settings, LogOut, LayoutGrid } from 'lucide-react';
+import { FileText, Landmark, Globe, Briefcase, ChevronDown, Settings, LogOut, LayoutGrid, Menu, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../hooks/useAuth';
 import { ROUTES } from '../../constants/routes';
@@ -35,10 +35,18 @@ const Navbar = () => {
   const [modulesOpen,  setModulesOpen]  = useState(false);
   const [adminOpen,    setAdminOpen]    = useState(false);
   const [userOpen,     setUserOpen]     = useState(false);
+  // Below md, the entire center nav (Modules/Home/About/My Docs/Admin) was
+  // `hidden md:flex` with no alternative — a phone-width user had zero way
+  // to reach any of it beyond whatever fit in the right-side cluster
+  // (session clock + account button). This is that alternative: a
+  // hamburger toggle revealing everything the desktop center nav has, in
+  // one stacked panel.
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const modulesRef = useRef<HTMLDivElement>(null);
   const adminRef   = useRef<HTMLDivElement>(null);
   const userRef    = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + '/');
@@ -49,6 +57,12 @@ const Navbar = () => {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Route changes close the mobile menu — otherwise navigating via a link
+  // inside it leaves the panel open over the new page.
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (modulesRef.current && !modulesRef.current.contains(e.target as Node))
@@ -57,6 +71,8 @@ const Navbar = () => {
         setAdminOpen(false);
       if (userRef.current && !userRef.current.contains(e.target as Node))
         setUserOpen(false);
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node))
+        setMobileMenuOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -261,6 +277,114 @@ const Navbar = () => {
         {/* ── Right Side ───────────────────────────────────────────────────── */}
         <div className="flex-1 flex justify-end items-center gap-3">
           <SessionClock />
+
+          {/* Mobile menu toggle — the desktop center nav is hidden below md
+              with no other way to reach Modules/Home/About/My Docs/Admin. */}
+          <div className="relative md:hidden" ref={mobileMenuRef}>
+            <button
+              onClick={() => setMobileMenuOpen(v => !v)}
+              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileMenuOpen}
+              className="p-2 rounded-lg transition-colors"
+              style={{ color: '#A7B3C2' }}
+            >
+              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+
+            {mobileMenuOpen && (
+              <div
+                className="fixed left-0 right-0 mx-4 rounded-2xl py-2 z-50 overflow-y-auto"
+                style={{
+                  top: scrolled ? '68px' : '80px',
+                  maxHeight: `calc(100vh - ${scrolled ? 88 : 100}px)`,
+                  background: '#0F1722',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  backdropFilter: 'blur(24px)',
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.55)',
+                }}
+              >
+                <div className="px-4 py-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(79,183,197,0.8)' }}>
+                    Sovereign Modules
+                  </span>
+                </div>
+                {MODULES.map(({ label, path, icon: Icon, status }) => (
+                  <Link
+                    key={path}
+                    to={path}
+                    className="flex items-center justify-between px-4 py-3 text-[13px] font-medium"
+                    style={{ color: isActive(path) ? '#4FB7C5' : '#A7B3C2' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon size={15} />
+                      {label}
+                    </div>
+                    {status === 'LIVE' ? (
+                      <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: '#4FB7C5' }}>
+                        <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#4FB7C5' }} />
+                        Live
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#6C7A99' }}>
+                        Soon
+                      </span>
+                    )}
+                  </Link>
+                ))}
+
+                <div className="my-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+
+                {NAV_LINKS.map(({ label, path }) => (
+                  <Link
+                    key={label}
+                    to={path}
+                    className="block px-4 py-3 text-[13px] font-medium"
+                    style={{ color: isActive(path) ? '#F4F7FA' : '#A7B3C2' }}
+                  >
+                    {label}
+                  </Link>
+                ))}
+
+                {hasRole(session, 'knowledge_manager') && (
+                  <>
+                    <div className="my-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+                    <div className="px-4 py-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(79,183,197,0.8)' }}>
+                        Admin
+                      </span>
+                    </div>
+                    <Link to="/admin/upload" className="block px-4 py-3 text-[13px] font-medium" style={{ color: isActive('/admin/upload') ? '#4FB7C5' : '#A7B3C2' }}>
+                      Dashboard & KB
+                    </Link>
+                    <Link to="/admin/templates" className="block px-4 py-3 text-[13px] font-medium" style={{ color: isActive('/admin/templates') ? '#4FB7C5' : '#A7B3C2' }}>
+                      Templates
+                    </Link>
+                  </>
+                )}
+
+                <div className="my-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+
+                {isLoggedIn ? (
+                  <>
+                    <Link to="/settings" className="w-full flex items-center gap-3 px-4 py-3 text-[13px] font-medium text-left" style={{ color: '#A7B3C2' }}>
+                      <Settings size={14} /> Settings
+                    </Link>
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-[13px] font-medium text-left"
+                      style={{ color: '#A7B3C2' }}
+                    >
+                      <LogOut size={14} /> Sign Out
+                    </button>
+                  </>
+                ) : (
+                  <Link to={ROUTES.LOGIN} className="block px-4 py-3 text-[13px] font-semibold" style={{ color: '#4FB7C5' }}>
+                    Connect Portal
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
           {isLoggedIn ? (
             <div className="relative" ref={userRef}>
               <button

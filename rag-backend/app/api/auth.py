@@ -1242,6 +1242,90 @@ async def get_me(
     return current_user
 
 
+class ProfileUpdate(BaseModel):
+    """
+    Deliberately scoped to full_name and email only — not phone. There was
+    genuinely no way for a user to view or edit their own account details
+    at all before this (the only nav entry pointing at a settings page
+    404'd), which specifically meant a phone-only signup had no way to add
+    an email — the reason payment receipt emails render blank for most
+    users. Phone-number changes are left out on purpose: unlike adding an
+    email (which nothing currently depends on being pre-verified — the
+    receipt is just best-effort), the phone number is what OTP login
+    resolves an account by, so changing it deserves its own
+    verify-the-new-number-belongs-to-you flow, not a bare text field next
+    to a name edit.
+    """
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("Full name must contain at least 2 characters")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v):
+        if v is None:
+            return None
+        v = v.strip().lower()
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("Invalid email")
+        return v
+
+
+@router.patch("/me")
+async def update_me(
+    update: ProfileUpdate,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    started_at = time.monotonic()
+    users_col = get_user_collection()
+    if users_col is None:
+        raise HTTPException(status_code=500, detail="Database not connected")
+
+    username = current_user["username"]
+    update_set = {}
+
+    if update.full_name is not None:
+        update_set["full_name"] = update.full_name
+
+    if update.email is not None:
+        # Same "does another account already have this" check registration
+        # uses — the unique index on users.email is sparse (database.py's
+        # _ensure_optional_unique_index), so it only actually enforces
+        # uniqueness once a value is set; checking first gives a clean 400
+        # instead of surfacing a raw DuplicateKeyError to the user.
+        existing = users_col.find_one({"email": update.email})
+        if existing and existing.get("username") != username:
+            raise HTTPException(status_code=400, detail="Email already in use by another account")
+        update_set["email"] = update.email
+
+    if not update_set:
+        return current_user
+
+    update_set["updated_at"] = utc_now()
+    users_col.update_one({"username": username}, {"$set": update_set})
+
+    _log_auth_activity(
+        request=request,
+        started_at=started_at,
+        action="update_profile",
+        user=current_user,
+        metadata={"fields": list(update_set.keys())},
+    )
+
+    updated = users_col.find_one({"username": username}, {"_id": 0, "password": 0})
+    return updated
+
+
 # =============================================================================
 # LOGOUT
 # =============================================================================

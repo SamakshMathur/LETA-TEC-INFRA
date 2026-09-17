@@ -5,7 +5,7 @@ import {
   X, Send, Sparkles, Menu, Paperclip,
   ChevronLeft, Folder, Star, Landmark, FileCheck,
   Bookmark, BookmarkCheck, Trash2, Calendar, ShieldCheck, Plus, Square, Upload,
-  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio, LockKeyhole, Users
+  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio, LockKeyhole, Users, Check
 } from 'lucide-react';
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
@@ -220,6 +220,23 @@ export function classifySessionLoadError(
     restoreError: null,
     fallbackMessage: 'Unable to load this consultation. Please try again.',
   };
+}
+
+// Pulled out as a pure function so this two-click-to-confirm decision is
+// unit-testable without mounting the full workspace (same reasoning as
+// classifySessionLoadError / validateAttachedFile above). A session delete
+// used to fire on a single click of a hover-only icon — one accidental
+// click during a hover-sweep permanently destroyed a client's whole
+// consultation history with no recovery. Now the first click on a row just
+// arms it; only a second click on the SAME row actually deletes.
+export function nextDeleteClickState(
+  pendingDeleteId: string | null,
+  clickedId: string
+): { shouldDelete: boolean; newPendingId: string | null } {
+  if (pendingDeleteId !== clickedId) {
+    return { shouldDelete: false, newPendingId: clickedId };
+  }
+  return { shouldDelete: true, newPendingId: null };
 }
 
 // Matches app.py's /ask-with-file parsing branches exactly (pdf/png/jpg/
@@ -1042,8 +1059,28 @@ const LetaWorkspace: React.FC = () => {
     navigate(`/${domainId}/leta`, { replace: true });
   };
 
+  // First click arms a confirmation on that row (pendingDeleteId) instead of
+  // deleting immediately; a second click on the SAME row within the window
+  // actually deletes. A single accidental click during a hover-sweep over
+  // the icon — which only appears on hover, right where the pointer already
+  // is — used to permanently destroy a client's whole consultation history
+  // with zero recovery. Auto-disarms after a few seconds so an abandoned
+  // "are you sure" doesn't silently arm itself for a later unrelated click.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const pendingDeleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+
+    const { shouldDelete, newPendingId } = nextDeleteClickState(pendingDeleteId, id);
+    if (pendingDeleteTimeoutRef.current) clearTimeout(pendingDeleteTimeoutRef.current);
+    setPendingDeleteId(newPendingId);
+
+    if (!shouldDelete) {
+      pendingDeleteTimeoutRef.current = setTimeout(() => setPendingDeleteId(null), 4000);
+      return;
+    }
+
     try {
       await axios.delete(`${BASE_URL}/api/sessions/${id}`, { headers: getAuthHeaders() });
       fetchSessions();
@@ -1952,9 +1989,16 @@ const LetaWorkspace: React.FC = () => {
                                 </div>
                                 <button
                                   onClick={e => handleDeleteSession(e, session.session_id)}
-                                  className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-[#475569] hover:text-[#EF4444] hover:bg-red-500/10 transition-all ml-1 flex-shrink-0"
+                                  title={pendingDeleteId === session.session_id ? 'Click again to permanently delete' : 'Delete consultation'}
+                                  className={`p-1 rounded-md transition-all ml-1 flex-shrink-0 ${
+                                    pendingDeleteId === session.session_id
+                                      ? 'opacity-100 text-[#EF4444] bg-red-500/10'
+                                      : 'opacity-0 group-hover:opacity-100 text-[#475569] hover:text-[#EF4444] hover:bg-red-500/10'
+                                  }`}
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  {pendingDeleteId === session.session_id
+                                    ? <Check className="w-3.5 h-3.5" />
+                                    : <Trash2 className="w-3.5 h-3.5" />}
                                 </button>
                               </div>
                             </div>
