@@ -129,10 +129,11 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
           <div className="relative px-7 pt-7 pb-5"
             style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: `radial-gradient(ellipse at top left, ${B.glow} 0%, transparent 55%)` }}>
             <button onClick={onClose}
+              aria-label="Close"
               className="absolute top-5 right-5 p-2 rounded-xl transition-colors"
-              style={{ color: '#334155' }}
+              style={{ color: '#64748B' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#334155'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#64748B'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
               <X size={15} />
             </button>
             <div className="flex items-center gap-2.5 mb-1">

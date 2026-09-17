@@ -440,7 +440,12 @@ const Payment: React.FC = () => {
           <p className="text-sm mb-2" style={{ color: '#64748B' }}>
             Your {plan.duration} access to {mod.fullName} is now active.
           </p>
-          <p className="text-xs mb-6 font-mono" style={{ color: '#334155' }}>
+          {/* #334155 measured ~1.4:1 against this near-black background —
+              well under WCAG's 4.5:1 minimum for real body text. #64748B
+              (already used one line above for the sibling "Your {duration}
+              access..." text) is the same muted tone at a contrast that
+              actually passes. */}
+          <p className="text-xs mb-6 font-mono" style={{ color: '#64748B' }}>
             A confirmation has been sent to {user?.email}
           </p>
 
@@ -546,13 +551,13 @@ const Payment: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-bold text-white">{plan.price}</p>
-                    <p className="text-[10px] font-mono mt-0.5" style={{ color: '#334155' }}>incl. all taxes</p>
+                    <p className="text-[10px] font-mono mt-0.5" style={{ color: '#64748B' }}>incl. all taxes</p>
                   </div>
                 </div>
               </div>
 
               <div className="px-6 py-5">
-                <p className="text-[10px] font-mono uppercase tracking-widest mb-4" style={{ color: '#334155' }}>
+                <p className="text-[10px] font-mono uppercase tracking-widest mb-4" style={{ color: '#64748B' }}>
                   What's included
                 </p>
                 <ul className="space-y-2.5">
@@ -588,7 +593,7 @@ const Payment: React.FC = () => {
 
             {/* Accepted methods */}
             <div className="rounded-xl px-5 py-4" style={{ background: '#080A10', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color: '#334155' }}>
+              <p className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color: '#64748B' }}>
                 Accepted payment methods
               </p>
               <div className="flex flex-wrap items-center gap-2">
@@ -613,7 +618,7 @@ const Payment: React.FC = () => {
               ].map(({ Icon, txt }) => (
                 <div key={txt} className="flex items-center gap-1.5">
                   <Icon size={11} style={{ color: B.accent }} />
-                  <span className="text-[10px] font-mono" style={{ color: '#334155' }}>{txt}</span>
+                  <span className="text-[10px] font-mono" style={{ color: '#64748B' }}>{txt}</span>
                 </div>
               ))}
             </div>
@@ -635,8 +640,8 @@ const Payment: React.FC = () => {
                   <span className="text-xs text-white font-semibold">{plan.price}</span>
                 </div>
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-[10px] font-mono" style={{ color: '#334155' }}>GST (18%)</span>
-                  <span className="text-[10px] font-mono" style={{ color: '#334155' }}>Inclusive</span>
+                  <span className="text-[10px] font-mono" style={{ color: '#64748B' }}>GST (18%)</span>
+                  <span className="text-[10px] font-mono" style={{ color: '#64748B' }}>Inclusive</span>
                 </div>
                 <div className="flex justify-between items-center pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                   <span className="text-sm font-bold text-white">Total</span>
@@ -694,7 +699,7 @@ const Payment: React.FC = () => {
                   By continuing you agree to our{' '}
                   <span
                     className="underline cursor-pointer"
-                    style={{ color: '#334155' }}
+                    style={{ color: '#64748B' }}
                     onClick={() => navigate('/legal')}
                   >
                     Terms of Service
