@@ -7,6 +7,28 @@ import { ROUTES } from '../../../constants/routes';
 type Method = 'phone' | 'email';
 type Step = 'contact' | 'otp';
 
+// Pulled out as a pure function so this is unit-testable without mounting
+// the full login page (routing, auth context, OTP timers).
+//
+// The OTP confirmation used to always render "+91 ••••••{last 4 digits}"
+// regardless of which method the user picked — pick the Email tab and
+// enter an address, and this rendered something like "+91 ••••••e.com": a
+// phone-formatted mask wrapped around an email address, at the exact
+// moment (identity verification) a user most needs reassurance they did
+// the right thing.
+export function maskContact(contact: string, method: Method): string {
+  if (method === 'phone') {
+    return `+91 ••••••${contact.slice(-4)}`;
+  }
+  const at = contact.indexOf('@');
+  if (at <= 0) return contact; // malformed input — show as-is rather than guess
+  const local = contact.slice(0, at);
+  const domain = contact.slice(at);
+  const visible = local.slice(0, Math.min(2, local.length));
+  const maskedCount = Math.max(local.length - visible.length, 2);
+  return `${visible}${'•'.repeat(maskedCount)}${domain}`;
+}
+
 const LoginPage: React.FC = () => {
   const [method, setMethod] = useState<Method>('phone');
   const [contact, setContact] = useState('');
@@ -211,7 +233,7 @@ const LoginPage: React.FC = () => {
           {step === 'otp' && (
             <form onSubmit={handleVerify} className="space-y-6">
               <p className="text-center text-xs text-leta-gray-900/50">
-                OTP sent to <span className="text-leta-primary font-bold">+91 ••••••{contact.slice(-4)}</span>
+                OTP sent to <span className="text-leta-primary font-bold">{maskContact(contact, method)}</span>
               </p>
 
               <div className="flex gap-2 justify-center">
