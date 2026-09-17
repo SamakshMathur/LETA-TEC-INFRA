@@ -73,4 +73,15 @@ describe('Navbar — mobile menu', () => {
     fireEvent.mouseDown(document.body);
     expect(screen.queryByText('Sovereign Modules')).toBeNull();
   });
+
+  it('links to the actual document library, not the unrelated marketing docs page', () => {
+    render(<MemoryRouter><Navbar /></MemoryRouter>);
+    fireEvent.click(screen.getByLabelText('Open menu'));
+    // Both the (always-rendered, closed-by-default) desktop nav and the
+    // open mobile panel have a "Library" link — assert at least one of
+    // them points at the real route, same duplication jsdom shows for
+    // "Home" elsewhere in this file.
+    const libraryLinks = screen.getAllByText('Library').map(el => el.closest('a'));
+    expect(libraryLinks.some(a => a?.getAttribute('href') === '/document-library')).toBe(true);
+  });
 });
