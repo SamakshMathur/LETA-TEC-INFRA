@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 /**
  * Regression coverage for a real blocker found during a UX audit: the
@@ -90,5 +90,18 @@ describe('Settings page — profile editing', () => {
 
     await waitFor(() => expect(screen.getByText('Email already in use by another account')).toBeTruthy());
     expect(loginMock).not.toHaveBeenCalled();
+  });
+
+  it('the Invoice History entry point actually navigates to /invoices', () => {
+    render(
+      <MemoryRouter initialEntries={['/settings']}>
+        <Routes>
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/invoices" element={<div>INVOICE_HISTORY_PAGE</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Invoice History/i }));
+    expect(screen.getByText('INVOICE_HISTORY_PAGE')).toBeTruthy();
   });
 });
