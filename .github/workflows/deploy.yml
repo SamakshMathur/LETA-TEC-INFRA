@@ -100,6 +100,41 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
+      - name: Sync hot-patch files to S3 (keeps start.sh's ALWAYS_FILES from drifting)
+        # The ECS task definition's own command overrides the Dockerfile's
+        # CMD entirely: it fetches scripts/start.sh fresh from S3 on every
+        # boot and runs THAT (not the git-tracked rag-backend/start.sh baked
+        # into the image), which then overwrites these files from S3 too —
+        # a fast hot-patch path that bypasses a full Docker rebuild. Nothing
+        # previously kept this S3 mirror in sync with what this pipeline
+        # actually ships: a normal PR merge that touched one of these files
+        # built and deployed correctly, but the moment ANY container
+        # (including this deploy's own) rebooted, start.sh silently
+        # overwrote it with whatever stale copy happened to be on S3 — in
+        # one real case, over a week stale, quietly reverting shipped fixes
+        # with no error, no failed build, nothing to notice until something
+        # broke in production. Refreshing S3 from this exact commit on
+        # every deploy closes that gap — the mirror can never be older than
+        # the code that just passed CI and got built into this image.
+        #
+        # security.py is deliberately NOT included here — see the comment
+        # on ALWAYS_FILES in rag-backend/start.sh for why; a prior incident
+        # found the deployed image's security.py meaningfully diverged from
+        # git at the time and hot-patching it crashed every worker. Verify
+        # that's genuinely resolved (not just "the function exists now")
+        # before ever adding it back.
+        run: |
+          BUCKET=gst-rag-data-721082558531
+          aws s3 cp rag-backend/start.sh                      s3://$BUCKET/scripts/start.sh
+          aws s3 cp rag-backend/app/api/auth.py               s3://$BUCKET/scripts/auth.py
+          aws s3 cp rag-backend/app/api/documents.py          s3://$BUCKET/scripts/documents.py
+          aws s3 cp rag-backend/app/ingestion/legal_parser.py s3://$BUCKET/scripts/legal_parser.py
+          aws s3 cp rag-backend/app/api/app.py                s3://$BUCKET/scripts/app.py
+          aws s3 cp rag-backend/app/api/advisory.py           s3://$BUCKET/scripts/advisory.py
+          aws s3 cp rag-backend/app/retrieval/retriever.py    s3://$BUCKET/scripts/retriever.py
+          aws s3 cp rag-backend/app/api/sessions.py           s3://$BUCKET/scripts/sessions.py
+          aws s3 cp rag-backend/app/database.py               s3://$BUCKET/scripts/database.py
+
       - name: Download current ECS task definition
         run: |
           aws ecs describe-task-definition \
