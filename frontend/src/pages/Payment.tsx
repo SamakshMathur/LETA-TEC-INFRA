@@ -523,9 +523,9 @@ const Payment: React.FC = () => {
           transition={{ duration: 0.3 }}
           onClick={() => navigate('/dashboard')}
           className="flex items-center gap-2 text-xs mb-10 transition-colors"
-          style={{ color: '#475569' }}
+          style={{ color: '#64748B' }}
           onMouseEnter={e => (e.currentTarget.style.color = B.accent)}
-          onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}
         >
           <ArrowLeft size={13} /> Back to dashboard
         </motion.button>
@@ -547,7 +547,7 @@ const Payment: React.FC = () => {
                 style={{ letterSpacing: '-0.025em' }}>
                 {mod.fullName}
               </h1>
-              <p className="text-sm" style={{ color: '#475569' }}>
+              <p className="text-sm" style={{ color: '#64748B' }}>
                 Review your order before completing payment
               </p>
             </div>

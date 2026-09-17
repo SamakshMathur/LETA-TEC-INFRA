@@ -136,7 +136,7 @@ const SessionClock = () => {
             onClick={() => setToastDismissed(true)}
             aria-label="Dismiss"
             className="flex-shrink-0"
-            style={{ color: '#475569' }}
+            style={{ color: '#64748B' }}
           >
             <X size={14} />
           </button>
