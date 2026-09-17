@@ -2135,6 +2135,7 @@ const LetaWorkspace: React.FC = () => {
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="absolute left-4 top-4 z-10 p-2 rounded-lg border border-white/[0.05] bg-[#000000] text-[#475569] hover:text-white transition-colors"
             title="Toggle consultations list"
+            aria-label={isSidebarOpen ? 'Hide consultations list' : 'Show consultations list'}
           >
             <Menu size={15} />
           </button>
@@ -2516,7 +2517,7 @@ const LetaWorkspace: React.FC = () => {
                   >
                     <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-red-500/20 bg-[#0a0000] text-xs font-mono text-red-400">
                       <span>{micError}</span>
-                      <button onClick={() => setMicError(null)} className="hover:text-white transition-colors flex-shrink-0">
+                      <button onClick={() => setMicError(null)} aria-label="Dismiss microphone error" className="hover:text-white transition-colors flex-shrink-0">
                         <X size={12} />
                       </button>
                     </div>
@@ -2538,6 +2539,7 @@ const LetaWorkspace: React.FC = () => {
                     </span>
                     <button
                       onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                      aria-label="Remove attached file"
                       className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-1"
                     >
                       <X size={12} />
@@ -2559,6 +2561,7 @@ const LetaWorkspace: React.FC = () => {
                     </span>
                     <button
                       onClick={() => setFileError(null)}
+                      aria-label="Dismiss file error"
                       className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-1 flex-shrink-0"
                     >
                       <X size={12} />
@@ -2631,6 +2634,7 @@ const LetaWorkspace: React.FC = () => {
                   disabled={isLoading || isRecording || isReadOnlyView}
                   className="p-2.5 rounded-lg text-[#475569] hover:text-white hover:bg-white/[0.02] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                   title="Attach document"
+                  aria-label="Attach document"
                 >
                   <Paperclip size={15} />
                 </button>
@@ -2641,6 +2645,7 @@ const LetaWorkspace: React.FC = () => {
                     onClick={startVoiceRecording}
                     disabled={isLoading || isStreaming || isReadOnlyView}
                     title={isRecording ? 'Stop voice recording' : 'Voice input (click to speak)'}
+                    aria-label={isRecording ? 'Stop voice recording' : 'Voice input (click to speak)'}
                     className={`relative p-2.5 rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed ${
                       isRecording
                         ? 'text-red-400 bg-red-500/10 border border-red-500/30'
@@ -2805,6 +2810,7 @@ const LetaWorkspace: React.FC = () => {
 
                 <button
                   onClick={() => setViewingItem(null)}
+                  aria-label="Close"
                   className="p-1.5 rounded-lg text-[#475569] hover:text-white hover:bg-white/[0.04] transition-colors"
                 >
                   <X size={15} />
