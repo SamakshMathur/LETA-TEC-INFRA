@@ -437,7 +437,14 @@ const LetaWorkspace: React.FC = () => {
   // revoking one still on screen (e.g. after a re-render/history reload).
   const attachmentUrlsRef = useRef<string[]>([]);
   useEffect(() => () => { attachmentUrlsRef.current.forEach(u => URL.revokeObjectURL(u)); }, []);
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  // Defaults open on desktop (as before) but closed on phone-width screens —
+  // below md the sidebar becomes a fixed overlay drawer (see the aside's
+  // className further down), and defaulting it open there would greet a
+  // mobile user with the chat fully hidden behind the sidebar + backdrop on
+  // first load, before they've done anything.
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(
+    () => typeof window === 'undefined' || window.innerWidth >= 768
+  );
 
   // Document Viewer splits
   const [openDocuments, setOpenDocuments] = useState<OpenDoc[]>([]);
@@ -1741,10 +1748,23 @@ const LetaWorkspace: React.FC = () => {
       {/* ── WORKSPACE BODY ────────────────────────────────────────────────────────── */}
       <div className="flex-grow flex flex-row overflow-hidden relative">
 
+        {/* Backdrop — closes the sidebar on tap when it's overlaying the chat
+            below the md breakpoint. Below md the sidebar is `fixed`, so its
+            320px width would otherwise cover almost the entire phone screen
+            with no way to dismiss it short of the toggle button. `md:hidden`
+            means this has no effect at all above md, where the sidebar is
+            back in normal flow. */}
+        {isSidebarOpen && (
+          <div
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 z-20 bg-black/60 md:hidden"
+          />
+        )}
+
         {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────────── */}
         <aside
-          className="h-full flex flex-col border-r border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 transition-all duration-300 overflow-hidden relative z-10"
-          style={{ width: isSidebarOpen ? '320px' : '0px' }}
+          className="h-full flex flex-col border-r border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 transition-all duration-300 overflow-hidden fixed md:relative inset-y-0 left-0 md:inset-auto z-30 md:z-10"
+          style={{ width: isSidebarOpen ? '320px' : '0px', maxWidth: '85vw' }}
         >
           {/* New Consultation trigger */}
           <div className="p-4 flex-shrink-0 border-b border-[#4FB7C5]/10">
@@ -2695,9 +2715,13 @@ const LetaWorkspace: React.FC = () => {
           </div>
         </section>
 
-        {/* ── RIGHT PANEL: PDF viewer ───────────────────────────────────────────── */}
+        {/* ── RIGHT PANEL: PDF viewer ─────────────────────────────────────────────
+            Below md this becomes a full-screen overlay instead of a permanent
+            340px column — a 320px sidebar plus a 340px reference viewer alone
+            exceed most phone screens, which left zero usable width for the
+            chat itself. Above md it's back to the original in-flow column. */}
         {openDocuments.length > 0 && (
-          <aside className="w-[340px] h-full border-l border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 flex flex-col overflow-hidden relative z-10">
+          <aside className="fixed inset-0 z-40 md:relative md:inset-auto md:z-10 w-full md:w-[340px] h-full border-l border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 flex flex-col overflow-hidden">
             <div className="h-full flex flex-col">
               <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.04] bg-[#131D2B] flex-shrink-0">
                 <span className="text-[10px] font-sans uppercase tracking-wider text-[#4FB7C5] font-semibold">
