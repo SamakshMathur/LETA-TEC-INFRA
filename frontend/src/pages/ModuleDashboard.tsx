@@ -143,7 +143,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
               </span>
             </div>
             <h2 className="text-xl font-display font-bold text-white mt-2">Choose your access plan</h2>
-            <p className="text-xs mt-1" style={{ color: '#475569' }}>
+            <p className="text-xs mt-1" style={{ color: '#64748B' }}>
               Full {module.fullName} workspace — advisory, documents, and AI drafting
             </p>
           </div>
@@ -175,7 +175,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ module, onClose }) => {
                   <div className="mb-0.5">
                     <span className="text-3xl font-display font-bold text-white">{plan.price}</span>
                   </div>
-                  <p className="text-[11px] mb-4" style={{ color: '#475569' }}>{plan.label}</p>
+                  <p className="text-[11px] mb-4" style={{ color: '#64748B' }}>{plan.label}</p>
                   <ul className="space-y-1.5">
                     {plan.features.map((f, fi) => {
                       if (typeof f === 'string') {
@@ -311,7 +311,7 @@ const ModuleCard: React.FC<{
                 fontSize: '8px', fontWeight: 800,
                 fontFamily: 'monospace',
                 letterSpacing: '0.16em',
-                color: '#374151',
+                color: '#64748B',
               }}>
                 COMING SOON
               </span>
@@ -336,7 +336,7 @@ const ModuleCard: React.FC<{
                 fontSize: '8px', fontWeight: 800,
                 fontFamily: 'monospace',
                 letterSpacing: '0.16em',
-                color: hovered ? B.accent : '#475569',
+                color: hovered ? B.accent : '#64748B',
                 transition: 'color 0.22s',
               }}>
                 LIVE
@@ -371,7 +371,7 @@ const ModuleCard: React.FC<{
         </h3>
 
         {/* Tagline */}
-        <p style={{ fontSize: '11px', color: '#475569', lineHeight: 1.55, marginBottom: '18px' }}>
+        <p style={{ fontSize: '11px', color: '#64748B', lineHeight: 1.55, marginBottom: '18px' }}>
           {mod.tagline}
         </p>
       </div>
@@ -483,7 +483,7 @@ const ModuleDashboard: React.FC = () => {
           </h1>
 
           {/* Sub-line */}
-          <p style={{ fontSize: '13px', color: '#475569', letterSpacing: '0.01em' }}>
+          <p style={{ fontSize: '13px', color: '#64748B', letterSpacing: '0.01em' }}>
             Select a practice area to begin your session.
           </p>
 
