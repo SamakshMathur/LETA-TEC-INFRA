@@ -22,6 +22,7 @@ const ModuleDashboard       = lazyWithRetry(() => import('../pages/ModuleDashboa
 const LegalPolicies         = lazyWithRetry(() => import('../pages/LegalPolicies'));
 const MyDocs                = lazyWithRetry(() => import('../pages/MyDocs'));
 const Payment               = lazyWithRetry(() => import('../pages/Payment'));
+const Settings               = lazyWithRetry(() => import('../pages/Settings'));
 const LoginPage             = lazyWithRetry(() => import('../pages/auth/login'));
 
 // LawDashboard is a presentational component used with inline props —
@@ -150,4 +151,5 @@ export const protectedRoutes: RouteConfig[] = [
   { path: ROUTES.LEGAL,   element: <LegalPolicies /> },
   { path: ROUTES.MY_DOCS, element: <MyDocs /> },
   { path: ROUTES.PAYMENT, element: <Payment /> },
+  { path: ROUTES.SETTINGS, element: <Settings /> },
 ];
