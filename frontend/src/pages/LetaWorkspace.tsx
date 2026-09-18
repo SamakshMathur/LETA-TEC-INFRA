@@ -2191,13 +2191,20 @@ const LetaWorkspace: React.FC = () => {
                   exit={{ opacity: 0, y: 8 }}
                   transition={{ duration: 0.15 }}
                   onClick={() => scrollToBottom(true)}
-                  className="absolute bottom-6 left-1/2 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border transition-all"
+                  // Was centered (left-1/2) directly in the reading column,
+                  // which put it on top of whatever line of the answer
+                  // happened to be at the bottom of the viewport — the
+                  // worst possible spot for an overlay. Bottom-right corner
+                  // matches where every other chat UI (Slack, Discord,
+                  // WhatsApp Web) puts a "jump to latest" control: out of
+                  // the text's path, still reachable with one glance down.
+                  className="absolute bottom-6 right-6 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border transition-all"
                   style={{
-                    transform: 'translateX(-50%)',
-                    background: 'rgba(0,0,0,0.85)',
+                    background: 'var(--ws-surface)',
                     border: '1px solid rgba(79,183,197,0.3)',
                     color: 'var(--ws-accent)',
                     backdropFilter: 'blur(8px)',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
                   }}
                 >
                   ↓ scroll to bottom
