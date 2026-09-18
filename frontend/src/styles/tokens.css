@@ -98,8 +98,8 @@
   --ws-bg:              #F7F3EC;
   --ws-surface:         #FFFFFF;
   --ws-border:          rgba(15, 23, 42, 0.08);
-  --ws-text-heading:    #1E293B;
-  --ws-text-body:       #1E293B;
+  --ws-text-heading:    #000000;
+  --ws-text-body:       #000000;
   --ws-text-secondary:  #475569;
   /* The dark theme's bright cyan accent (#4FB7C5/#67E8F9) measures under
      2:1 contrast against this cream background — a darker teal is needed
