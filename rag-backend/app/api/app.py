@@ -617,7 +617,8 @@ def _verify_session_writable(session_id: Optional[str], username: Optional[str])
 
 def _verify_plan_active(username: Optional[str]) -> None:
     """
-    Raise 401 if this user's paid plan session has already expired.
+    Raise 401 if this user has no active paid plan — either it expired, or
+    they never had one at all.
 
     Before this, the paid time-limit was enforced ONLY client-side, by
     SessionClock's per-tab countdown timer force-logging the user out when
@@ -631,16 +632,36 @@ def _verify_plan_active(username: Optional[str]) -> None:
     after their time ran out — the JWT itself is refreshable for 7 days,
     completely decoupled from the plan clock.
 
-    Same "Session expired. Please log in again." wording as
-    get_current_user's own check, so the frontend's existing
-    plan-expiry-vs-generic-401 distinction (see interceptors.ts's
-    PLAN_EXPIRED_DETAIL) recognizes this the same way it already does
-    elsewhere in the app, rather than introducing a third error shape.
+    A user with NO session_end on record used to be let through here
+    unconditionally, on the assumption that reaching /ask at all required
+    having gone through /payment first, which always sets session_end —
+    so a missing session_end could only mean "database hiccup," never "this
+    user never paid." That assumption broke: AskLetaWidget.tsx (the "Enter
+    Workspace" card on the module hub page) linked straight into
+    /:domainId/leta with no plan check at all, so a freshly-registered
+    user — session_end never set, since _credit_session (the only thing
+    that sets it from a real payment) had never run for them — could reach
+    /ask directly with full, free, unlimited access. This is the real
+    security boundary that closes that regardless of what any frontend
+    entry point does or fails to do.
 
-    A missing/anonymous username, a DB that isn't reachable, or a user
-    with no session_end on record at all are all let through unchanged —
-    this function only ever narrows access for a user with a real, expired
-    session_end, never widens or blocks anything else.
+    The one legitimate case where session_end is genuinely absent for a
+    user who SHOULD be let through: admin.py's grant_plan endpoint, called
+    with hours=None, deliberately $unsets session_end entirely to grant
+    unlimited access ("no cap until next payment") — but that same call
+    always sets last_granted_by. That field is never set by anything else
+    (registration doesn't set it, and a normal paid session_end is always a
+    real datetime, never unset back to None once granted), so its presence
+    is a reliable signal for "an admin genuinely granted this," distinct
+    from "this account has simply never been granted anything."
+
+    Same "Session expired. Please log in again." wording as
+    get_current_user's own check for the EXPIRED case, so the frontend's
+    existing plan-expiry-vs-generic-401 distinction (see interceptors.ts's
+    PLAN_EXPIRED_DETAIL) recognizes it the same way it already does
+    elsewhere in the app. The NEVER-HAD-A-PLAN case uses different wording
+    on purpose — telling that user to log in again would be actively
+    misleading; they need to buy a plan, not re-authenticate.
     """
     if not username or username == "admin":
         return
@@ -648,12 +669,27 @@ def _verify_plan_active(username: Optional[str]) -> None:
     users_col = get_user_collection()
     if users_col is None:
         return
-    user = users_col.find_one({"username": username}, {"_id": 0, "session_end": 1})
-    if not user:
+    user = users_col.find_one(
+        {"username": username}, {"_id": 0, "session_end": 1, "last_granted_by": 1}
+    )
+    # `is None` — NOT a truthiness check. A real MongoDB projection that
+    # requests only fields a document doesn't have returns `{}` (matched,
+    # just none of the requested fields exist), which is falsy in Python
+    # the same as "no document found" — that distinction is exactly the
+    # one this function needs to get right: a genuine "no user" (`None`)
+    # is a pass-through, but a real user whose doc is `{}` after this
+    # projection is precisely the never-granted-anything case that must
+    # now be blocked below, not silently waved through here.
+    if user is None:
         return
     session_end = user.get("session_end")
     if session_end is None:
-        return
+        if user.get("last_granted_by"):
+            return  # admin explicitly granted unlimited access
+        raise HTTPException(
+            status_code=401,
+            detail="No active plan. Please purchase a plan to continue.",
+        )
     from datetime import timezone as _tz
     if session_end.tzinfo is None:
         session_end = session_end.replace(tzinfo=_tz.utc)
