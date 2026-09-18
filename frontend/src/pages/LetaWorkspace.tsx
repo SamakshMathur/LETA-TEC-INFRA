@@ -5,7 +5,8 @@ import {
   X, Send, Sparkles, Menu, Paperclip,
   ChevronLeft, Folder, Star, Landmark, FileCheck,
   Bookmark, BookmarkCheck, Trash2, Calendar, ShieldCheck, Plus, Square, Upload,
-  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio, LockKeyhole, Users, Check
+  ArrowLeft, Eye, Mic, MicOff, FileText, Tag, ArrowUpRight, Radio, LockKeyhole, Users, Check,
+  Sun, Moon
 } from 'lucide-react';
 import { AXIOS_INSTANCE as axios } from '../utils/api';
 import { BASE_URL } from '../config/api';
@@ -63,6 +64,15 @@ interface OpenDoc {
   title: string;
   page?: number;
   search?: string;
+}
+
+export type WorkspaceTheme = 'dark' | 'light';
+export const WORKSPACE_THEME_STORAGE_KEY = 'leta.workspace.theme';
+
+// Pure so the toggle direction is unit-testable without mounting the
+// component — same pattern as nextDeleteClickState elsewhere in this file.
+export function nextWorkspaceTheme(current: WorkspaceTheme): WorkspaceTheme {
+  return current === 'dark' ? 'light' : 'dark';
 }
 
 interface SavedItem {
@@ -438,6 +448,17 @@ const LetaWorkspace: React.FC = () => {
   const attachmentUrlsRef = useRef<string[]>([]);
   useEffect(() => () => { attachmentUrlsRef.current.forEach(u => URL.revokeObjectURL(u)); }, []);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+
+  // Workspace-only light/dark toggle — beta feedback flagged the pure-black
+  // background as hard to read. This does NOT touch the rest of the site's
+  // theme, only this chat page (see tokens.css's [data-workspace-theme]
+  // block). Persisted per-browser so the choice survives a reload/new chat.
+  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(
+    () => (localStorage.getItem(WORKSPACE_THEME_STORAGE_KEY) as WorkspaceTheme) || 'dark'
+  );
+  useEffect(() => {
+    localStorage.setItem(WORKSPACE_THEME_STORAGE_KEY, workspaceTheme);
+  }, [workspaceTheme]);
 
   // Document Viewer splits
   const [openDocuments, setOpenDocuments] = useState<OpenDoc[]>([]);
@@ -1705,29 +1726,40 @@ const LetaWorkspace: React.FC = () => {
   const isReadOnlyView = sessionOwnership !== null && !sessionOwnership.isOwner;
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#000000] text-sm font-body overflow-hidden">
+    <div
+      data-workspace-theme={workspaceTheme}
+      className="h-screen w-screen flex flex-col bg-[var(--ws-bg)] text-[var(--ws-text-body)] text-sm font-body overflow-hidden transition-colors duration-200"
+    >
 
       {/* ── TOP HEADER NAVBAR ──────────────────────────────────────────────────── */}
-      <header className="h-[72px] flex-shrink-0 flex items-center justify-between px-6 bg-[#000000] border-b border-[#4FB7C5]/10 relative z-20">
+      <header className="h-[72px] flex-shrink-0 flex items-center justify-between px-6 bg-[var(--ws-bg)] border-b border-[#4FB7C5]/10 relative z-20">
         <div className="flex items-center gap-4">
           {/* Brand mark */}
           <img
             src="/LETA_WHITE_ON_BLACK_4K.png"
             alt="LETA TEC"
             className="h-8 w-8 object-contain flex-shrink-0"
-            style={{ mixBlendMode: 'screen' }}
+            // The only logo asset is white-on-black, designed for `screen`
+            // blend mode against a black backdrop — on the light theme's
+            // cream background that blend mode washes the whole mark out.
+            // `invert(1)` turns "white on black" into "black on white",
+            // which reads correctly on a light background without needing
+            // a second logo asset.
+            style={workspaceTheme === 'dark'
+              ? { mixBlendMode: 'screen' }
+              : { filter: 'invert(1)' }}
           />
-          <div className="h-4 w-[1px] bg-white/[0.06]" />
+          <div className="h-4 w-[1px] bg-[var(--ws-surface-hover)]" />
           <Link
             to={`/${domainId}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.05] bg-white/[0.01] text-xs hover:text-white hover:border-[#4FB7C5]/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--ws-hairline)] bg-[var(--ws-surface-hover)] text-xs hover:text-[var(--ws-text-heading)] hover:border-[#4FB7C5]/30 transition-colors"
           >
             <ChevronLeft size={14} />
             Back to Dashboard
           </Link>
-          <div className="h-4 w-[1px] bg-white/[0.06]" />
+          <div className="h-4 w-[1px] bg-[var(--ws-surface-hover)]" />
           <div>
-            <h1 className="font-display font-bold text-base text-white tracking-tight leading-none">
+            <h1 className="font-display font-bold text-base text-[var(--ws-text-heading)] tracking-tight leading-none">
               {domainConfig.title}
             </h1>
             <span className="text-[11px] font-mono tracking-wide text-[#6B7280]">
@@ -1736,6 +1768,14 @@ const LetaWorkspace: React.FC = () => {
           </div>
         </div>
 
+        <button
+          onClick={() => setWorkspaceTheme(nextWorkspaceTheme)}
+          aria-label={workspaceTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--ws-hairline)] bg-[var(--ws-surface-hover)] text-xs text-[var(--ws-text-secondary)] hover:text-[var(--ws-text-heading)] hover:border-[#4FB7C5]/30 transition-colors"
+        >
+          {workspaceTheme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+        </button>
+
       </header>
 
       {/* ── WORKSPACE BODY ────────────────────────────────────────────────────────── */}
@@ -1743,7 +1783,7 @@ const LetaWorkspace: React.FC = () => {
 
         {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────────── */}
         <aside
-          className="h-full flex flex-col border-r border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 transition-all duration-300 overflow-hidden relative z-10"
+          className="h-full flex flex-col border-r border-[#4FB7C5]/10 bg-[var(--ws-bg)] flex-shrink-0 transition-all duration-300 overflow-hidden relative z-10"
           style={{ width: isSidebarOpen ? '320px' : '0px' }}
         >
           {/* New Consultation trigger */}
@@ -1752,7 +1792,7 @@ const LetaWorkspace: React.FC = () => {
               /* Back button when repository panel is open */
               <button
                 onClick={() => setActiveRepo(null)}
-                className="w-full flex items-center gap-2 py-3 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] transition-all duration-200 text-[#4FB7C5] border border-[#4FB7C5]/20 hover:bg-[#4FB7C5]/5"
+                className="w-full flex items-center gap-2 py-3 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] transition-all duration-200 text-[var(--ws-accent)] border border-[#4FB7C5]/20 hover:bg-[#4FB7C5]/5"
               >
                 <ArrowLeft className="w-3.5 h-3.5 ml-3" />
                 Back to Consultations
@@ -1760,7 +1800,7 @@ const LetaWorkspace: React.FC = () => {
             ) : (
               <button
                 onClick={handleNewSession}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] transition-all duration-200 text-black bg-[#4FB7C5] hover:bg-[#3EA6B4]"
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] transition-all duration-200 text-[var(--ws-accent-contrast-text)] bg-[var(--ws-accent)] hover:bg-[var(--ws-accent-hover)]"
               >
                 <Plus className="w-4 h-4" />
                 New Consultation
@@ -1787,8 +1827,8 @@ const LetaWorkspace: React.FC = () => {
                       const sec = REPO_SECTIONS.find(s => s.key === activeRepo)!;
                       return (
                         <>
-                          {React.createElement(sec.icon, { size: 13, className: 'text-[#4FB7C5]' })}
-                          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#4FB7C5]">
+                          {React.createElement(sec.icon, { size: 13, className: 'text-[var(--ws-accent)]' })}
+                          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[var(--ws-accent)]">
                             {sec.label}
                           </span>
                         </>
@@ -1798,14 +1838,14 @@ const LetaWorkspace: React.FC = () => {
 
                   {/* Item list */}
                   {getRepoItems(activeRepo).length === 0 ? (
-                    <div className="text-center py-10 px-4 text-xs text-[#64748B] font-mono border border-dashed border-white/[0.03] rounded-xl">
+                    <div className="text-center py-10 px-4 text-xs text-[#64748B] font-mono border border-dashed border-[var(--ws-hairline)] rounded-xl">
                       <div className="mb-2 text-2xl opacity-30">
                         {activeRepo === 'starred' ? '★' : '📁'}
                       </div>
                       Nothing {activeRepo === 'starred' ? 'starred' : 'saved'} yet.
                       <br />
                       Use the{' '}
-                      <span className="text-[#4FB7C5]">
+                      <span className="text-[var(--ws-accent)]">
                         {activeRepo === 'starred' ? '★ Star' : '⊡ Save'}
                       </span>{' '}
                       button on any LETA TEC response.
@@ -1815,7 +1855,7 @@ const LetaWorkspace: React.FC = () => {
                       {getRepoItems(activeRepo).map(item => (
                         <div
                           key={item.id}
-                          className="group relative p-3.5 rounded-xl border border-white/[0.03] bg-white/[0.01] hover:bg-[#131D2B] hover:border-[#4FB7C5]/20 transition-all duration-150 cursor-pointer"
+                          className="group relative p-3.5 rounded-xl border border-[var(--ws-hairline)] bg-[var(--ws-surface-hover)] hover:bg-[var(--ws-surface)] hover:border-[#4FB7C5]/20 transition-all duration-150 cursor-pointer"
                           onClick={() => setViewingItem(item)}
                         >
                           {/* Type badge */}
@@ -1823,19 +1863,19 @@ const LetaWorkspace: React.FC = () => {
                             <span
                               className="text-[9px] font-mono px-1.5 py-0.5 rounded-full border"
                               style={item.type === 'starred'
-                                ? { color: '#FCD34D', borderColor: 'rgba(252,211,77,0.2)', background: 'rgba(252,211,77,0.06)' }
-                                : { color: '#4FB7C5', borderColor: 'rgba(79,183,197,0.2)', background: 'rgba(79,183,197,0.06)' }
+                                ? { color: 'var(--ws-star,#FCD34D)', borderColor: 'rgba(252,211,77,0.2)', background: 'rgba(252,211,77,0.06)' }
+                                : { color: 'var(--ws-accent)', borderColor: 'rgba(79,183,197,0.2)', background: 'rgba(79,183,197,0.06)' }
                               }
                             >
                               {item.type === 'starred' ? '★ Starred' : '⊡ Saved'}
                             </span>
-                            <span className="text-[9px] font-mono text-[#64748B] uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/[0.02]">
+                            <span className="text-[9px] font-mono text-[#64748B] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[var(--ws-surface-hover)]">
                               {DOMAIN_LABEL[item.domain] || item.domain}
                             </span>
                           </div>
 
                           {/* Title */}
-                          <p className="text-xs font-semibold text-[#A1AAB8] group-hover:text-white transition-colors leading-snug line-clamp-2 mb-2">
+                          <p className="text-xs font-semibold text-[var(--ws-text-secondary)] group-hover:text-[var(--ws-text-heading)] transition-colors leading-snug line-clamp-2 mb-2">
                             {item.title}
                           </p>
 
@@ -1845,7 +1885,7 @@ const LetaWorkspace: React.FC = () => {
                               <Calendar size={9} />
                               {new Date(item.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                             </span>
-                            <span className="text-[9px] font-mono text-[#4FB7C5] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                            <span className="text-[9px] font-mono text-[var(--ws-accent)] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                               <Eye size={9} /> View
                             </span>
                           </div>
@@ -1853,7 +1893,7 @@ const LetaWorkspace: React.FC = () => {
                           {/* Delete button */}
                           <button
                             onClick={e => { e.stopPropagation(); handleRemoveItem(item.id); }}
-                            className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 p-1 rounded-md text-[#64748B] hover:text-[#EF4444] hover:bg-red-500/10 transition-all"
+                            className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 p-1 rounded-md text-[#64748B] hover:text-[var(--ws-text-error)] hover:bg-red-500/10 transition-all"
                             title="Remove from repository"
                           >
                             <Trash2 size={11} />
@@ -1882,7 +1922,7 @@ const LetaWorkspace: React.FC = () => {
                         value={sidebarSearch}
                         onChange={e => setSidebarSearch(e.target.value)}
                         placeholder="Search consultations..."
-                        className="w-full bg-white/[0.02] border border-white/[0.05] rounded-lg px-3 py-1.5 text-xs text-[#A1AAB8] placeholder-[#64748B] focus:outline-none focus:border-[#4FB7C5]/30 transition-colors"
+                        className="w-full bg-[var(--ws-surface-hover)] border border-[var(--ws-hairline)] rounded-lg px-3 py-1.5 text-xs text-[var(--ws-text-secondary)] placeholder-[#64748B] focus:outline-none focus:border-[#4FB7C5]/30 transition-colors"
                       />
                     </div>
                     <span className="text-[10px] font-mono uppercase tracking-[0.2em] px-2 text-[#6B7280] block mb-2.5">
@@ -1890,7 +1930,7 @@ const LetaWorkspace: React.FC = () => {
                     </span>
                     <div className="space-y-2">
                       {sessions.length === 0 ? (
-                        <div className="text-center py-8 text-xs text-[#64748B] font-mono border border-dashed border-white/[0.03] rounded-xl">
+                        <div className="text-center py-8 text-xs text-[#64748B] font-mono border border-dashed border-[var(--ws-hairline)] rounded-xl">
                           No consultation history
                         </div>
                       ) : (
@@ -1911,8 +1951,8 @@ const LetaWorkspace: React.FC = () => {
                               onClick={() => !isRenaming && handleSelectSession(session.session_id)}
                               className={`group p-3.5 rounded-xl cursor-pointer border transition-all duration-200 relative ${
                                 isSelected
-                                  ? 'bg-[#131D2B] border-[#4FB7C5]/30'
-                                  : 'bg-transparent border-white/[0.02] hover:bg-white/[0.02] hover:border-white/[0.06]'
+                                  ? 'bg-[var(--ws-surface)] border-[#4FB7C5]/30'
+                                  : 'bg-transparent border-[var(--ws-hairline)] hover:bg-[var(--ws-surface-hover)] hover:border-[var(--ws-hairline)]'
                               }`}
                             >
                               <div className="flex items-start justify-between gap-1">
@@ -1931,12 +1971,12 @@ const LetaWorkspace: React.FC = () => {
                                         if (e.key === 'Escape') setRenamingId(null);
                                       }}
                                       onClick={e => e.stopPropagation()}
-                                      className="w-full mt-1 bg-transparent border-b border-[#4FB7C5]/40 text-xs text-white focus:outline-none pb-0.5"
+                                      className="w-full mt-1 bg-transparent border-b border-[#4FB7C5]/40 text-xs text-[var(--ws-text-heading)] focus:outline-none pb-0.5"
                                     />
                                   ) : (
                                     <h3
                                       onDoubleClick={e => { e.stopPropagation(); handleRenameStart(session); }}
-                                      className={`text-xs font-semibold truncate mt-1 ${isSelected ? 'text-white' : 'text-[#A1AAB8]'}`}
+                                      className={`text-xs font-semibold truncate mt-1 ${isSelected ? 'text-[var(--ws-text-heading)]' : 'text-[var(--ws-text-secondary)]'}`}
                                       title="Double-click to rename"
                                     >
                                       {session.title}
@@ -1955,7 +1995,7 @@ const LetaWorkspace: React.FC = () => {
                                           if (e.key === 'Escape') setClientRefEditingId(null);
                                         }}
                                         placeholder="Client / matter, e.g. ABC Pvt Ltd"
-                                        className="w-full bg-transparent border-b border-[#4FB7C5]/40 text-[10px] text-white focus:outline-none pb-0.5"
+                                        className="w-full bg-transparent border-b border-[#4FB7C5]/40 text-[10px] text-[var(--ws-text-heading)] focus:outline-none pb-0.5"
                                       />
                                       <datalist id={`client-refs-${session.session_id}`}>
                                         {clientRefSuggestions.map(ref => <option key={ref} value={ref} />)}
@@ -1966,7 +2006,7 @@ const LetaWorkspace: React.FC = () => {
                                       onDoubleClick={e => { e.stopPropagation(); handleClientRefStart(session); }}
                                       onClick={e => e.stopPropagation()}
                                       title="Double-click to change"
-                                      className="mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#4FB7C5]/10 border border-[#4FB7C5]/20 text-[9px] font-mono text-[#4FB7C5] max-w-full truncate"
+                                      className="mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#4FB7C5]/10 border border-[#4FB7C5]/20 text-[9px] font-mono text-[var(--ws-accent)] max-w-full truncate"
                                     >
                                       <Tag size={9} className="flex-shrink-0" />
                                       <span className="truncate">{session.client_ref}</span>
@@ -1974,7 +2014,7 @@ const LetaWorkspace: React.FC = () => {
                                   ) : (
                                     <button
                                       onClick={e => { e.stopPropagation(); handleClientRefStart(session); }}
-                                      className="mt-1.5 opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 text-[9px] font-mono text-[#64748B] hover:text-[#4FB7C5] transition-opacity"
+                                      className="mt-1.5 opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 text-[9px] font-mono text-[#64748B] hover:text-[var(--ws-accent)] transition-opacity"
                                     >
                                       <Tag size={9} />
                                       Tag client
@@ -1992,8 +2032,8 @@ const LetaWorkspace: React.FC = () => {
                                   title={pendingDeleteId === session.session_id ? 'Click again to permanently delete' : 'Delete consultation'}
                                   className={`p-1 rounded-md transition-all ml-1 flex-shrink-0 ${
                                     pendingDeleteId === session.session_id
-                                      ? 'opacity-100 text-[#EF4444] bg-red-500/10'
-                                      : 'opacity-0 group-hover:opacity-100 text-[#64748B] hover:text-[#EF4444] hover:bg-red-500/10'
+                                      ? 'opacity-100 text-[var(--ws-text-error)] bg-red-500/10'
+                                      : 'opacity-0 group-hover:opacity-100 text-[#64748B] hover:text-[var(--ws-text-error)] hover:bg-red-500/10'
                                   }`}
                                 >
                                   {pendingDeleteId === session.session_id
@@ -2022,14 +2062,14 @@ const LetaWorkspace: React.FC = () => {
                           onClick={() => setActiveRepo(sec.key)}
                           className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 group ${
                             hasItems
-                              ? 'text-[#A1AAB8] hover:bg-[#131D2B] hover:text-white cursor-pointer hover:border-[#4FB7C5]/10 border border-transparent'
-                              : 'text-[#64748B] hover:bg-white/[0.01] hover:text-[#6B7280] cursor-pointer border border-transparent'
+                              ? 'text-[var(--ws-text-secondary)] hover:bg-[var(--ws-surface)] hover:text-[var(--ws-text-heading)] cursor-pointer hover:border-[#4FB7C5]/10 border border-transparent'
+                              : 'text-[#64748B] hover:bg-[var(--ws-surface-hover)] hover:text-[#6B7280] cursor-pointer border border-transparent'
                           }`}
                         >
                           <div className="flex items-center gap-2.5">
                             {React.createElement(sec.icon, {
                               size: 14,
-                              className: hasItems ? 'text-[#4FB7C5]' : 'text-[#64748B]',
+                              className: hasItems ? 'text-[var(--ws-accent)]' : 'text-[#64748B]',
                               fill: sec.key === 'starred' && hasItems ? 'currentColor' : 'none',
                             })}
                             <span className="text-xs text-left">{sec.label}</span>
@@ -2038,7 +2078,7 @@ const LetaWorkspace: React.FC = () => {
                             <span
                               className="text-[9px] font-mono px-1.5 py-0.5 rounded"
                               style={hasItems
-                                ? { color: '#4FB7C5', background: 'rgba(79,183,197,0.08)' }
+                                ? { color: 'var(--ws-accent)', background: 'rgba(79,183,197,0.08)' }
                                 : { color: '#64748B', background: 'rgba(255,255,255,0.02)' }
                               }
                             >
@@ -2047,7 +2087,7 @@ const LetaWorkspace: React.FC = () => {
                             {hasItems && (
                               <ChevronLeft
                                 size={11}
-                                className="text-[#4FB7C5] opacity-0 group-hover:opacity-100 transition-opacity rotate-180"
+                                className="text-[var(--ws-accent)] opacity-0 group-hover:opacity-100 transition-opacity rotate-180"
                               />
                             )}
                           </div>
@@ -2063,7 +2103,7 @@ const LetaWorkspace: React.FC = () => {
           {/* Sidebar footer */}
           <div className="p-4 border-t border-[#4FB7C5]/10 flex items-center justify-between text-[11px] text-[#64748B]">
             <div className="flex items-center gap-2">
-              <ShieldCheck size={14} className="text-[#4FB7C5]" />
+              <ShieldCheck size={14} className="text-[var(--ws-accent)]" />
               <span className="font-sans font-semibold">Vault Storage Encrypted</span>
             </div>
             {savedItems.length > 0 && (
@@ -2076,7 +2116,7 @@ const LetaWorkspace: React.FC = () => {
 
         {/* ── CENTER WORKSPACE ──────────────────────────────────────────────────── */}
         <section
-          className={`flex-grow min-h-0 flex flex-col bg-[#000000] overflow-hidden relative ${isEmptyState ? 'justify-center' : ''}`}
+          className={`flex-grow min-h-0 flex flex-col bg-[var(--ws-bg)] overflow-hidden relative ${isEmptyState ? 'justify-center' : ''}`}
           onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
           onDragEnter={e => {
             e.preventDefault(); e.stopPropagation();
@@ -2115,10 +2155,10 @@ const LetaWorkspace: React.FC = () => {
                   className="flex flex-col items-center gap-4"
                 >
                   <div className="p-5 rounded-2xl" style={{ background: 'rgba(79,183,197,0.1)', border: '1px solid rgba(79,183,197,0.25)' }}>
-                    <Upload size={36} style={{ color: '#4FB7C5' }} />
+                    <Upload size={36} style={{ color: 'var(--ws-accent)' }} />
                   </div>
                   <div className="text-center">
-                    <p className="font-mono font-bold text-sm tracking-widest uppercase" style={{ color: '#4FB7C5' }}>
+                    <p className="font-mono font-bold text-sm tracking-widest uppercase" style={{ color: 'var(--ws-accent)' }}>
                       Drop to Analyze
                     </p>
                     <p className="font-mono text-xs mt-1.5" style={{ color: '#64748B' }}>
@@ -2133,7 +2173,7 @@ const LetaWorkspace: React.FC = () => {
           {/* Collapse sidebar trigger */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="absolute left-4 top-4 z-10 p-2 rounded-lg border border-white/[0.05] bg-[#000000] text-[#64748B] hover:text-white transition-colors"
+            className="absolute left-4 top-4 z-10 p-2 rounded-lg border border-[var(--ws-hairline)] bg-[var(--ws-bg)] text-[#64748B] hover:text-[var(--ws-text-heading)] transition-colors"
             title="Toggle consultations list"
             aria-label={isSidebarOpen ? 'Hide consultations list' : 'Show consultations list'}
           >
@@ -2156,7 +2196,7 @@ const LetaWorkspace: React.FC = () => {
                     transform: 'translateX(-50%)',
                     background: 'rgba(0,0,0,0.85)',
                     border: '1px solid rgba(79,183,197,0.3)',
-                    color: '#4FB7C5',
+                    color: 'var(--ws-accent)',
                     backdropFilter: 'blur(8px)',
                   }}
                 >
@@ -2174,18 +2214,18 @@ const LetaWorkspace: React.FC = () => {
 
               {messages.length === 0 && restoreError ? (
                 <div className="w-full max-w-[520px] mx-auto flex flex-col items-center text-center py-10 animate-in fade-in duration-300">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#F59E0B]/10 text-[#F59E0B] mb-4">
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#F59E0B]/10 text-[var(--ws-star)] mb-4">
                     <LockKeyhole size={20} />
                   </div>
-                  <h2 className="text-base font-semibold text-white mb-2">
+                  <h2 className="text-base font-semibold text-[var(--ws-text-heading)] mb-2">
                     This chat isn't available
                   </h2>
-                  <p className="text-sm leading-relaxed text-[#8592A8] mb-6">
+                  <p className="text-sm leading-relaxed text-[var(--ws-text-secondary)] mb-6">
                     {restoreError}
                   </p>
                   <button
                     onClick={handleNewSession}
-                    className="px-5 py-2.5 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] text-black bg-[#4FB7C5] hover:bg-[#3EA6B4] transition-colors"
+                    className="px-5 py-2.5 rounded-xl font-sans font-semibold uppercase tracking-wider text-[10px] text-[var(--ws-accent-contrast-text)] bg-[var(--ws-accent)] hover:bg-[var(--ws-accent-hover)] transition-colors"
                   >
                     Start New Consultation
                   </button>
@@ -2196,14 +2236,14 @@ const LetaWorkspace: React.FC = () => {
                   {latestUpdates.length > 0 && (
                     <div className="mb-6 -mx-1 overflow-x-auto scrollbar-thin animate-in fade-in duration-300" style={{ WebkitOverflowScrolling: 'touch' }}>
                       <div className="flex items-center gap-2 px-1 w-max">
-                        <div className="flex items-center gap-1.5 pr-2 flex-shrink-0 text-[#4FB7C5]">
+                        <div className="flex items-center gap-1.5 pr-2 flex-shrink-0 text-[var(--ws-accent)]">
                           <Radio size={11} className="animate-pulse" />
                           <span className="text-[9px] font-mono uppercase tracking-[0.15em] font-bold">Latest</span>
                         </div>
                         {latestUpdates.map((u, i) => (
                           <span
                             key={i}
-                            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/[0.06] bg-white/[0.02] text-[11px] text-[#A7B3C2] whitespace-nowrap"
+                            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--ws-hairline)] bg-[var(--ws-surface-hover)] text-[11px] text-[var(--ws-text-secondary)] whitespace-nowrap"
                           >
                             <span className="text-[9px] font-mono uppercase tracking-wide text-[#4FB7C5]/70">{u.category}</span>
                             {u.title.length > 48 ? u.title.slice(0, 45) + '...' : u.title}
@@ -2232,16 +2272,16 @@ const LetaWorkspace: React.FC = () => {
                       <button
                         key={idx}
                         onClick={() => handleAsk(card.query)}
-                        className="flex flex-col items-start gap-3 p-4 text-left rounded-2xl border border-white/[0.05] bg-white/[0.015] hover:bg-white/[0.03] hover:border-[#4FB7C5]/25 transition-all duration-150 group"
+                        className="flex flex-col items-start gap-3 p-4 text-left rounded-2xl border border-[var(--ws-hairline)] bg-[var(--ws-surface-hover)] hover:bg-[var(--ws-surface-hover)] hover:border-[#4FB7C5]/25 transition-all duration-150 group"
                       >
                         <div className="w-full flex items-start justify-between">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#4FB7C5]/10 text-[#4FB7C5] flex-shrink-0">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#4FB7C5]/10 text-[var(--ws-accent)] flex-shrink-0">
                             <FileCheck size={14} />
                           </div>
-                          <ArrowUpRight size={14} className="text-[#64748B] group-hover:text-[#4FB7C5] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                          <ArrowUpRight size={14} className="text-[#64748B] group-hover:text-[var(--ws-accent)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-white mb-1">{card.title}</p>
+                          <p className="text-xs font-semibold text-[var(--ws-text-heading)] mb-1">{card.title}</p>
                           <p className="text-[11px] leading-relaxed text-[#6C7A99] line-clamp-2">
                             {card.query}
                           </p>
@@ -2253,7 +2293,7 @@ const LetaWorkspace: React.FC = () => {
               ) : (
                 <div className="flex flex-col gap-8 w-full">
                   {sessionOwnership && !sessionOwnership.isOwner && (
-                    <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-[#4FB7C5]/15 bg-[#4FB7C5]/[0.04] text-[#4FB7C5]">
+                    <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-[#4FB7C5]/15 bg-[#4FB7C5]/[0.04] text-[var(--ws-accent)]">
                       <Users size={14} className="flex-shrink-0" />
                       <span className="text-xs">
                         Shared with you — read-only. You can view this conversation but not add to it.
@@ -2276,12 +2316,12 @@ const LetaWorkspace: React.FC = () => {
                                 <img
                                   src={msg.attachment.url}
                                   alt={msg.attachment.name}
-                                  className={`max-w-full max-h-64 rounded-lg border border-white/10 object-contain ${msg.content ? 'mb-2' : ''}`}
+                                  className={`max-w-full max-h-64 rounded-lg border border-[var(--ws-hairline)] object-contain ${msg.content ? 'mb-2' : ''}`}
                                 />
                               ) : (
-                                <div className={`flex items-center gap-2 px-2.5 py-2 rounded-lg bg-black/20 border border-white/10 ${msg.content ? 'mb-2' : ''}`}>
-                                  <FileText size={14} className="text-[#4FB7C5] flex-shrink-0" />
-                                  <span className="text-xs text-[#A7B3C2] truncate">{msg.attachment.name}</span>
+                                <div className={`flex items-center gap-2 px-2.5 py-2 rounded-lg bg-black/20 border border-[var(--ws-hairline)] ${msg.content ? 'mb-2' : ''}`}>
+                                  <FileText size={14} className="text-[var(--ws-accent)] flex-shrink-0" />
+                                  <span className="text-xs text-[var(--ws-text-secondary)] truncate">{msg.attachment.name}</span>
                                 </div>
                               )
                             )}
@@ -2294,7 +2334,7 @@ const LetaWorkspace: React.FC = () => {
                         ) : (
                           /* Assistant message */
                           <div className="w-full">
-                            <div className="flex items-center gap-2 mb-3.5 pl-1 text-[#4FB7C5]">
+                            <div className="flex items-center gap-2 mb-3.5 pl-1 text-[var(--ws-accent)]">
                               <Sparkles className="w-3.5 h-3.5 animate-pulse" />
                               <span className="text-[10px] font-mono uppercase tracking-widest font-bold">
                                 LETA TEC SYNTHESIS
@@ -2355,10 +2395,10 @@ const LetaWorkspace: React.FC = () => {
                               >
                                 <div className="flex items-center gap-3">
                                   <div className="p-2 rounded-lg" style={{ background: 'rgba(79,183,197,0.12)', border: '1px solid rgba(79,183,197,0.2)' }}>
-                                    <FileText size={15} style={{ color: '#4FB7C5' }} />
+                                    <FileText size={15} style={{ color: 'var(--ws-accent)' }} />
                                   </div>
                                   <div className="text-left">
-                                    <p className="text-sm font-semibold text-white tracking-tight leading-none mb-0.5">
+                                    <p className="text-sm font-semibold text-[var(--ws-text-heading)] tracking-tight leading-none mb-0.5">
                                       Get Detailed Advisory
                                     </p>
                                     <p className="text-[11px] font-mono text-[#4FB7C5]/60 tracking-wide">
@@ -2368,7 +2408,7 @@ const LetaWorkspace: React.FC = () => {
                                 </div>
                                 <ChevronLeft
                                   size={16}
-                                  className="text-[#4FB7C5]/50 group-hover:text-[#4FB7C5] transition-colors rotate-180 flex-shrink-0"
+                                  className="text-[#4FB7C5]/50 group-hover:text-[var(--ws-accent)] transition-colors rotate-180 flex-shrink-0"
                                 />
                               </motion.button>
                             )}
@@ -2381,8 +2421,8 @@ const LetaWorkspace: React.FC = () => {
                                   onClick={() => handleSaveMessage(msg, idx, 'saved')}
                                   className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider transition-all duration-150 border ${
                                     saveStatus === 'saved'
-                                      ? 'text-[#4FB7C5] bg-[#4FB7C5]/10 border-[#4FB7C5]/25'
-                                      : 'text-[#64748B] bg-transparent border-white/[0.04] hover:text-[#4FB7C5] hover:bg-[#4FB7C5]/5 hover:border-[#4FB7C5]/15'
+                                      ? 'text-[var(--ws-accent)] bg-[#4FB7C5]/10 border-[#4FB7C5]/25'
+                                      : 'text-[#64748B] bg-transparent border-[var(--ws-hairline)] hover:text-[var(--ws-accent)] hover:bg-[#4FB7C5]/5 hover:border-[#4FB7C5]/15'
                                   }`}
                                   title={saveStatus === 'saved' ? 'Remove from saved drafts' : 'Save to Matter Drafts'}
                                 >
@@ -2395,7 +2435,7 @@ const LetaWorkspace: React.FC = () => {
                                   className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider transition-all duration-150 border ${
                                     saveStatus === 'starred'
                                       ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/25'
-                                      : 'text-[#64748B] bg-transparent border-white/[0.04] hover:text-yellow-400 hover:bg-yellow-400/5 hover:border-yellow-400/15'
+                                      : 'text-[#64748B] bg-transparent border-[var(--ws-hairline)] hover:text-yellow-400 hover:bg-yellow-400/5 hover:border-yellow-400/15'
                                   }`}
                                   title={saveStatus === 'starred' ? 'Remove star' : 'Star this advisory'}
                                 >
@@ -2406,7 +2446,7 @@ const LetaWorkspace: React.FC = () => {
                                 {saveStatus && (
                                   <button
                                     onClick={() => setActiveRepo(saveStatus === 'starred' ? 'starred' : 'saved')}
-                                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[9px] font-mono text-[#64748B] hover:text-[#4FB7C5] transition-colors"
+                                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[9px] font-mono text-[#64748B] hover:text-[var(--ws-accent)] transition-colors"
                                     title="View in repository"
                                   >
                                     <Eye size={11} />
@@ -2430,7 +2470,7 @@ const LetaWorkspace: React.FC = () => {
           </div>{/* end scroll-to-bottom wrapper */}
 
           {/* CHAT INPUT AREA */}
-          <div className={`p-6 md:px-10 py-6 bg-[#000000] flex-shrink-0 relative z-20 ${isEmptyState ? '' : 'border-t border-[#4FB7C5]/10'}`}>
+          <div className={`p-6 md:px-10 py-6 bg-[var(--ws-bg)] flex-shrink-0 relative z-20 ${isEmptyState ? '' : 'border-t border-[#4FB7C5]/10'}`}>
             <div className="max-w-[920px] mx-auto relative">
 
               {/* ── Voice recording live overlay ─────────────────────────── */}
@@ -2447,10 +2487,10 @@ const LetaWorkspace: React.FC = () => {
                   >
                     {isTranscribing ? (
                       /* Transcribing state */
-                      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-[#4FB7C5]/25 bg-[#000a0d]"
+                      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-[#4FB7C5]/25 bg-[var(--ws-tint-accent-bg)]"
                         style={{ boxShadow: '0 0 30px rgba(79,183,197,0.08)' }}>
-                        <span className="w-2 h-2 rounded-full bg-[#4FB7C5] flex-shrink-0 animate-pulse" />
-                        <span className="flex-1 text-xs font-body text-[#A1AAB8] italic">
+                        <span className="w-2 h-2 rounded-full bg-[var(--ws-accent)] flex-shrink-0 animate-pulse" />
+                        <span className="flex-1 text-xs font-body text-[var(--ws-text-secondary)] italic">
                           Transcribing audio…
                         </span>
                         <span className="text-[10px] font-mono text-[#4FB7C5]/60 tracking-wider flex-shrink-0">
@@ -2459,7 +2499,7 @@ const LetaWorkspace: React.FC = () => {
                       </div>
                     ) : (
                       /* Recording state */
-                      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-red-500/25 bg-[#0a0000]"
+                      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-red-500/25 bg-[var(--ws-tint-error-bg)]"
                         style={{ boxShadow: '0 0 30px rgba(239,68,68,0.08)' }}>
 
                         {/* Live waveform bars */}
@@ -2481,7 +2521,7 @@ const LetaWorkspace: React.FC = () => {
                         <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0 animate-pulse" />
 
                         {/* Recording status label */}
-                        <span className="flex-1 text-xs font-body text-[#A1AAB8] truncate italic min-w-0">
+                        <span className="flex-1 text-xs font-body text-[var(--ws-text-secondary)] truncate italic min-w-0">
                           Recording — speak clearly
                         </span>
 
@@ -2493,7 +2533,7 @@ const LetaWorkspace: React.FC = () => {
                         {/* Stop button */}
                         <button
                           onClick={stopVoiceRecording}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider bg-red-500/10 border border-red-500/25 text-red-400 hover:bg-red-500/20 transition-all flex-shrink-0"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider bg-red-500/10 border border-red-500/25 text-[var(--ws-text-error)] hover:bg-red-500/20 transition-all flex-shrink-0"
                         >
                           <MicOff size={11} />
                           Stop
@@ -2515,9 +2555,9 @@ const LetaWorkspace: React.FC = () => {
                     className="absolute z-30 left-0 right-0"
                     style={{ bottom: 'calc(100% + 10px)' }}
                   >
-                    <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-red-500/20 bg-[#0a0000] text-xs font-mono text-red-400">
+                    <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-red-500/20 bg-[var(--ws-tint-error-bg)] text-xs font-mono text-[var(--ws-text-error)]">
                       <span>{micError}</span>
-                      <button onClick={() => setMicError(null)} aria-label="Dismiss microphone error" className="hover:text-white transition-colors flex-shrink-0">
+                      <button onClick={() => setMicError(null)} aria-label="Dismiss microphone error" className="hover:text-[var(--ws-text-heading)] transition-colors flex-shrink-0">
                         <X size={12} />
                       </button>
                     </div>
@@ -2531,16 +2571,16 @@ const LetaWorkspace: React.FC = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="absolute -top-12 left-4 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#4FB7C5]/30 bg-[#000000] z-30"
+                    className="absolute -top-12 left-4 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#4FB7C5]/30 bg-[var(--ws-bg)] z-30"
                   >
-                    <Paperclip size={11} className="text-[#4FB7C5]" />
-                    <span className="text-[11px] font-mono max-w-[150px] truncate text-white">
+                    <Paperclip size={11} className="text-[var(--ws-accent)]" />
+                    <span className="text-[11px] font-mono max-w-[150px] truncate text-[var(--ws-text-heading)]">
                       {selectedFile.name}
                     </span>
                     <button
                       onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
                       aria-label="Remove attached file"
-                      className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-1"
+                      className="text-[#6B7280] hover:text-[var(--ws-text-error)] transition-colors ml-1"
                     >
                       <X size={12} />
                     </button>
@@ -2554,7 +2594,7 @@ const LetaWorkspace: React.FC = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="absolute -top-12 left-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#EF4444]/30 bg-[#000000] z-30"
+                    className="absolute -top-12 left-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#EF4444]/30 bg-[var(--ws-bg)] z-30"
                   >
                     <span className="text-[11px] font-mono text-[#F87171] flex-1">
                       {fileError}
@@ -2562,7 +2602,7 @@ const LetaWorkspace: React.FC = () => {
                     <button
                       onClick={() => setFileError(null)}
                       aria-label="Dismiss file error"
-                      className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-1 flex-shrink-0"
+                      className="text-[#6B7280] hover:text-[var(--ws-text-error)] transition-colors ml-1 flex-shrink-0"
                     >
                       <X size={12} />
                     </button>
@@ -2576,7 +2616,7 @@ const LetaWorkspace: React.FC = () => {
                 onChange={e => { setQuery(e.target.value); autoResize(); }}
                 placeholder={isReadOnlyView ? "Shared chats are read-only — start a new consultation to ask your own question." : domainConfig.placeholder}
                 disabled={isReadOnlyView}
-                className="w-full p-4 pr-40 pb-14 font-body text-xs leading-relaxed outline-none resize-none transition-all duration-200 bg-[#000000] border border-[#4FB7C5]/15 rounded-2xl text-[#F4F7FA] overflow-y-auto disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full p-4 pr-40 pb-14 font-body text-xs leading-relaxed outline-none resize-none transition-all duration-200 bg-[var(--ws-bg)] border border-[#4FB7C5]/15 rounded-2xl text-[var(--ws-text-heading)] overflow-y-auto disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ minHeight: '90px', maxHeight: '300px' }}
                 onFocus={e => {
                   e.currentTarget.style.borderColor = 'rgba(79,183,197,0.4)';
@@ -2632,7 +2672,7 @@ const LetaWorkspace: React.FC = () => {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLoading || isRecording || isReadOnlyView}
-                  className="p-2.5 rounded-lg text-[#64748B] hover:text-white hover:bg-white/[0.02] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  className="p-2.5 rounded-lg text-[#64748B] hover:text-[var(--ws-text-heading)] hover:bg-[var(--ws-surface-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                   title="Attach document"
                   aria-label="Attach document"
                 >
@@ -2648,8 +2688,8 @@ const LetaWorkspace: React.FC = () => {
                     aria-label={isRecording ? 'Stop voice recording' : 'Voice input (click to speak)'}
                     className={`relative p-2.5 rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed ${
                       isRecording
-                        ? 'text-red-400 bg-red-500/10 border border-red-500/30'
-                        : 'text-[#64748B] hover:text-white hover:bg-white/[0.02] border border-transparent'
+                        ? 'text-[var(--ws-text-error)] bg-red-500/10 border border-red-500/30'
+                        : 'text-[#64748B] hover:text-[var(--ws-text-heading)] hover:bg-[var(--ws-surface-hover)] border border-transparent'
                     }`}
                   >
                     {isRecording ? <MicOff size={15} /> : <Mic size={15} />}
@@ -2662,7 +2702,7 @@ const LetaWorkspace: React.FC = () => {
                 {isStreaming ? (
                   <button
                     onClick={handleStop}
-                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl font-sans font-semibold text-[10px] uppercase tracking-wider transition-all duration-200 border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl font-sans font-semibold text-[10px] uppercase tracking-wider transition-all duration-200 border border-[var(--ws-hairline)] bg-[var(--ws-surface-hover)] text-[var(--ws-text-heading)] hover:bg-[var(--ws-surface-hover)]"
                   >
                     <Square size={11} fill="currentColor" />
                     Stop
@@ -2675,10 +2715,10 @@ const LetaWorkspace: React.FC = () => {
                     style={{
                       background: (!query.trim() && !selectedFile) || isLoading || isReadOnlyView
                         ? 'rgba(79,183,197,0.15)'
-                        : '#4FB7C5',
+                        : 'var(--ws-accent)',
                       color: (!query.trim() && !selectedFile) || isLoading || isReadOnlyView
                         ? 'rgba(79,183,197,0.7)'
-                        : '#000000',
+                        : 'var(--ws-accent-contrast-text)',
                       cursor: (!query.trim() && !selectedFile) || isLoading || isReadOnlyView ? 'not-allowed' : 'pointer',
                     }}
                   >
@@ -2697,10 +2737,10 @@ const LetaWorkspace: React.FC = () => {
 
         {/* ── RIGHT PANEL: PDF viewer ───────────────────────────────────────────── */}
         {openDocuments.length > 0 && (
-          <aside className="w-[340px] h-full border-l border-[#4FB7C5]/10 bg-[#000000] flex-shrink-0 flex flex-col overflow-hidden relative z-10">
+          <aside className="w-[340px] h-full border-l border-[#4FB7C5]/10 bg-[var(--ws-bg)] flex-shrink-0 flex flex-col overflow-hidden relative z-10">
             <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.04] bg-[#131D2B] flex-shrink-0">
-                <span className="text-[10px] font-sans uppercase tracking-wider text-[#4FB7C5] font-semibold">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--ws-hairline)] bg-[var(--ws-surface)] flex-shrink-0">
+                <span className="text-[10px] font-sans uppercase tracking-wider text-[var(--ws-accent)] font-semibold">
                   Reference Viewer
                 </span>
                 <div className="flex gap-1 overflow-x-auto max-w-[180px] scrollbar-none">
@@ -2709,7 +2749,7 @@ const LetaWorkspace: React.FC = () => {
                       key={doc.id}
                       onClick={() => setActiveDocId(doc.id)}
                       className={`px-2.5 py-1 text-[9px] font-sans rounded max-w-[120px] truncate ${
-                        activeDocId === doc.id ? 'bg-[#4FB7C5]/10 text-[#4FB7C5] border border-[#4FB7C5]/20' : 'text-[#6C7A99]'
+                        activeDocId === doc.id ? 'bg-[#4FB7C5]/10 text-[var(--ws-accent)] border border-[#4FB7C5]/20' : 'text-[#6C7A99]'
                       }`}
                     >
                       {doc.title}
@@ -2744,27 +2784,27 @@ const LetaWorkspace: React.FC = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] flex flex-col bg-[#000000]"
+            className="fixed inset-0 z-[100] flex flex-col bg-[var(--ws-bg)]"
           >
             {/* Modal header */}
-            <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-[#4FB7C5]/10 bg-[#000000]">
+            <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-[#4FB7C5]/10 bg-[var(--ws-bg)]">
               <div className="flex items-center gap-3 min-w-0">
                 <button
                   onClick={() => setViewingItem(null)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.06] text-[#A1AAB8] hover:text-white hover:border-[#4FB7C5]/30 text-xs transition-colors flex-shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--ws-hairline)] text-[var(--ws-text-secondary)] hover:text-[var(--ws-text-heading)] hover:border-[#4FB7C5]/30 text-xs transition-colors flex-shrink-0"
                 >
                   <ArrowLeft size={13} />
                   Back
                 </button>
-                <div className="h-4 w-[1px] bg-white/[0.06] flex-shrink-0" />
+                <div className="h-4 w-[1px] bg-[var(--ws-surface-hover)] flex-shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{viewingItem.title}</p>
+                  <p className="text-xs font-semibold text-[var(--ws-text-heading)] truncate">{viewingItem.title}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span
                       className="text-[9px] font-mono px-1.5 py-0.5 rounded-full border"
                       style={viewingItem.type === 'starred'
-                        ? { color: '#FCD34D', borderColor: 'rgba(252,211,77,0.2)', background: 'rgba(252,211,77,0.06)' }
-                        : { color: '#4FB7C5', borderColor: 'rgba(79,183,197,0.2)', background: 'rgba(79,183,197,0.06)' }
+                        ? { color: 'var(--ws-star,#FCD34D)', borderColor: 'rgba(252,211,77,0.2)', background: 'rgba(252,211,77,0.06)' }
+                        : { color: 'var(--ws-accent)', borderColor: 'rgba(79,183,197,0.2)', background: 'rgba(79,183,197,0.06)' }
                       }
                     >
                       {viewingItem.type === 'starred' ? '★ Starred Advisory' : '⊡ Saved Draft'}
@@ -2792,7 +2832,7 @@ const LetaWorkspace: React.FC = () => {
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider border transition-all ${
                     viewingItem.type === 'starred'
                       ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/25'
-                      : 'text-[#64748B] border-white/[0.04] hover:text-yellow-400 hover:border-yellow-400/15'
+                      : 'text-[#64748B] border-[var(--ws-hairline)] hover:text-yellow-400 hover:border-yellow-400/15'
                   }`}
                 >
                   <Star size={12} fill={viewingItem.type === 'starred' ? 'currentColor' : 'none'} />
@@ -2802,7 +2842,7 @@ const LetaWorkspace: React.FC = () => {
                 {/* Delete */}
                 <button
                   onClick={() => { handleRemoveItem(viewingItem.id); setViewingItem(null); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider border border-white/[0.04] text-[#64748B] hover:text-[#EF4444] hover:bg-red-500/10 hover:border-red-500/20 transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider border border-[var(--ws-hairline)] text-[#64748B] hover:text-[var(--ws-text-error)] hover:bg-red-500/10 hover:border-red-500/20 transition-all"
                 >
                   <Trash2 size={12} />
                   Remove
@@ -2811,7 +2851,7 @@ const LetaWorkspace: React.FC = () => {
                 <button
                   onClick={() => setViewingItem(null)}
                   aria-label="Close"
-                  className="p-1.5 rounded-lg text-[#64748B] hover:text-white hover:bg-white/[0.04] transition-colors"
+                  className="p-1.5 rounded-lg text-[#64748B] hover:text-[var(--ws-text-heading)] hover:bg-[var(--ws-surface-hover)] transition-colors"
                 >
                   <X size={15} />
                 </button>
@@ -2821,7 +2861,7 @@ const LetaWorkspace: React.FC = () => {
             {/* Original query context */}
             {viewingItem.query && (
               <div className="flex-shrink-0 px-8 pt-5 pb-0 max-w-[960px] mx-auto w-full">
-                <div className="px-4 py-3 rounded-xl border border-[#4FB7C5]/10 bg-[#000000]">
+                <div className="px-4 py-3 rounded-xl border border-[#4FB7C5]/10 bg-[var(--ws-bg)]">
                   <span className="text-[9px] font-sans font-semibold text-[#4FB7C5]/70 uppercase tracking-wider block mb-1">
                     Original Query
                   </span>
@@ -2833,7 +2873,7 @@ const LetaWorkspace: React.FC = () => {
             {/* Content area */}
             <div className="flex-grow min-h-0 overflow-y-auto scrollbar-thin">
               <div className="max-w-[960px] mx-auto w-full px-8 pt-5 pb-16">
-                <div className="flex items-center gap-2 mb-4 text-[#4FB7C5]">
+                <div className="flex items-center gap-2 mb-4 text-[var(--ws-accent)]">
                   <Sparkles className="w-3.5 h-3.5" />
                   <span className="text-[10px] font-mono uppercase tracking-widest font-bold">LETA TEC SYNTHESIS</span>
                 </div>
