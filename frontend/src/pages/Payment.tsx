@@ -3,33 +3,17 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Clock, Lock,
-  ShieldCheck, Zap, Download, Loader2,
+  ShieldCheck, Zap, Download, Loader2, MapPin,
 } from 'lucide-react';
 import { BASE_URL } from '../config/api';
+import { AXIOS_INSTANCE } from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import { LIVE_MODULE_IDS } from '../constants/routes';
 import { getStoredAuthSession } from '../lib/auth-storage';
+import { INDIAN_STATES } from '../constants/indianStates';
 import type { Session } from '../types/auth';
-// A third near-identical copy of this exact auth-header logic (after
-// LetaWorkspace.tsx and LetaResponse.jsx) used to live in this file —
-// replaced with the shared helper rather than left to drift a third time.
 import { getAuthHeaders as getAuthHeader } from '../utils/authHeaders';
 
-// Classifies POST /api/payments/verify's response status into what the
-// checkout handler should do. Pulled out as a pure function so this
-// specific decision is unit-testable without mounting the full Payment
-// page (Razorpay SDK script injection, auth context, router).
-//
-// 'duplicate' is the one that mattered live: a 409 means the idempotency
-// check correctly rejected this exact payment_id as already claimed —
-// almost always because Razorpay's own server-to-server webhook (which
-// can legitimately beat this browser-side call in a race; nothing wrong
-// with that, both paths are meant to succeed regardless of which lands
-// first) already credited it. The charge genuinely succeeded. Treating a
-// 409 as a plain failure — which this used to do, lumped in with the
-// generic default case — is what made a real paying customer see
-// "Payment verification failed" for a payment that had already gone
-// through, told them to contact support over it.
 export function classifyPaymentVerifyResult(
   status: number
 ): 'success' | 'duplicate' | 'session-expired' | 'failed' {
@@ -39,20 +23,6 @@ export function classifyPaymentVerifyResult(
   return 'failed';
 }
 
-// Pulled out as a pure function so this specific decision is unit-testable
-// without mounting the full Payment page (Razorpay SDK, timers, auth
-// context) — same reasoning as classifyPaymentVerifyResult above.
-//
-// Decides whether a payment actually got credited while the Razorpay
-// checkout modal was open, despite the modal being dismissed before any
-// success response arrived — a UPI payment in particular can confirm on
-// the user's phone a moment after the modal is already closed, and the
-// webhook credits it independently of what the browser saw. `newSessionEnd`
-// is whatever /api/auth/me reports right now; `previousSessionEndMs` is
-// what the plan's expiry was BEFORE this checkout attempt opened. A later
-// expiry than before means this attempt (or another one, doesn't matter
-// which) really did get credited — the customer must not be allowed to
-// pay again for it.
 export function wasCreditedWhileModalWasOpen(
   previousSessionEndMs: number | undefined,
   newSessionEnd: string | null | undefined
@@ -132,18 +102,6 @@ function loadRazorpay(): Promise<boolean> {
   });
 }
 
-// Silently refresh access token before opening Razorpay so the 15-min expiry
-// doesn't bite if the user was already near the limit when they clicked Pay.
-//
-// Takes `login` and writes the refreshed tokens through it (which updates
-// both localStorage AND AuthContext's React state) instead of just
-// localStorage directly. Writing only to localStorage used to leave
-// AuthContext's `session` state holding the stale pre-refresh tokens —
-// and later, on a successful payment, the success/duplicate handlers below
-// called `login({...session, ...})`, spreading that STALE state and
-// clobbering the fresh tokens this function had just written, right as
-// the customer's payment went through. Keeping both in sync here, at the
-// point of refresh, closes that gap at the source.
 export const refreshAccessToken = async (
   login: (session: Session, persist: boolean) => void
 ): Promise<void> => {
@@ -182,22 +140,9 @@ const Payment: React.FC = () => {
   const [invoiceDownloading, setInvoiceDownloading] = useState(false);
   const [rzConfig, setRzConfig] = useState<{ key_id: string; configured: boolean } | null>(null);
   const [checkingAfterDismiss, setCheckingAfterDismiss] = useState(false);
-  // The plan's expiry as it stood right before THIS checkout attempt opened
-  // — captured so ondismiss can tell "the plan really wasn't credited" apart
-  // from "it actually was, just asynchronously (UPI confirms on the phone
-  // after the checkout modal can already be closed), and the webhook just
-  // hadn't landed yet when the user closed the modal."
+  const [selectedStateCode, setSelectedStateCode] = useState<string>(''); // Required: no default
   const preCheckoutSessionEndMsRef = useRef<number | undefined>(undefined);
 
-  // Blocks buying a new plan while the current one is still active — the
-  // backend enforces this for real (create-order 409s), this is just so a
-  // customer sees WHY the button is disabled instead of hitting an error
-  // after clicking. Deliberately local to this page (its own tick, its own
-  // state) rather than reusing SessionClock — SessionClock's job is a
-  // force-logout-on-expiry countdown, and its own timer is intentionally
-  // suppressed on this exact page (see SessionClock.tsx) to stop it firing
-  // mid-checkout; this is a plain "is it still active" display with no
-  // logout/navigate side effect at all.
   const activeUntilMs = session?.tokens?.session_end_ms;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -228,19 +173,37 @@ const Payment: React.FC = () => {
   }, []);
 
   const handlePay = async () => {
-    setLoading(true);
     setPayError(null);
+
+    // Place of Supply is required for correct tax invoice generation
+    if (!selectedStateCode) {
+      setPayError('Please select your Billing State (Place of Supply) to proceed with payment.');
+      return;
+    }
+
+    setLoading(true);
     try {
       const loaded = await loadRazorpay();
       if (!loaded) throw new Error('Razorpay SDK failed to load');
 
-      // Refresh token first — gives a fresh 15-min window before the modal opens
       await refreshAccessToken(login);
       const authHeader = getAuthHeader();
+      const stateObj = INDIAN_STATES.find(s => s.code === selectedStateCode);
+      if (!stateObj) {
+        throw new Error('Please select a valid Indian State / Union Territory.');
+      }
+      const customerState = stateObj.name;
+      const customerStateCode = stateObj.code;
+
       const orderRes = await fetch(`${BASE_URL}/api/payments/create-order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ plan_id: planId, module: moduleId }),
+        body: JSON.stringify({
+          plan_id: planId,
+          module: moduleId,
+          customer_state: customerState,
+          customer_state_code: customerStateCode,
+        }),
       });
       if (!orderRes.ok) {
         const err = await orderRes.json();
@@ -249,8 +212,8 @@ const Payment: React.FC = () => {
       const order = await orderRes.json();
       preCheckoutSessionEndMsRef.current = session?.tokens?.session_end_ms;
 
-      new (window as any).Razorpay({
-        key: rzConfig?.key_id || '',
+      const rzp = new (window as any).Razorpay({
+        key: rzConfig?.key_id || (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || '',
         amount: order.amount,
         currency: order.currency,
         name: 'LETA TEC — Legal Intelligence',
@@ -259,7 +222,6 @@ const Payment: React.FC = () => {
         prefill: { email: user?.email || '' },
         theme: { color: B.accent },
         handler: async (response: any) => {
-          // Re-read from localStorage so we use the token refreshed before modal opened
           const verifyHeader = getAuthHeader();
           const verifyRes = await fetch(`${BASE_URL}/api/payments/verify`, {
             method: 'POST',
@@ -270,6 +232,8 @@ const Payment: React.FC = () => {
               razorpay_signature:  response.razorpay_signature,
               plan_id: planId,
               module:  moduleId,
+              customer_state: customerState,
+              customer_state_code: customerStateCode,
             }),
           });
           const outcome = classifyPaymentVerifyResult(verifyRes.status);
@@ -277,13 +241,6 @@ const Payment: React.FC = () => {
           if (outcome === 'success') {
             try {
               const verifyData = await verifyRes.json();
-              // Base the merge on whatever's CURRENTLY in localStorage, not
-              // the `session` captured in this closure — the checkout can
-              // run long enough for refreshAccessToken (and the axios
-              // interceptor, for any other in-flight request) to have
-              // written a newer token since this component last rendered.
-              // Merging onto a stale closure here is exactly what used to
-              // clobber a just-refreshed token right as payment succeeded.
               const latestSession = getStoredAuthSession() || session;
               if (latestSession && verifyData.session_end_ms) {
                 login({
@@ -296,9 +253,6 @@ const Payment: React.FC = () => {
             setPaidPaymentId(response.razorpay_payment_id);
             setSuccess(true);
           } else if (outcome === 'duplicate') {
-            // Already credited via the other path (see classifyPaymentVerifyResult's
-            // comment) — pull the actual current plan/expiry rather than assume
-            // success blindly, then show the same success state as 'success'.
             try {
               const meRes = await fetch(`${BASE_URL}/api/auth/me`, { headers: getAuthHeader() });
               if (meRes.ok) {
@@ -324,27 +278,21 @@ const Payment: React.FC = () => {
           }
         },
         modal: { ondismiss: handleModalDismiss },
-      }).open();
+      });
+
+      rzp.on('payment.failed', (failRes: any) => {
+        const desc = failRes?.error?.description || failRes?.error?.reason || 'Payment failed. Please try again.';
+        setPayError(`Payment failed: ${desc}`);
+        setLoading(false);
+      });
+
+      rzp.open();
     } catch (err: any) {
       setPayError(err.message || 'Something went wrong. Please try again.');
       setLoading(false);
     }
   };
 
-  // Razorpay's modal being dismissed does NOT mean the payment failed — a
-  // UPI payment in particular can confirm on the user's phone a moment
-  // AFTER they've already closed/backgrounded the checkout modal, and the
-  // webhook (the server-to-server safety net) will still credit it once it
-  // lands. Previously this just reset the button straight back to "Pay",
-  // so a confused customer who assumed it failed could click Pay again —
-  // create-order has no idea this is a retry of the same attempt, so it
-  // creates a brand-new order and a genuine second charge goes through.
-  //
-  // Instead: wait a few seconds for the webhook to have a real chance to
-  // land, then check whether the plan actually got credited while the
-  // modal was open. If it did, show the success screen instead of
-  // reopening checkout — closing the double-charge window instead of
-  // just hoping the customer notices before clicking Pay again.
   const handleModalDismiss = async () => {
     setCheckingAfterDismiss(true);
     try {
@@ -361,18 +309,11 @@ const Payment: React.FC = () => {
               user:   { ...session.user,   plan: me.plan ?? session.user?.plan },
             }, true);
           }
-          // No payment_id available on this path (the modal was dismissed
-          // before Razorpay's handler ever ran) — the Download Invoice
-          // button simply won't render, same as any other success state
-          // with paidPaymentId unset. The plan being active is what matters.
           setSuccess(true);
           return;
         }
       }
     } catch {
-      // Non-fatal — if the check itself fails, fall through to the normal
-      // "nothing happened, you can try again" state rather than blocking
-      // the user on an ambiguous state indefinitely.
     } finally {
       setCheckingAfterDismiss(false);
       setLoading(false);
@@ -382,17 +323,15 @@ const Payment: React.FC = () => {
   const handleDownloadInvoice = async () => {
     if (!paidPaymentId || invoiceDownloading) return;
     setInvoiceDownloading(true);
+    setPayError(null);
     try {
-      const res = await fetch(`${BASE_URL}/api/payments/invoice/${paidPaymentId}`, {
+      const res = await AXIOS_INSTANCE.get(`/api/payments/invoice/${paidPaymentId}`, {
+        responseType: 'blob',
         headers: getAuthHeader(),
       });
-      if (!res.ok) throw new Error(`Invoice not available yet (${res.status})`);
-      const blob = await res.blob();
-      // Read the real filename the backend chose (its own invoice-number
-      // sequence) rather than inventing one client-side, so what's saved
-      // to disk matches what the server actually issued.
-      const disposition = res.headers.get('Content-Disposition') || '';
-      const match = disposition.match(/filename="([^"]+)"/);
+      const blob = res.data;
+      const disposition = (res.headers && (res.headers['content-disposition'] || res.headers['Content-Disposition'])) || '';
+      const match = typeof disposition === 'string' ? disposition.match(/filename="?([^"]+)"?/) : null;
       const filename = match?.[1] || `LETA-TEC-invoice-${paidPaymentId}.pdf`;
 
       const url = URL.createObjectURL(blob);
@@ -405,10 +344,6 @@ const Payment: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Invoice download failed:', err);
-      // Non-fatal to the payment itself — the plan is already active
-      // regardless of whether the invoice download succeeds. A brief,
-      // low-drama inline message is enough; the customer already has
-      // their access.
       setPayError('Could not download the invoice right now. It will still be available later — try again shortly.');
     } finally {
       setInvoiceDownloading(false);
@@ -462,11 +397,6 @@ const Payment: React.FC = () => {
 
           <button
             onClick={() => navigate(
-              // Straight into the actual paid chat workspace, not the
-              // module's marketing/info page — a customer who just paid
-              // and clicked "Enter Workspace" means it literally. Falls
-              // back to the info page only for a module that isn't live
-              // yet, so this doesn't bounce anyone off LiveDomainGuard.
               LIVE_MODULE_IDS.includes(moduleId) ? `/${moduleId}/leta` : mod.route
             )}
             className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200"
@@ -634,6 +564,39 @@ const Payment: React.FC = () => {
                   <span className="text-xs text-white font-semibold">{plan.label}</span>
                   <span className="text-xs text-white font-semibold">{plan.price}</span>
                 </div>
+
+                {/* Place of supply / billing state selector */}
+                <div className="mt-3 mb-4 p-3 rounded-xl" style={{ background: '#05070E', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="flex items-center justify-between mb-1.5 text-[10px] font-mono">
+                    <span className="flex items-center gap-1.5" style={{ color: '#94A3B8' }}>
+                      <MapPin size={11} style={{ color: B.accent }} /> Billing State (Place of Supply)
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium">Required</span>
+                  </div>
+                  <select
+                    value={selectedStateCode}
+                    onChange={e => setSelectedStateCode(e.target.value)}
+                    className="w-full bg-[#080A10] text-xs text-white rounded-lg px-2.5 py-2 border outline-none cursor-pointer"
+                    style={{ borderColor: selectedStateCode ? B.border : 'rgba(245,158,11,0.3)' }}
+                  >
+                    <option value="" disabled className="bg-[#080A10] text-slate-500">
+                      -- Select Billing State --
+                    </option>
+                    {INDIAN_STATES.map(st => (
+                      <option key={st.code} value={st.code} className="bg-[#080A10] text-white">
+                        {st.name} ({st.code})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[9px] font-mono mt-1.5" style={{ color: selectedStateCode ? '#475569' : '#F59E0B' }}>
+                    {!selectedStateCode
+                      ? 'Required for GST invoice classification (Intra/Inter-State)'
+                      : selectedStateCode === '08'
+                      ? 'Intra-State Supply (Rajasthan): CGST (9%) + SGST (9%)'
+                      : 'Inter-State Supply: IGST (18%)'}
+                  </p>
+                </div>
+
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-[10px] font-mono" style={{ color: '#334155' }}>GST (18%)</span>
                   <span className="text-[10px] font-mono" style={{ color: '#334155' }}>Inclusive</span>

@@ -6,6 +6,7 @@ POST /api/payments/create-order   — create a Razorpay order (rate-limited 10/m
 POST /api/payments/verify          — verify payment signature after checkout (15/min)
 POST /api/payments/webhook         — server-to-server Razorpay webhook (source of truth)
 GET  /api/payments/config          — return Razorpay key_id to frontend (safe)
+GET  /api/payments/invoice/{id}    — download GST tax invoice PDF
 
 Security
 --------
@@ -21,6 +22,7 @@ import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from app.utils.time import utc_now
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
@@ -61,8 +63,41 @@ def _razorpay_client():
             status_code=503,
             detail="Payment system not yet configured. Please add Razorpay keys to activate."
         )
-    import razorpay
-    return razorpay.Client(auth=(key_id, key_secret))
+    try:
+        import razorpay
+        return razorpay.Client(auth=(key_id, key_secret))
+    except ImportError:
+        import requests
+
+        class _OrderResource:
+            def __init__(self, k_id: str, k_sec: str):
+                self.k_id = k_id
+                self.k_sec = k_sec
+
+            def create(self, data: dict) -> dict:
+                resp = requests.post(
+                    "https://api.razorpay.com/v1/orders",
+                    auth=(self.k_id, self.k_sec),
+                    json=data,
+                    timeout=15.0,
+                )
+                if not resp.ok:
+                    try:
+                        err = resp.json().get("error", {})
+                        desc = err.get("description", resp.text)
+                    except Exception:
+                        desc = resp.text
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Razorpay order creation failed: {desc}"
+                    )
+                return resp.json()
+
+        class _DirectRazorpayClient:
+            def __init__(self, k_id: str, k_sec: str):
+                self.order = _OrderResource(k_id, k_sec)
+
+        return _DirectRazorpayClient(key_id, key_secret)
 
 
 def _send_payment_receipt(username: str, plan_cfg: dict, payment_id: str, session_end_dt) -> None:
@@ -79,9 +114,6 @@ def _send_payment_receipt(username: str, plan_cfg: dict, payment_id: str, sessio
         user = users_col.find_one({"username": username}, {"_id": 0, "email": 1, "full_name": 1})
         email = (user or {}).get("email")
         if not email:
-            # Phone-only signups have nowhere to send this yet — not an
-            # error, just nothing to do until they add an email or we add
-            # a checkout-time prompt for one.
             logger.info(f"No email on file for {username} — skipping payment receipt")
             return
 
@@ -90,10 +122,10 @@ def _send_payment_receipt(username: str, plan_cfg: dict, payment_id: str, sessio
         amount_rupees = plan_cfg.get("amount", 0) / 100
         sent = send_email(
             to=email,
-            subject="Your LETA TEC payment receipt",
+            subject="Your LETATEC payment receipt",
             html=f"""
             <div style="font-family:Arial;padding:30px">
-                <h2>LETA TEC</h2>
+                <h2>LETATEC</h2>
                 <p>Hi {name},</p>
                 <p>Thank you for your payment. Here are your receipt details:</p>
                 <table style="border-collapse:collapse;margin-top:12px">
@@ -103,7 +135,7 @@ def _send_payment_receipt(username: str, plan_cfg: dict, payment_id: str, sessio
                     <tr><td style="padding:4px 16px 4px 0;color:#666">Valid until</td><td>{session_end_dt.strftime('%d %b %Y, %I:%M %p')} UTC</td></tr>
                     <tr><td style="padding:4px 16px 4px 0;color:#666">Status</td><td>PAID</td></tr>
                 </table>
-                <p style="margin-top:20px">Thank you for using LETA TEC.</p>
+                <p style="margin-top:20px">Thank you for using LETATEC.</p>
             </div>
             """,
         )
@@ -115,16 +147,8 @@ def _send_payment_receipt(username: str, plan_cfg: dict, payment_id: str, sessio
 
 def _send_payment_receipt_sms(username: str, plan_cfg: dict, payment_id: str, session_end_dt) -> None:
     """
-    SMS counterpart to _send_payment_receipt — for users with no email on
-    file (a phone number is required to sign up at all, so this reaches
-    everyone email can't). Same non-fatal contract: a problem here must
-    never look like the payment failed.
-
-    Genuinely inert until AIRTEL_DLT_RECEIPT_TEMPLATE_ID is set — India's
-    DLT rules require this exact wording to be pre-registered with the
-    telecom operator before it can be sent at all, separately from the
-    OTP template already approved. See airtel.py's own comment on that
-    constant for the registration this is waiting on.
+    SMS counterpart to _send_payment_receipt. Same non-fatal contract: a problem here
+    must never look like the payment failed.
     """
     try:
         users_col = get_user_collection()
@@ -140,34 +164,48 @@ def _send_payment_receipt_sms(username: str, plan_cfg: dict, payment_id: str, se
 
         amount_rupees = plan_cfg.get("amount", 0) / 100
         message = (
-            f"Your LETA TEC payment of Rs.{amount_rupees:.0f} for {plan_cfg.get('name', '')} is confirmed. "
+            f"Your LETATEC payment of Rs.{amount_rupees:.0f} for {plan_cfg.get('name', '')} is confirmed. "
             f"Payment ID: {payment_id}. Valid until {session_end_dt.strftime('%d %b %Y, %I:%M %p')} UTC. "
-            f"Thank you for choosing LETA TEC."
+            f"Thank you for choosing LETATEC."
         )
         result = send_transactional_sms(phone, AIRTEL_DLT_RECEIPT_TEMPLATE_ID, message)
         if result.success:
             logger.info(f"Payment receipt texted | user={username} payment={payment_id}")
-        else:
-            # Expected/routine while the template isn't registered yet —
-            # send_transactional already logs the specific reason.
-            pass
     except Exception as e:
         logger.error(f"Payment receipt SMS failed (non-fatal, plan is already active): {e}")
 
 
-def _create_invoice(username: str, plan_cfg: dict, payment_id: str, order_id: str) -> None:
+def _create_invoice(
+    username: str,
+    plan_cfg: dict,
+    payment_id: str,
+    order_id: str,
+    customer_state: Optional[str] = None,
+    customer_state_code: Optional[str] = None,
+    customer_gstin: Optional[str] = None,
+) -> None:
     """
     Creates the permanent invoice record backing the "Download Invoice"
-    button, assigning it its sequential GST invoice number. Same non-fatal
-    contract as the email/SMS receipts: the plan is already active by the
-    time this runs, so a DB hiccup here must never look like the payment
-    failed — it just means that one invoice can't be downloaded until
-    someone notices and backfills it, not that the customer wasn't
-    charged or credited correctly.
+    button, assigning it its sequential GST invoice number and tax breakdown.
+    Same non-fatal contract: plan activation takes priority over reporting.
     """
     try:
         users_col = get_user_collection()
-        user = users_col.find_one({"username": username}, {"_id": 0, "email": 1, "phone": 1, "full_name": 1}) if users_col is not None else None
+        user = users_col.find_one({"username": username}, {"_id": 0, "email": 1, "phone": 1, "full_name": 1, "state": 1, "state_code": 1, "gstin": 1}) if users_col is not None else None
+
+        # If state/gstin not directly provided, resolve from stored order or user record
+        if not customer_state and not customer_state_code:
+            orders_col = get_payment_orders_collection()
+            order_doc = orders_col.find_one({"order_id": order_id}) if (orders_col is not None and order_id) else None
+            if order_doc:
+                customer_state = order_doc.get("customer_state")
+                customer_state_code = order_doc.get("customer_state_code")
+                customer_gstin = customer_gstin or order_doc.get("customer_gstin")
+
+        if not customer_state and not customer_state_code and user:
+            customer_state = user.get("state")
+            customer_state_code = user.get("state_code")
+            customer_gstin = customer_gstin or user.get("gstin")
 
         from app.services.invoice import create_invoice_record
         record = create_invoice_record(
@@ -179,6 +217,9 @@ def _create_invoice(username: str, plan_cfg: dict, payment_id: str, order_id: st
             customer_phone=(user or {}).get("phone"),
             plan_name=plan_cfg.get("name", ""),
             amount_paise=plan_cfg.get("amount", 0),
+            customer_state=customer_state,
+            customer_state_code=customer_state_code,
+            customer_gstin=customer_gstin,
         )
         if record:
             logger.info(f"Invoice created | number={record['invoice_number']} payment={payment_id}")
@@ -186,7 +227,15 @@ def _create_invoice(username: str, plan_cfg: dict, payment_id: str, order_id: st
         logger.error(f"Invoice creation failed (non-fatal, plan is already active): {e}")
 
 
-def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str) -> dict:
+def _credit_session(
+    username: str,
+    plan_id: str,
+    payment_id: str,
+    order_id: str,
+    customer_state: Optional[str] = None,
+    customer_state_code: Optional[str] = None,
+    customer_gstin: Optional[str] = None,
+) -> dict:
     """
     Apply session extension to the user record.
     Called from both /verify (client-side) and /webhook (server-side).
@@ -214,9 +263,16 @@ def _credit_session(username: str, plan_id: str, payment_id: str, order_id: str)
             f"Session credited: user={username} plan={plan_name} "
             f"payment={payment_id} order={order_id} expires={session_end_dt.isoformat()}"
         )
+        # 1. Create invoice immediately
+        _create_invoice(
+            username, plan_cfg, payment_id, order_id,
+            customer_state=customer_state,
+            customer_state_code=customer_state_code,
+            customer_gstin=customer_gstin,
+        )
+        # 2. Trigger notifications
         _send_payment_receipt(username, plan_cfg, payment_id, session_end_dt)
         _send_payment_receipt_sms(username, plan_cfg, payment_id, session_end_dt)
-        _create_invoice(username, plan_cfg, payment_id, order_id)
 
     return {
         "verified":       True,
@@ -235,7 +291,6 @@ def _claim_payment_id(payment_id: str, username: str, plan_id: str, order_id: st
     """
     ledger = get_payment_ledger_collection()
     if ledger is None:
-        # DB unavailable — allow through with a warning rather than blocking payment
         logger.warning("payment_ledger unavailable — skipping idempotency check")
         return True
     try:
@@ -257,26 +312,38 @@ def _claim_payment_id(payment_id: str, username: str, plan_id: str, order_id: st
 class CreateOrderRequest(BaseModel):
     plan_id: str     # "1hr" or "3hr"
     module: str      # "gst" | "fema" | "company-law" | "income-tax"
+    customer_state: Optional[str] = None
+    customer_state_code: Optional[str] = None
+    customer_gstin: Optional[str] = None
 
 class VerifyPaymentRequest(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str
     razorpay_signature: str
     plan_id: str
-    module: str
+    module: str = "gst"
+    customer_state: Optional[str] = None
+    customer_state_code: Optional[str] = None
+    customer_gstin: Optional[str] = None
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# ── Routes ────────────────────────────────────────────────────────────────
 
 @router.get("/config")
 def get_payment_config():
-    """Return the Razorpay publishable key to the frontend. Never exposes the secret."""
+    """Return the Razorpay key_id to the frontend (safe to expose — key_secret stays server-side)."""
     key_id = os.getenv("RAZORPAY_KEY_ID", "")
+    key_secret = os.getenv("RAZORPAY_KEY_SECRET", "")
     return {
         "key_id": key_id,
-        "configured": bool(key_id),
-        "plans": PLANS,
+        "configured": bool(key_id and key_secret),
     }
+
+
+@router.get("/plans")
+def get_plans():
+    """Return the available access plans and pricing."""
+    return {"plans": PLANS}
 
 
 @router.post("/create-order")
@@ -285,25 +352,16 @@ def create_order(request: Request, req: CreateOrderRequest, current_user: dict =
     """
     Create a Razorpay order and record it in payment_orders so the webhook can
     resolve order_id → user without needing a JWT in the callback.
-
-    Rate-limited at 10/minute per user to prevent mass order creation from
-    exhausting the Razorpay API quota or the frontend retry loop.
     """
     plan = PLANS.get(req.plan_id)
     if not plan:
         raise HTTPException(status_code=400, detail=f"Unknown plan: {req.plan_id}")
 
+    if plan["amount"] < 100:
+        raise HTTPException(status_code=400, detail="Minimum order amount is 100 paise.")
+
     username = current_user.get("username", "")
 
-    # Block buying a new plan while the current one is still active.
-    # _credit_session always overwrites session_end with now()+duration rather
-    # than extending it — so letting a purchase through mid-plan would let a
-    # customer pay again and end up with LESS time than they already had
-    # (and get silently downgraded from "pro" back to "basic" on a 1hr
-    # top-up). Simplest correct fix: don't allow the purchase at all until
-    # the clock actually hits zero. Enforced here (not just the frontend's
-    # disabled button) since create-order is reachable directly by anyone
-    # with a valid JWT, active plan or not.
     users_col = get_user_collection()
     if users_col is not None:
         existing_user = users_col.find_one({"username": username}, {"_id": 0, "session_end": 1})
@@ -333,19 +391,22 @@ def create_order(request: Request, req: CreateOrderRequest, current_user: dict =
         },
     })
 
-    # Persist order → user mapping for server-side webhook resolution.
+    # Persist order → user mapping with customer place-of-supply details
     orders_col = get_payment_orders_collection()
     if orders_col is not None:
         try:
             orders_col.insert_one({
-                "order_id":   order["id"],
-                "user_id":    username,
-                "plan_id":    req.plan_id,
-                "module":     req.module,
-                "created_at": utc_now(),
+                "order_id":            order["id"],
+                "user_id":             username,
+                "plan_id":             req.plan_id,
+                "module":              req.module,
+                "customer_state":      req.customer_state,
+                "customer_state_code": req.customer_state_code,
+                "customer_gstin":      req.customer_gstin,
+                "created_at":          utc_now(),
             })
         except DuplicateKeyError:
-            pass  # same order somehow submitted twice — already recorded
+            pass
         except Exception as exc:
             logger.warning(f"create_order: could not save to payment_orders: {exc}")
 
@@ -362,10 +423,6 @@ def verify_payment(
 ):
     """
     Verify the HMAC signature returned by Razorpay and start the session timer.
-
-    Idempotency: payment_id is written to the payment_ledger with a unique index.
-    A duplicate /verify call (e.g. frontend retry) returns 409 so the session
-    is not extended a second time.
     """
     key_secret = os.getenv("RAZORPAY_KEY_SECRET", "")
     if not key_secret:
@@ -379,46 +436,92 @@ def verify_payment(
 
     username = current_user.get("username", "")
 
-    # ── 2. Idempotency check — reject duplicate payment_ids ───────────────────
+    # ── 2. Idempotency check ──────────────────────────────────────────────────
     if not _claim_payment_id(
         req.razorpay_payment_id, username, req.plan_id, req.razorpay_order_id
     ):
+        ledger = get_payment_ledger_collection()
+        existing_claim = ledger.find_one({"payment_id": req.razorpay_payment_id}) if ledger is not None else None
+
+        # Scenario B: Payment was already claimed by the SAME authenticated user (e.g. webhook won the race)
+        if existing_claim and existing_claim.get("user_id") == username:
+            users_col = get_user_collection()
+            user_doc = users_col.find_one({"username": username}, {"_id": 0, "session_end": 1, "plan": 1}) if users_col is not None else None
+            session_end = (user_doc or {}).get("session_end")
+
+            if session_end:
+                if session_end.tzinfo is None:
+                    session_end = session_end.replace(tzinfo=timezone.utc)
+                session_end_ms = int(session_end.timestamp() * 1000)
+            elif existing_claim.get("created_at"):
+                claim_created = existing_claim["created_at"]
+                if claim_created.tzinfo is None:
+                    claim_created = claim_created.replace(tzinfo=timezone.utc)
+                plan_cfg = PLANS.get(existing_claim.get("plan_id", req.plan_id), {})
+                duration_hours = plan_cfg.get("duration_hours", 1)
+                session_end_dt = claim_created + timedelta(hours=duration_hours)
+                session_end_ms = int(session_end_dt.timestamp() * 1000)
+                if users_col is not None:
+                    users_col.update_one(
+                        {"username": username},
+                        {"$set": {"plan": "pro" if duration_hours >= 3 else "basic", "session_end": session_end_dt}},
+                    )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Authoritative session state could not be resolved for this payment.",
+                )
+
+            plan_name = (user_doc or {}).get("plan") or ("pro" if PLANS.get(req.plan_id, {}).get("duration_hours", 1) >= 3 else "basic")
+
+            _create_invoice(
+                username, PLANS.get(req.plan_id, {}), req.razorpay_payment_id, req.razorpay_order_id,
+                customer_state=req.customer_state,
+                customer_state_code=req.customer_state_code,
+                customer_gstin=req.customer_gstin,
+            )
+
+            logger.info(f"verify_payment: payment {req.razorpay_payment_id} already claimed by same user {username} — returning 200 with session state")
+            return {
+                "verified": True,
+                "plan_name": plan_name,
+                "duration_hours": PLANS.get(req.plan_id, {}).get("duration_hours", 1),
+                "payment_id": req.razorpay_payment_id,
+                "session_end_ms": session_end_ms,
+                "module": req.module,
+                "plan_id": req.plan_id,
+                "already_credited": True,
+            }
+
+        # Scenario C: Payment belongs to a different account
         raise HTTPException(
             status_code=409,
-            detail="This payment has already been applied. If you believe this is an error, contact support.",
+            detail="This payment has already been claimed by another account.",
         )
 
-    # ── 3. Credit the session ─────────────────────────────────────────────────
-    info = _credit_session(username, req.plan_id, req.razorpay_payment_id, req.razorpay_order_id)
+    # ── 3. Scenario A: First time claiming payment ────────────────────────────
+    info = _credit_session(
+        username, req.plan_id, req.razorpay_payment_id, req.razorpay_order_id,
+        customer_state=req.customer_state,
+        customer_state_code=req.customer_state_code,
+        customer_gstin=req.customer_gstin,
+    )
     return {**info, "module": req.module, "plan_id": req.plan_id}
 
 
 @router.post("/webhook")
 async def razorpay_webhook(request: Request):
     """
-    Server-to-server webhook endpoint — Razorpay calls this directly on payment
-    events, bypassing the frontend entirely.  This is the authoritative source
-    of truth for payment.captured events.
-
-    Configure in the Razorpay dashboard:
-      URL: https://api.letatec.com/api/payments/webhook
-      Events: payment.captured
-      Secret: value of RAZORPAY_WEBHOOK_SECRET env var
-
-    Idempotency: Razorpay may fire the same event more than once.  The
-    payment_id unique index in payment_ledger prevents double-crediting.
-    Always return 200 to ACK (Razorpay retries on non-200 for 24h).
+    Server-to-server webhook endpoint — Razorpay calls this directly on payment events.
     """
     webhook_secret = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
     if not webhook_secret:
-        # Webhook not yet configured — ACK silently so Razorpay doesn't retry
         logger.warning("razorpay_webhook: RAZORPAY_WEBHOOK_SECRET not set — skipping verification")
         return {"status": "not_configured"}
 
     body         = await request.body()
     received_sig = request.headers.get("X-Razorpay-Signature", "")
 
-    # ── 1. Verify HMAC-SHA256 over raw body ───────────────────────────────────
     expected_sig = hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected_sig, received_sig):
         logger.warning("razorpay_webhook: invalid signature — possible spoofed request")
@@ -432,32 +535,34 @@ async def razorpay_webhook(request: Request):
 
     event_type = event.get("event", "")
 
-    # ── 2. Handle payment.captured ────────────────────────────────────────────
     if event_type == "payment.captured":
         payment = event.get("payload", {}).get("payment", {}).get("entity", {})
         payment_id = payment.get("id", "")
         order_id   = payment.get("order_id", "")
-        notes      = payment.get("notes", {})
 
-        # Resolve order → user via payment_orders (written by create_order)
         orders_col = get_payment_orders_collection()
         order_doc  = orders_col.find_one({"order_id": order_id}) if orders_col is not None else None
 
         if not order_doc:
             logger.warning(f"razorpay_webhook: no order record for order_id={order_id} payment_id={payment_id}")
-            # ACK anyway — we can reconcile manually from the Razorpay dashboard
             return {"status": "order_not_found"}
 
         username = order_doc.get("user_id", "")
         plan_id  = order_doc.get("plan_id", "1hr")
+        customer_state = order_doc.get("customer_state")
+        customer_state_code = order_doc.get("customer_state_code")
+        customer_gstin = order_doc.get("customer_gstin")
 
-        # ── 3. Idempotency — bail out silently if already processed ──────────
         if not _claim_payment_id(payment_id, username, plan_id, order_id):
             logger.info(f"razorpay_webhook: duplicate event for payment_id={payment_id} — ACK and skip")
             return {"status": "already_processed"}
 
-        # ── 4. Credit the session ─────────────────────────────────────────────
-        _credit_session(username, plan_id, payment_id, order_id)
+        _credit_session(
+            username, plan_id, payment_id, order_id,
+            customer_state=customer_state,
+            customer_state_code=customer_state_code,
+            customer_gstin=customer_gstin,
+        )
         logger.info(f"razorpay_webhook: session credited via webhook | payment={payment_id} user={username}")
 
     else:
@@ -469,21 +574,23 @@ async def razorpay_webhook(request: Request):
 @router.get("/invoice/{payment_id}")
 def download_invoice(payment_id: str, current_user: dict = Depends(get_jwt_user)):
     """
-    Serves the GST invoice PDF for a specific payment. Ownership-scoped —
-    the invoice record's own username field, not the requester's claim,
-    decides access: a user can only ever download their OWN invoices,
-    same as every other payment/session endpoint in this app.
+    Serves the GST invoice PDF for a specific payment. Ownership-scoped.
     """
     from app.services.invoice import get_invoice_record, render_invoice_pdf
     from fastapi.responses import Response
 
     record = get_invoice_record(payment_id)
     if record is None:
+        ledger = get_payment_ledger_collection()
+        claim = ledger.find_one({"payment_id": payment_id}) if ledger is not None else None
+        if claim and claim.get("user_id") == current_user.get("username"):
+            plan_cfg = PLANS.get(claim.get("plan_id", "1hr"), {})
+            _create_invoice(current_user.get("username"), plan_cfg, payment_id, claim.get("order_id", ""))
+            record = get_invoice_record(payment_id)
+
+    if record is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
     if record.get("username") != current_user.get("username"):
-        # Identical 404 as "doesn't exist" — same reasoning as every other
-        # ownership check in this codebase: don't reveal that a payment_id
-        # belongs to someone else, just say it isn't there.
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     pdf_bytes = render_invoice_pdf(record)

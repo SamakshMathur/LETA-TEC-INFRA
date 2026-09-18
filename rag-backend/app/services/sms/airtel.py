@@ -45,17 +45,17 @@ class AirtelSMSProvider(BaseSMSProvider):
         entity_id: Optional[str] = None,
         timeout_seconds: float = 10.0,
     ):
-        self.api_url = api_url or os.getenv(
+        self.api_url = api_url if api_url is not None else os.getenv(
             "AIRTEL_SMS_URL",
             "https://iqsms.airtel.in/api/v1/send-prepaid-sms"
         )
-        self.customer_id = customer_id or os.getenv("AIRTEL_CUSTOMER_ID", "")
-        self.username = username or os.getenv("AIRTEL_USERNAME") or self.customer_id
-        self.api_secret = api_secret or os.getenv("AIRTEL_API_SECRET", "")
-        self.password = password or os.getenv("AIRTEL_PASSWORD") or self.api_secret
-        self.api_key = api_key or os.getenv("AIRTEL_API_KEY", "")
-        self.sender_id = sender_id or os.getenv("AIRTEL_SENDER_ID", AIRTEL_DLT_HEADER)
-        self.entity_id = entity_id or os.getenv("AIRTEL_ENTITY_ID", AIRTEL_DLT_PE_ID)
+        self.customer_id = customer_id if customer_id is not None else os.getenv("AIRTEL_CUSTOMER_ID", "")
+        self.api_secret = api_secret if api_secret is not None else os.getenv("AIRTEL_API_SECRET", "")
+        self.password = password if password is not None else (os.getenv("AIRTEL_PASSWORD") or self.api_secret)
+        self.username = username if username is not None else (os.getenv("AIRTEL_USERNAME") or self.customer_id)
+        self.api_key = api_key if api_key is not None else os.getenv("AIRTEL_API_KEY", "")
+        self.sender_id = sender_id if sender_id is not None else os.getenv("AIRTEL_SENDER_ID", AIRTEL_DLT_HEADER)
+        self.entity_id = entity_id if entity_id is not None else os.getenv("AIRTEL_ENTITY_ID", AIRTEL_DLT_PE_ID)
         self.timeout_seconds = timeout_seconds
 
     def is_configured(self) -> bool:
