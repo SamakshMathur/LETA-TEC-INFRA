@@ -363,7 +363,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                   width: '6px',
                   height: '6px',
                   borderRadius: '50%',
-                  background: '#67E8F9',
+                  background: 'var(--ws-accent-bright,#67E8F9)',
                   animation: `leta-thinking-bounce 1.1s ease-in-out ${delay}ms infinite`,
                   opacity: 0.85,
                 }}
@@ -377,7 +377,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
               fontSize: '11px',
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
-              color: '#67E8F9',
+              color: 'var(--ws-accent-bright,#67E8F9)',
               opacity: 0.9,
               animation: 'leta-status-fade 0.35s ease',
             }}
@@ -413,8 +413,8 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
               className="flex items-center gap-1.5 px-2 py-1 rounded-md"
               style={{ background: 'rgba(103,232,249,0.06)', border: '1px solid rgba(103,232,249,0.12)' }}
             >
-              <ShieldCheck size={10} style={{ color: '#67E8F9' }} />
-              <span className="font-mono text-[9px] font-bold tracking-widest uppercase" style={{ color: '#4FB7C5' }}>
+              <ShieldCheck size={10} style={{ color: 'var(--ws-accent-bright,#67E8F9)' }} />
+              <span className="font-mono text-[9px] font-bold tracking-widest uppercase" style={{ color: 'var(--ws-accent,#4FB7C5)' }}>
                 LETA TEC
               </span>
             </div>
@@ -426,10 +426,10 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
               style={{
                 background: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(255,255,255,0.07)',
-                color: hasCopied ? '#22C55E' : '#64748B',
+                color: hasCopied ? 'var(--ws-success,#22C55E)' : '#64748B',
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = hasCopied ? '#22C55E' : '#64748B'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--ws-text-heading,#F4F7FA)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = hasCopied ? 'var(--ws-success,#22C55E)' : '#64748B'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
               title="Copy answer"
             >
               {hasCopied ? <Check size={12} /> : <Copy size={12} />}
@@ -445,7 +445,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                   border: '1px solid rgba(255,255,255,0.07)',
                   color: '#64748B',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--ws-text-heading,#F4F7FA)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
                 onMouseLeave={e => { e.currentTarget.style.color = '#64748B'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
                 title="Regenerate"
               >
@@ -460,7 +460,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
               style={{
                 background: feedback === 'up' ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)',
                 border: `1px solid ${feedback === 'up' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.07)'}`,
-                color: feedback === 'up' ? '#22C55E' : '#64748B',
+                color: feedback === 'up' ? 'var(--ws-success,#22C55E)' : '#64748B',
               }}
               title="Good response"
             >
@@ -472,7 +472,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
               style={{
                 background: feedback === 'down' ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.04)',
                 border: `1px solid ${feedback === 'down' ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.07)'}`,
-                color: feedback === 'down' ? '#EF4444' : '#64748B',
+                color: feedback === 'down' ? 'var(--ws-text-error,#EF4444)' : '#64748B',
               }}
               title="Needs improvement"
             >
@@ -489,7 +489,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                 style={{
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.07)',
-                  color: shareState === 'copied' ? '#22C55E' : '#64748B',
+                  color: shareState === 'copied' ? 'var(--ws-success,#22C55E)' : '#64748B',
                 }}
                 title={shareState === 'copied' ? 'Link copied — anyone signed in can now open it' : 'Share this chat (read-only)'}
               >
@@ -521,27 +521,27 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
           {/* Content — no box, flows naturally */}
           <div
             className="prose prose-sm md:prose-base max-w-none leading-relaxed pt-1"
-            style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }}
+            style={{ color: 'var(--ws-text-body,#CBD5E1)', fontFamily: "'Times New Roman', Times, serif" }}
           >
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                h1: p => <h1 className="text-xl font-bold mt-6 mb-4 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
-                h2: p => <h2 className="text-lg font-bold mt-5 mb-3 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
-                h3: p => <h3 className="text-base font-bold mt-4 mb-2 text-white" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
+                h1: p => <h1 className="text-xl font-bold mt-6 mb-4 text-[var(--ws-text-heading,#F4F7FA)]" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
+                h2: p => <h2 className="text-lg font-bold mt-5 mb-3 text-[var(--ws-text-heading,#F4F7FA)]" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
+                h3: p => <h3 className="text-base font-bold mt-4 mb-2 text-[var(--ws-text-heading,#F4F7FA)]" style={{ fontFamily: "'Bookman Old Style', 'Book Antiqua', 'Palatino Linotype', serif" }} {...p} />,
                 ul: p => <ul className="list-disc list-outside ml-5 mb-4 space-y-2" {...p} />,
                 ol: p => <ol className="list-decimal list-outside ml-5 mb-4 space-y-2" {...p} />,
-                li: p => <li className="pl-1" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
-                p:  p => <p className="mb-4" style={{ color: '#CBD5E1', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
-                strong: p => <strong className="font-bold" style={{ color: '#67E8F9' }} {...p} />,
+                li: p => <li className="pl-1" style={{ color: 'var(--ws-text-body,#CBD5E1)', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
+                p:  p => <p className="mb-4" style={{ color: 'var(--ws-text-body,#CBD5E1)', fontFamily: "'Times New Roman', Times, serif" }} {...p} />,
+                strong: p => <strong className="font-bold" style={{ color: 'var(--ws-accent-bright,#67E8F9)' }} {...p} />,
                 table: p => (
                   <div className="overflow-x-auto my-6">
                     <table className="min-w-full text-sm font-mono" style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }} {...p} />
                   </div>
                 ),
                 thead: p => <thead style={{ background: 'rgba(103,232,249,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }} {...p} />,
-                th: p => <th className="px-4 py-3 text-left font-bold text-white" {...p} />,
-                td: p => <td className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#CBD5E1' }} {...p} />,
+                th: p => <th className="px-4 py-3 text-left font-bold text-[var(--ws-text-heading,#F4F7FA)]" {...p} />,
+                td: p => <td className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'var(--ws-text-body,#CBD5E1)' }} {...p} />,
                 a: p => {
                   if (p.href && p.href.includes('view_by_path')) {
                     return <>{p.children}</>;
@@ -569,9 +569,9 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                       target={isDocLink ? undefined : '_blank'}
                       rel="noopener noreferrer"
                       className="font-mono font-bold underline cursor-pointer transition-colors"
-                      style={{ color: '#67E8F9' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#22D3EE'; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = '#67E8F9'; }}
+                      style={{ color: 'var(--ws-accent-bright,#67E8F9)' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = 'var(--ws-accent-bright,#67E8F9)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'var(--ws-accent-bright,#67E8F9)'; }}
                       onClick={e => {
                         e.stopPropagation();
                         const linkText = p.children?.toString?.() || '';
@@ -596,7 +596,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                   display: 'inline-block',
                   width: '2px',
                   height: '1em',
-                  background: '#4FB7C5',
+                  background: 'var(--ws-accent,#4FB7C5)',
                   marginLeft: '2px',
                   verticalAlign: 'text-bottom',
                   animation: 'leta-cursor-blink 0.8s step-end infinite',
@@ -620,14 +620,14 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                   return (
                     <div
                       key={idx}
-                      className="flex-shrink-0 w-[260px] p-3.5 rounded-xl border border-white/[0.06] bg-white/[0.015] flex flex-col"
+                      className="flex-shrink-0 w-[260px] p-3.5 rounded-xl border border-[var(--ws-hairline,rgba(255,255,255,0.05))] bg-[var(--ws-surface-hover,rgba(255,255,255,0.03))] flex flex-col"
                     >
                       <div className="flex items-start gap-2 mb-2">
-                        <FileText size={13} className="mt-0.5 flex-shrink-0 text-[#4FB7C5]" />
-                        <p className="text-xs font-semibold text-white leading-snug line-clamp-2">{title}</p>
+                        <FileText size={13} className="mt-0.5 flex-shrink-0 text-[var(--ws-accent,#4FB7C5)]" />
+                        <p className="text-xs font-semibold text-[var(--ws-text-heading,#F4F7FA)] leading-snug line-clamp-2">{title}</p>
                       </div>
                       {snippet && (
-                        <p className={`text-[11px] leading-relaxed text-[#8592A8] mb-2 ${isExpanded ? '' : 'line-clamp-3'}`}>
+                        <p className={`text-[11px] leading-relaxed text-[var(--ws-text-secondary,#A1AAB8)] mb-2 ${isExpanded ? '' : 'line-clamp-3'}`}>
                           {snippet}
                         </p>
                       )}
@@ -635,7 +635,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                         {snippet.length > 140 ? (
                           <button
                             onClick={() => toggleSourceExpanded(idx)}
-                            className="flex items-center gap-0.5 text-[10px] font-semibold text-[#4FB7C5] hover:text-[#67E8F9] transition-colors"
+                            className="flex items-center gap-0.5 text-[10px] font-semibold text-[var(--ws-accent,#4FB7C5)] hover:text-[var(--ws-accent-bright,#67E8F9)] transition-colors"
                           >
                             {isExpanded ? 'Show less' : 'Read more'}
                             {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
@@ -646,7 +646,7 @@ const LetaResponse = ({ data, isDark: _isDark = false, animate: _animate = true,
                             onClick={() => onDocumentClick
                               ? onDocumentClick({ url: docUrl, page: src.page || null, title })
                               : window.open(docUrl, '_blank', 'noopener,noreferrer')}
-                            className="flex items-center gap-0.5 text-[10px] font-semibold text-[#8592A8] hover:text-white transition-colors"
+                            className="flex items-center gap-0.5 text-[10px] font-semibold text-[var(--ws-text-secondary,#A1AAB8)] hover:text-[var(--ws-text-heading,#F4F7FA)] transition-colors"
                           >
                             Original PDF <ExternalLink size={10} />
                           </button>
