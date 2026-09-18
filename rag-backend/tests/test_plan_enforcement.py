@@ -83,16 +83,41 @@ def test_verify_plan_active_allows_an_active_plan(monkeypatch):
     app_module._verify_plan_active("alice")  # must not raise
 
 
-def test_verify_plan_active_allows_a_user_with_no_session_end_on_record(monkeypatch):
-    """A user who's never paid yet (e.g. mid-signup, or an old account from
-    before plans existed) has no session_end field at all — must not be
-    treated as expired."""
+def test_verify_plan_active_blocks_a_user_who_never_had_a_plan(monkeypatch):
+    """The real bug this was tightened to close: AskLetaWidget.tsx linked
+    straight into the workspace with no plan check at all, so a freshly
+    registered user — session_end never set, since only a real payment
+    (_credit_session) sets it — could reach /ask with full, free, unlimited
+    access. A user with no session_end AND no admin grant on record must be
+    blocked, not waved through."""
+    from fastapi import HTTPException
     from app.api import app as app_module
 
     fake_users = _FakeUserCollection([{"username": "bob"}])
     monkeypatch.setattr("app.database.get_user_collection", lambda: fake_users)
 
-    app_module._verify_plan_active("bob")  # must not raise
+    with pytest.raises(HTTPException) as exc_info:
+        app_module._verify_plan_active("bob")
+    assert exc_info.value.status_code == 401
+    # Deliberately different wording from the expired-plan case — telling
+    # someone who never paid to "log in again" would be misleading; they
+    # need to buy a plan, not re-authenticate.
+    assert exc_info.value.detail == "No active plan. Please purchase a plan to continue."
+
+
+def test_verify_plan_active_allows_an_admin_granted_unlimited_plan(monkeypatch):
+    """admin.py's grant_plan endpoint, called with hours=None, deliberately
+    $unsets session_end entirely to grant unlimited access — but always
+    sets last_granted_by in the same update. That field is the reliable
+    signal distinguishing "an admin genuinely granted this" from "this
+    account has simply never been granted anything" — both look identical
+    otherwise (session_end absent)."""
+    from app.api import app as app_module
+
+    fake_users = _FakeUserCollection([{"username": "carol", "last_granted_by": "admin"}])
+    monkeypatch.setattr("app.database.get_user_collection", lambda: fake_users)
+
+    app_module._verify_plan_active("carol")  # must not raise
 
 
 def test_verify_plan_active_noop_for_no_username(monkeypatch):
