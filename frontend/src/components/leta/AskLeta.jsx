@@ -137,14 +137,12 @@ const AskLeta = ({ contextDesc = 'GST scenarios' }) => {
 
       setResponse({
         query,
-        confidence: 0.92,
         answer: data.answer || 'No answer returned.',
         citations: (data.sources || []).map(s => s.title).filter(Boolean),
       });
     } catch (err) {
       setResponse({
         query,
-        confidence: 0,
         answer: `**[Connection Error]**\n\nUnable to reach the advisory engine: ${err.message}. Please check your connection and try again.`,
         citations: [],
       });

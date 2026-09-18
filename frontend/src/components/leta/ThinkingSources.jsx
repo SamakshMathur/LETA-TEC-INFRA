@@ -51,9 +51,9 @@ const ThinkingSources = ({ sources = [], isCollapsedInitial = false, onDocumentC
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="transition-colors"
-          style={{ color: '#475569' }}
+          style={{ color: '#64748B' }}
           onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; }}
-          onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
+          onMouseLeave={e => { e.currentTarget.style.color = '#64748B'; }}
         >
           {isCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
         </button>

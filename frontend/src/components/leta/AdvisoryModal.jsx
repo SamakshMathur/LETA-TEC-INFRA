@@ -111,7 +111,7 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
                 <h2 className="text-lg font-bold text-white font-mono uppercase tracking-wider">
                   Legal Advisory Generator
                 </h2>
-                <p className="text-[10px] font-mono" style={{ color: '#475569' }}>
+                <p className="text-[10px] font-mono" style={{ color: '#64748B' }}>
                   // MODE: {step === 'result' ? 'REPORT_VIEW' : 'CONFIGURATION'}
                 </p>
               </div>
@@ -119,9 +119,9 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
             <button
               onClick={onClose}
               className="p-2 rounded-lg transition-colors"
-              style={{ color: '#475569' }}
+              style={{ color: '#64748B' }}
               onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = '#475569'; e.currentTarget.style.background = 'transparent'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#64748B'; e.currentTarget.style.background = 'transparent'; }}
             >
               <X size={20} />
             </button>
@@ -209,9 +209,9 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
                   <button
                     onClick={() => setStep('selection')}
                     className="flex items-center gap-2 mb-6 text-xs font-mono uppercase transition-colors"
-                    style={{ color: '#475569' }}
+                    style={{ color: '#64748B' }}
                     onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#64748B'; }}
                   >
                     <ChevronLeft size={13} /> Back
                   </button>
@@ -296,9 +296,9 @@ const AdvisoryModal = ({ isOpen, onClose, initialQuery, initialContext }) => {
               <button
                 onClick={() => setStep('selection')}
                 className="text-xs font-mono uppercase transition-colors"
-                style={{ color: '#475569' }}
+                style={{ color: '#64748B' }}
                 onMouseEnter={e => { e.currentTarget.style.color = '#CBD5E1'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = '#475569'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#64748B'; }}
               >
                 &lt; New Advisory
               </button>

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Shield, AlertTriangle, RotateCcw, CreditCard, Lock } from 'lucide-react';
-
-const CONTACT_EMAIL = 'contact@letatec.com';
+import { CONTACT_EMAIL } from '../constants/contact';
 const COMPANY_ADDRESS = 'LG-32 Jaipur Electronics Market, Riddhi Siddhi Chowraha, Gopal Pura Bypass, Jaipur - 303019';
 
 const tabs = [

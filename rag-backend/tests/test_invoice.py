@@ -42,6 +42,20 @@ class _FakeCounterCollection:
         return dict(doc)
 
 
+class _FakeCursor:
+    """Just enough of a pymongo cursor to exercise .sort() chaining."""
+
+    def __init__(self, docs):
+        self._docs = docs
+
+    def sort(self, field, direction):
+        self._docs = sorted(self._docs, key=lambda d: d[field], reverse=(direction < 0))
+        return self
+
+    def __iter__(self):
+        return iter(self._docs)
+
+
 class _FakeInvoiceCollection:
     def __init__(self):
         self._docs = {}  # keyed by payment_id
@@ -50,6 +64,11 @@ class _FakeInvoiceCollection:
         pid = query.get("payment_id")
         doc = self._docs.get(pid)
         return dict(doc) if doc else None
+
+    def find(self, query, projection=None):
+        username = query.get("username")
+        matches = [dict(d) for d in self._docs.values() if d.get("username") == username]
+        return _FakeCursor(matches)
 
     def insert_one(self, doc):
         pid = doc["payment_id"]
@@ -296,6 +315,68 @@ def test_render_invoice_pdf_legacy_historical_invoice_compatibility(invoice_modu
     assert "TAX INVOICE" in text
     assert "GST @ 18%" in text
     assert "Rs.199.00" in text
+
+
+def test_list_invoice_records_is_scoped_to_the_user_and_newest_first(invoice_module):
+    from datetime import datetime, timezone
+
+    invoice_module.create_invoice_record(
+        payment_id="pay_alice_1", order_id="o1", username="alice",
+        customer_name="Alice", customer_email=None, customer_phone=None,
+        plan_name="1-Hour Access", amount_paise=1000,
+    )
+    invoice_module.create_invoice_record(
+        payment_id="pay_mallory_1", order_id="o2", username="mallory",
+        customer_name="Mallory", customer_email=None, customer_phone=None,
+        plan_name="1-Hour Access", amount_paise=1000,
+    )
+    invoice_module.create_invoice_record(
+        payment_id="pay_alice_2", order_id="o3", username="alice",
+        customer_name="Alice", customer_email=None, customer_phone=None,
+        plan_name="3-Hour Pro Access", amount_paise=1000,
+    )
+    # Backdate the first so ordering isn't just insertion order.
+    invoice_module._fake_invoices._docs["pay_alice_1"]["issued_at"] = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    invoice_module._fake_invoices._docs["pay_alice_2"]["issued_at"] = datetime(2026, 6, 1, tzinfo=timezone.utc)
+
+    results = invoice_module.list_invoice_records("alice")
+
+    assert [r["payment_id"] for r in results] == ["pay_alice_2", "pay_alice_1"]  # newest first
+    assert all(r["username"] == "alice" for r in results)  # mallory's invoice never leaks in
+
+
+def test_list_invoice_records_empty_for_a_user_with_no_invoices(invoice_module):
+    assert invoice_module.list_invoice_records("nobody") == []
+
+
+# ── list_invoices endpoint (payments.py) ────────────────────────────────────
+
+def test_list_invoices_endpoint_returns_summary_fields_only(monkeypatch):
+    from app.api import payments
+    from datetime import datetime, timezone
+
+    records = [
+        {
+            "invoice_number": "LETA/2026-27/00002", "payment_id": "pay_2", "username": "alice",
+            "customer_name": "Alice", "customer_email": "alice@example.com", "customer_phone": None,
+            "plan_name": "3-Hour Pro Access", "amount_paise": 29900,
+            "issued_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+        },
+    ]
+    monkeypatch.setattr("app.services.invoice.list_invoice_records", lambda username: records)
+
+    result = payments.list_invoices(current_user={"username": "alice"})
+
+    assert result == [{
+        "invoice_number": "LETA/2026-27/00002",
+        "payment_id": "pay_2",
+        "plan_name": "3-Hour Pro Access",
+        "amount_paise": 29900,
+        "issued_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+    }]
+    # Contact details from the full record must not leak into the list view.
+    assert "customer_email" not in result[0]
+    assert "customer_phone" not in result[0]
 
 
 # ── download_invoice endpoint (payments.py) ─────────────────────────────────

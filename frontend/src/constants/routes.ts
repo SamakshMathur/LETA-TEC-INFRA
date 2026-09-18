@@ -25,6 +25,9 @@ export const ROUTES = {
   LEGAL: '/legal',
   MY_DOCS: '/my-docs',
   PAYMENT: '/payment',
+  SETTINGS: '/settings',
+  INVOICES: '/invoices',
+  DOCUMENT_LIBRARY: '/document-library',
 };
 
 // Which domainIds are actually reachable right now. The dashboard's module

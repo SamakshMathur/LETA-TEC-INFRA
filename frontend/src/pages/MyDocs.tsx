@@ -6,6 +6,7 @@ import { useSavedDocs, SavedDoc } from '../hooks/useSavedDocs';
 import { getDocumentContext } from '../constants/documentLibrary';
 import { BASE_URL as VITE_API_BASE } from '../config/api';
 import { DocPreviewSidebar } from '../components/documents';
+import { ROUTES } from '../constants/routes';
 
 const API_BASE = `${VITE_API_BASE}/api/documents`;
 
@@ -211,7 +212,7 @@ const MyDocs: React.FC = () => {
               Browse the document library and click the bookmark icon on any document to save it here.
             </p>
             <Link
-              to="/docs"
+              to={ROUTES.DOCUMENT_LIBRARY}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-mono transition-all"
               style={{
                 background: 'rgba(79,183,197,0.08)',

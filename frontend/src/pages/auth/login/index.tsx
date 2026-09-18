@@ -7,8 +7,38 @@ import { ROUTES } from '../../../constants/routes';
 type Method = 'phone' | 'email';
 type Step = 'contact' | 'otp';
 
+// Pulled out as a pure function so this is unit-testable without mounting
+// the full login page (routing, auth context, OTP timers).
+//
+// The OTP confirmation used to always render "+91 ••••••{last 4 digits}"
+// regardless of which method the user picked — pick the Email tab and
+// enter an address, and this rendered something like "+91 ••••••e.com": a
+// phone-formatted mask wrapped around an email address, at the exact
+// moment (identity verification) a user most needs reassurance they did
+// the right thing.
+export function maskContact(contact: string, method: Method): string {
+  if (method === 'phone') {
+    return `+91 ••••••${contact.slice(-4)}`;
+  }
+  const at = contact.indexOf('@');
+  if (at <= 0) return contact; // malformed input — show as-is rather than guess
+  const local = contact.slice(0, at);
+  const domain = contact.slice(at);
+  const visible = local.slice(0, Math.min(2, local.length));
+  const maskedCount = Math.max(local.length - visible.length, 2);
+  return `${visible}${'•'.repeat(maskedCount)}${domain}`;
+}
+
+// Signup only ever collects a phone number (see signup/index.tsx), and
+// email OTP delivery has no working provider configured yet. Login used to
+// offer an "Email" tab anyway, which was a guaranteed dead end: either a
+// 404 "no account found" for anyone who signed up normally, or — for an
+// account that did have an email on file — a silent no-op send with no
+// OTP ever arriving. Phone is the only login method that can actually
+// succeed right now, so it's the only one offered.
+const method: Method = 'phone';
+
 const LoginPage: React.FC = () => {
-  const [method, setMethod] = useState<Method>('phone');
   const [contact, setContact] = useState('');
   const [step, setStep] = useState<Step>('contact');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -27,7 +57,6 @@ const LoginPage: React.FC = () => {
   const loginReason = new URLSearchParams(location.search).get('reason');
   const sessionExpired = loginReason === 'session_expired';
   const planExpired = loginReason === 'plan_expired';
-  const switchMethod = (m: Method) => { setMethod(m); setContact(''); setError(null); };
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -153,44 +182,30 @@ const LoginPage: React.FC = () => {
           {/* ── Step 1: Phone number entry ── */}
           {step === 'contact' && (
             <form onSubmit={handleSendOtp} className="space-y-6">
-              {/* Method toggle */}
-              <div className="flex rounded-leta border border-leta-gray-200 overflow-hidden">
-                {(['phone', 'email'] as Method[]).map(m => (
-                  <button key={m} type="button" onClick={() => switchMethod(m)}
-                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${method === m ? 'bg-leta-primary text-surface' : 'text-leta-gray-500 hover:text-leta-gray-900/70'
-                      }`}>
-                    {m === 'phone' ? 'Mobile' : 'Email'}
-                  </button>
-                ))}
-              </div>
-
               <div className="space-y-2">
                 <label htmlFor="contact" className="label-auth">
-                  {method === 'phone' ? 'Mobile Number' : 'Email Address'}
+                  Mobile Number
                 </label>
                 <input
                   id="contact"
-                  type={method === 'phone' ? 'tel' : 'email'}
+                  type="tel"
                   value={contact}
-                  onChange={e => {
-                    const val = method === 'phone' ? e.target.value.replace(/\D/g, '') : e.target.value;
-                    setContact(val);
-                  }}
+                  onChange={e => setContact(e.target.value.replace(/\D/g, ''))}
                   required
                   className={`input-auth ${
-                    method === 'phone' && contact.length > 0 && contact.length !== 10
+                    contact.length > 0 && contact.length !== 10
                       ? '!text-red-400 !border-red-500/50 focus:!border-red-500 focus:!ring-1 focus:!ring-red-500/30'
                       : ''
                   }`}
-                  aria-invalid={method === 'phone' ? (contact.length > 0 ? contact.length !== 10 : undefined) : undefined}
-                  placeholder={method === 'phone' ? '10-digit mobile number' : 'you@example.com'}
+                  aria-invalid={contact.length > 0 ? contact.length !== 10 : undefined}
+                  placeholder="10-digit mobile number"
                   autoFocus
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={loading || (method === 'phone' ? contact.length !== 10 : !contact.trim())}
+                disabled={loading || contact.length !== 10}
                 className="btn-auth-primary"
               >
                 {loading ? 'Sending OTP...' : 'Send OTP'}
@@ -211,7 +226,7 @@ const LoginPage: React.FC = () => {
           {step === 'otp' && (
             <form onSubmit={handleVerify} className="space-y-6">
               <p className="text-center text-xs text-leta-gray-900/50">
-                OTP sent to <span className="text-leta-primary font-bold">+91 ••••••{contact.slice(-4)}</span>
+                OTP sent to <span className="text-leta-primary font-bold">{maskContact(contact, method)}</span>
               </p>
 
               <div className="flex gap-2 justify-center">

@@ -571,6 +571,29 @@ async def razorpay_webhook(request: Request):
     return {"status": "ok"}
 
 
+@router.get("/invoices")
+def list_invoices(current_user: dict = Depends(get_jwt_user)):
+    """
+    Lists the current user's own invoices, newest first — backs the
+    invoice history page. Returns only the summary fields a history list
+    needs; the full record (customer contact details etc.) stays behind
+    the per-invoice download endpoint below.
+    """
+    from app.services.invoice import list_invoice_records
+
+    records = list_invoice_records(current_user.get("username", ""))
+    return [
+        {
+            "invoice_number": r["invoice_number"],
+            "payment_id": r["payment_id"],
+            "plan_name": r["plan_name"],
+            "amount_paise": r["amount_paise"],
+            "issued_at": r["issued_at"],
+        }
+        for r in records
+    ]
+
+
 @router.get("/invoice/{payment_id}")
 def download_invoice(payment_id: str, current_user: dict = Depends(get_jwt_user)):
     """

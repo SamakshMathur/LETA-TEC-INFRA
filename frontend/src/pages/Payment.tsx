@@ -11,6 +11,7 @@ import { useAuth } from '../hooks/useAuth';
 import { LIVE_MODULE_IDS } from '../constants/routes';
 import { getStoredAuthSession } from '../lib/auth-storage';
 import { INDIAN_STATES } from '../constants/indianStates';
+import { CONTACT_EMAIL } from '../constants/contact';
 import type { Session } from '../types/auth';
 import { getAuthHeaders as getAuthHeader } from '../utils/authHeaders';
 
@@ -32,6 +33,18 @@ export function wasCreditedWhileModalWasOpen(
   if (!Number.isFinite(newEndMs)) return null;
   if (previousSessionEndMs && newEndMs <= previousSessionEndMs) return null;
   return newEndMs;
+}
+
+// Pulled out as a pure function (same reasoning as the others above) so
+// the mailto link's exact shape — including that the payment ID is
+// actually embedded in the body, not just told to the user to type
+// themselves — is unit-tested without mounting the full page.
+export function buildSupportMailtoHref(paymentId: string): string {
+  const subject = encodeURIComponent('Payment issue — need help');
+  const body = encodeURIComponent(
+    `My payment did not go through correctly.\n\nPayment ID: ${paymentId}`
+  );
+  return `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
 }
 
 const B = {
@@ -135,6 +148,13 @@ const Payment: React.FC = () => {
 
   const [loading,  setLoading]  = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  // Set only for a GENUINE payment failure (Razorpay actually charged the
+  // card, and our own /verify rejected it) — not for a session-expiry or
+  // duplicate/already-credited case, where the money is already accounted
+  // for. This is the one moment a customer most needs a way to reach a
+  // human directly, and previously had none — the only support contact in
+  // the whole product lived three clicks away in Terms & Conditions.
+  const [failedPaymentId, setFailedPaymentId] = useState<string | null>(null);
   const [success,  setSuccess]  = useState(false);
   const [paidPaymentId, setPaidPaymentId] = useState<string | null>(null);
   const [invoiceDownloading, setInvoiceDownloading] = useState(false);
@@ -174,6 +194,7 @@ const Payment: React.FC = () => {
 
   const handlePay = async () => {
     setPayError(null);
+    setFailedPaymentId(null);
 
     // Place of Supply is required for correct tax invoice generation
     if (!selectedStateCode) {
@@ -273,7 +294,8 @@ const Payment: React.FC = () => {
             setPayError('Your session expired during checkout. Please log in again — your payment was received and will be credited once you log back in.');
             setLoading(false);
           } else {
-            setPayError('Payment verification failed. Please contact support with your payment ID.');
+            setPayError('Payment verification failed.');
+            setFailedPaymentId(response.razorpay_payment_id);
             setLoading(false);
           }
         },
@@ -375,7 +397,12 @@ const Payment: React.FC = () => {
           <p className="text-sm mb-2" style={{ color: '#64748B' }}>
             Your {plan.duration} access to {mod.fullName} is now active.
           </p>
-          <p className="text-xs mb-6 font-mono" style={{ color: '#334155' }}>
+          {/* #334155 measured ~1.4:1 against this near-black background —
+              well under WCAG's 4.5:1 minimum for real body text. #64748B
+              (already used one line above for the sibling "Your {duration}
+              access..." text) is the same muted tone at a contrast that
+              actually passes. */}
+          <p className="text-xs mb-6 font-mono" style={{ color: '#64748B' }}>
             A confirmation has been sent to {user?.email}
           </p>
 
@@ -426,9 +453,9 @@ const Payment: React.FC = () => {
           transition={{ duration: 0.3 }}
           onClick={() => navigate('/dashboard')}
           className="flex items-center gap-2 text-xs mb-10 transition-colors"
-          style={{ color: '#475569' }}
+          style={{ color: '#64748B' }}
           onMouseEnter={e => (e.currentTarget.style.color = B.accent)}
-          onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}
         >
           <ArrowLeft size={13} /> Back to dashboard
         </motion.button>
@@ -450,7 +477,7 @@ const Payment: React.FC = () => {
                 style={{ letterSpacing: '-0.025em' }}>
                 {mod.fullName}
               </h1>
-              <p className="text-sm" style={{ color: '#475569' }}>
+              <p className="text-sm" style={{ color: '#64748B' }}>
                 Review your order before completing payment
               </p>
             </div>
@@ -476,13 +503,13 @@ const Payment: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-bold text-white">{plan.price}</p>
-                    <p className="text-[10px] font-mono mt-0.5" style={{ color: '#334155' }}>incl. all taxes</p>
+                    <p className="text-[10px] font-mono mt-0.5" style={{ color: '#64748B' }}>incl. all taxes</p>
                   </div>
                 </div>
               </div>
 
               <div className="px-6 py-5">
-                <p className="text-[10px] font-mono uppercase tracking-widest mb-4" style={{ color: '#334155' }}>
+                <p className="text-[10px] font-mono uppercase tracking-widest mb-4" style={{ color: '#64748B' }}>
                   What's included
                 </p>
                 <ul className="space-y-2.5">
@@ -518,7 +545,7 @@ const Payment: React.FC = () => {
 
             {/* Accepted methods */}
             <div className="rounded-xl px-5 py-4" style={{ background: '#080A10', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color: '#334155' }}>
+              <p className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color: '#64748B' }}>
                 Accepted payment methods
               </p>
               <div className="flex flex-wrap items-center gap-2">
@@ -543,7 +570,7 @@ const Payment: React.FC = () => {
               ].map(({ Icon, txt }) => (
                 <div key={txt} className="flex items-center gap-1.5">
                   <Icon size={11} style={{ color: B.accent }} />
-                  <span className="text-[10px] font-mono" style={{ color: '#334155' }}>{txt}</span>
+                  <span className="text-[10px] font-mono" style={{ color: '#64748B' }}>{txt}</span>
                 </div>
               ))}
             </div>
@@ -598,8 +625,8 @@ const Payment: React.FC = () => {
                 </div>
 
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-[10px] font-mono" style={{ color: '#334155' }}>GST (18%)</span>
-                  <span className="text-[10px] font-mono" style={{ color: '#334155' }}>Inclusive</span>
+                  <span className="text-[10px] font-mono" style={{ color: '#64748B' }}>GST (18%)</span>
+                  <span className="text-[10px] font-mono" style={{ color: '#64748B' }}>Inclusive</span>
                 </div>
                 <div className="flex justify-between items-center pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                   <span className="text-sm font-bold text-white">Total</span>
@@ -612,6 +639,21 @@ const Payment: React.FC = () => {
                 <div className="mx-6 mt-5 p-3 rounded-xl text-xs font-medium"
                   style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
                   {payError}
+                  {failedPaymentId && (
+                    <>
+                      {' '}
+                      <a
+                        href={buildSupportMailtoHref(failedPaymentId)}
+                        className="underline font-semibold"
+                        style={{ color: '#F87171' }}
+                      >
+                        Contact support ({CONTACT_EMAIL})
+                      </a>
+                      <span className="block mt-1 font-mono text-[10px] opacity-70">
+                        Payment ID: {failedPaymentId}
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -657,7 +699,7 @@ const Payment: React.FC = () => {
                   By continuing you agree to our{' '}
                   <span
                     className="underline cursor-pointer"
-                    style={{ color: '#334155' }}
+                    style={{ color: '#64748B' }}
                     onClick={() => navigate('/legal')}
                   >
                     Terms of Service

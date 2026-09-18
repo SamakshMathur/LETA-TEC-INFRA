@@ -157,6 +157,18 @@ def get_invoice_record(payment_id: str) -> Optional[dict]:
     return invoices.find_one({"payment_id": payment_id}, {"_id": 0})
 
 
+def list_invoice_records(username: str) -> list:
+    """All of a user's invoices, newest first — backs the invoice history
+    page. Same ownership scoping as get_invoice_record: filtered by the
+    invoice's own username field, never a client-supplied one."""
+    invoices = get_invoice_collection()
+    if invoices is None:
+        return []
+    return list(
+        invoices.find({"username": username}, {"_id": 0}).sort("issued_at", -1)
+    )
+
+
 def render_invoice_pdf(record: dict) -> bytes:
     """Regenerates the PDF from a stored invoice record — builds fresh
     so styling applies dynamically while preserving stored financial data."""
