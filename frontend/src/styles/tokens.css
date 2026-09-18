@@ -86,6 +86,9 @@
   --ws-accent-contrast-text: #000000;
   --ws-success:         #22C55E;
   --ws-star:            #FCD34D;
+  --ws-heading-serif:   #E8DDD0;
+  --ws-info:            #3B82F6;
+  --ws-highlight:       #EC4899;
 }
 
 [data-workspace-theme="light"] {
@@ -112,4 +115,7 @@
   --ws-accent-contrast-text: #FFFFFF;
   --ws-success:         #15803D;
   --ws-star:            #B45309;
+  --ws-heading-serif:   #4A3728;
+  --ws-info:            #1D4ED8;
+  --ws-highlight:       #9D174D;
 }
