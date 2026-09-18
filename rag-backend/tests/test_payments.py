@@ -137,7 +137,7 @@ def test_credit_session_handles_no_db_gracefully():
     assert result["verified"] is True
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_webhook_order_lookup_does_not_crash_on_a_real_collection(monkeypatch):
     """The exact vulnerability in razorpay_webhook: `orders_col.find_one(...)
     if orders_col else None` used to raise NotImplementedError for ANY real

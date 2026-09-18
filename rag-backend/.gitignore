@@ -19,6 +19,7 @@ ENV/
 # Local Debug Artifacts
 *.log
 test_*.py
+!tests/test_*.py
 debug_*.py
 trace_*.py
 final_test.py
