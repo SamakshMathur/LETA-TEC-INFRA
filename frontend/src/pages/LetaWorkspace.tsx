@@ -1678,27 +1678,27 @@ const LetaWorkspace: React.FC = () => {
     let type = 'Statutory Consultation';
     let provision = 'Act Gen';
     let status = 'Consulting';
-    let statusColor = '#3B82F6';
+    let statusColor = 'var(--ws-info)';
 
     const lower = cleanTitle.toLowerCase();
     if (domainId === 'gst') {
-      if (lower.includes('refund')) { type = 'GST Refund Appeal'; provision = 'Sec 54'; status = 'Draft Ready'; statusColor = '#22C55E'; }
-      else if (lower.includes('itc') || lower.includes('eligible') || lower.includes('16(4)')) { type = 'ITC Audit Review'; provision = 'Sec 16(4)'; status = 'Advisory Signed'; statusColor = '#67E8F9'; }
-      else if (lower.includes('73') || lower.includes('notice') || lower.includes('scn')) { type = 'Sec 73 SCN Response'; provision = 'Section 73'; status = 'Vetting Needed'; statusColor = '#F59E0B'; }
-      else if (lower.includes('86a') || lower.includes('block') || lower.includes('ledger')) { type = 'Ledger Blocking Contest'; provision = 'Rule 86A'; status = 'Active Workspace'; statusColor = '#EC4899'; }
+      if (lower.includes('refund')) { type = 'GST Refund Appeal'; provision = 'Sec 54'; status = 'Draft Ready'; statusColor = 'var(--ws-success)'; }
+      else if (lower.includes('itc') || lower.includes('eligible') || lower.includes('16(4)')) { type = 'ITC Audit Review'; provision = 'Sec 16(4)'; status = 'Advisory Signed'; statusColor = 'var(--ws-accent-bright)'; }
+      else if (lower.includes('73') || lower.includes('notice') || lower.includes('scn')) { type = 'Sec 73 SCN Response'; provision = 'Section 73'; status = 'Vetting Needed'; statusColor = 'var(--ws-star)'; }
+      else if (lower.includes('86a') || lower.includes('block') || lower.includes('ledger')) { type = 'Ledger Blocking Contest'; provision = 'Rule 86A'; status = 'Active Workspace'; statusColor = 'var(--ws-highlight)'; }
       else if (lower.includes('penalty') || lower.includes('47')) { type = 'Section 47 Penalty'; provision = 'Section 47'; status = 'Case Closed'; statusColor = '#6B7280'; }
     } else if (domainId === 'fema') {
       type = 'FEMA Advisory'; provision = 'FEMA Sec 6';
-      if (lower.includes('fdi')) { type = 'FDI Policy Clearance'; provision = 'FDI Schedule'; status = 'Verification Ok'; statusColor = '#22C55E'; }
-      else if (lower.includes('export')) { type = 'Export Repatriation'; provision = 'Section 8'; status = 'Under Audit'; statusColor = '#F59E0B'; }
+      if (lower.includes('fdi')) { type = 'FDI Policy Clearance'; provision = 'FDI Schedule'; status = 'Verification Ok'; statusColor = 'var(--ws-success)'; }
+      else if (lower.includes('export')) { type = 'Export Repatriation'; provision = 'Section 8'; status = 'Under Audit'; statusColor = 'var(--ws-star)'; }
     } else if (domainId === 'company-law') {
       type = 'ROC Corporate Compliance'; provision = 'CA 2013';
-      if (lower.includes('condonation') || lower.includes('delay')) { type = 'Delay Condonation filing'; provision = 'Sec 137'; status = 'In Consultation'; statusColor = '#EC4899'; }
-      else if (lower.includes('director') || lower.includes('164')) { type = 'Board Director Briefing'; provision = 'Sec 164'; status = 'Brief Completed'; statusColor = '#67E8F9'; }
+      if (lower.includes('condonation') || lower.includes('delay')) { type = 'Delay Condonation filing'; provision = 'Sec 137'; status = 'In Consultation'; statusColor = 'var(--ws-highlight)'; }
+      else if (lower.includes('director') || lower.includes('164')) { type = 'Board Director Briefing'; provision = 'Sec 164'; status = 'Brief Completed'; statusColor = 'var(--ws-accent-bright)'; }
     } else if (domainId === 'income-tax') {
       type = 'Scrutiny Defense'; provision = 'ITA 1961';
-      if (lower.includes('143')) { type = '143(2) Response Prep'; provision = 'Sec 143(2)'; status = 'Active Scrutiny'; statusColor = '#EC4899'; }
-      else if (lower.includes('appeal')) { type = 'Assessment Appeal grounds'; provision = 'Sec 246A'; status = 'Draft Signed'; statusColor = '#22C55E'; }
+      if (lower.includes('143')) { type = '143(2) Response Prep'; provision = 'Sec 143(2)'; status = 'Active Scrutiny'; statusColor = 'var(--ws-highlight)'; }
+      else if (lower.includes('appeal')) { type = 'Assessment Appeal grounds'; provision = 'Sec 246A'; status = 'Draft Signed'; statusColor = 'var(--ws-success)'; }
     }
 
     if (type === 'Statutory Consultation' && cleanTitle) {
@@ -2259,7 +2259,7 @@ const LetaWorkspace: React.FC = () => {
                         fontFamily: "'Playfair Display', Georgia, serif",
                         fontWeight: 400,
                         fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
-                        color: '#E8DDD0',
+                        color: 'var(--ws-heading-serif)',
                         letterSpacing: '0.01em',
                         lineHeight: 1.2,
                       }}
@@ -2326,7 +2326,7 @@ const LetaWorkspace: React.FC = () => {
                               )
                             )}
                             {msg.content && (
-                              <p className="whitespace-pre-wrap leading-relaxed text-sm text-[#E4E4E7]">
+                              <p className="whitespace-pre-wrap leading-relaxed text-sm text-[var(--ws-text-heading)]">
                                 {msg.content}
                               </p>
                             )}
@@ -2596,7 +2596,7 @@ const LetaWorkspace: React.FC = () => {
                     exit={{ opacity: 0, scale: 0.95 }}
                     className="absolute -top-12 left-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#EF4444]/30 bg-[var(--ws-bg)] z-30"
                   >
-                    <span className="text-[11px] font-mono text-[#F87171] flex-1">
+                    <span className="text-[11px] font-mono text-[var(--ws-text-error)] flex-1">
                       {fileError}
                     </span>
                     <button
