@@ -69,7 +69,7 @@ const DocxViewer = ({ url }) => {
   }, [url]);
 
   if (loading) return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-[#4FB7C5]">
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--ws-accent,#4FB7C5)]">
       <Loader size={22} className="animate-spin" />
       <span className="text-[11px] font-mono uppercase tracking-widest">Rendering Document...</span>
     </div>
@@ -79,7 +79,7 @@ const DocxViewer = ({ url }) => {
     <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
       <FileQuestion size={36} className="text-[#64748B]" />
       <p className="text-[12px] font-mono text-[#6B7280]">Could not render document: {error}</p>
-      <a href={url} download className="mt-2 px-4 py-2 text-[11px] font-mono uppercase tracking-widest border border-[#4FB7C5]/30 text-[#4FB7C5] hover:bg-[#4FB7C5]/10 transition-colors rounded">
+      <a href={url} download className="mt-2 px-4 py-2 text-[11px] font-mono uppercase tracking-widest border border-[#4FB7C5]/30 text-[var(--ws-accent,#4FB7C5)] hover:bg-[#4FB7C5]/10 transition-colors rounded">
         Download Instead
       </a>
     </div>
@@ -111,15 +111,15 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
       className={`flex flex-col relative shadow-2xl z-20 ${
         isFullscreen ? 'fixed inset-0 z-[10000]' : 'h-full'
       }`}
-      style={{ background: '#0A0F1A' }}
+      style={{ background: 'var(--ws-surface,#0A0F1A)' }}
     >
       {/* Header */}
       <div
         className="flex items-center justify-between px-4 py-2.5 flex-shrink-0"
-        style={{ borderBottom: '1px solid rgba(79,183,197,0.12)', background: '#080D15' }}
+        style={{ borderBottom: '1px solid rgba(79,183,197,0.12)', background: 'var(--ws-surface,#080D15)' }}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[9px] font-mono font-bold uppercase tracking-[0.2em] flex-shrink-0" style={{ color: '#4FB7C5' }}>
+          <span className="text-[9px] font-mono font-bold uppercase tracking-[0.2em] flex-shrink-0" style={{ color: 'var(--ws-accent,#4FB7C5)' }}>
             {isPDF ? 'PDF' : isDocx ? 'DOCX' : isImage ? 'IMG' : fileType.toUpperCase() || 'DOC'}
           </span>
           <span className="text-[11px] font-mono truncate" style={{ color: '#6B7280' }} title={title}>
@@ -133,7 +133,7 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
             rel="noopener noreferrer"
             className="p-1.5 rounded transition-colors"
             style={{ color: '#64748B' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#CBD5E1'}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--ws-text-heading,#CBD5E1)'}
             onMouseLeave={e => e.currentTarget.style.color = '#64748B'}
             title="Open / Download"
           >
@@ -143,7 +143,7 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
             onClick={() => setIsFullscreen(f => !f)}
             className="p-1.5 rounded transition-colors hidden lg:block"
             style={{ color: '#64748B' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#CBD5E1'}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--ws-text-heading,#CBD5E1)'}
             onMouseLeave={e => e.currentTarget.style.color = '#64748B'}
           >
             {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
@@ -152,7 +152,7 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
             onClick={onClose}
             className="p-1.5 rounded transition-colors"
             style={{ color: '#64748B' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#EF4444'}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--ws-text-error,#EF4444)'}
             onMouseLeave={e => e.currentTarget.style.color = '#64748B'}
           >
             <X size={14} />
@@ -192,7 +192,7 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
               href={url}
               download
               className="px-5 py-2 text-[11px] font-mono uppercase tracking-widest rounded-lg transition-colors"
-              style={{ border: '1px solid rgba(79,183,197,0.3)', color: '#4FB7C5' }}
+              style={{ border: '1px solid rgba(79,183,197,0.3)', color: 'var(--ws-accent,#4FB7C5)' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(79,183,197,0.08)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
@@ -205,7 +205,7 @@ const DocumentViewer = ({ url, onClose, title = 'Document', initialPage, keyword
       {/* Footer */}
       <div
         className="px-4 py-1 flex justify-between items-center text-[9px] font-mono uppercase tracking-widest flex-shrink-0"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.03)', color: '#2a3050', background: '#050810' }}
+        style={{ borderTop: '1px solid rgba(255,255,255,0.03)', color: 'var(--ws-text-secondary,#2a3050)', background: 'var(--ws-bg,#050810)' }}
       >
         <span>LETA TEC · DOCUMENT VIEWER</span>
         <span>{isPDF ? 'PDF_RENDER' : isDocx ? 'DOCX_RENDER' : 'RAW'}</span>
