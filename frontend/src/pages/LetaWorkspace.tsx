@@ -1957,7 +1957,7 @@ const LetaWorkspace: React.FC = () => {
                             >
                               <div className="flex items-start justify-between gap-1">
                                 <div className="flex-1 min-w-0">
-                                  <span className="text-xs font-mono tracking-wider font-semibold" style={{ color: meta.statusColor }}>
+                                  <span className="text-sm font-mono tracking-wider font-semibold" style={{ color: meta.statusColor }}>
                                     {meta.provision}
                                   </span>
                                   {isRenaming ? (
@@ -1976,7 +1976,7 @@ const LetaWorkspace: React.FC = () => {
                                   ) : (
                                     <h3
                                       onDoubleClick={e => { e.stopPropagation(); handleRenameStart(session); }}
-                                      className={`text-xs font-semibold truncate mt-1 ${isSelected ? 'text-[var(--ws-text-heading)]' : 'text-[var(--ws-text-secondary)]'}`}
+                                      className={`text-sm font-semibold truncate mt-1 ${isSelected ? 'text-[var(--ws-text-heading)]' : 'text-[var(--ws-text-secondary)]'}`}
                                       title="Double-click to rename"
                                     >
                                       {session.title}
@@ -2021,8 +2021,8 @@ const LetaWorkspace: React.FC = () => {
                                     </button>
                                   )}
                                   <div className="flex items-center gap-2 mt-2">
-                                    <span className="text-[9px] font-mono text-[#52525B] flex items-center gap-1">
-                                      <Calendar size={10} />
+                                    <span className="text-[11px] font-mono text-[#52525B] flex items-center gap-1">
+                                      <Calendar size={11} />
                                       {new Date(session.updated_at).toLocaleDateString()}
                                     </span>
                                   </div>
