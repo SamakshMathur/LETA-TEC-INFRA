@@ -498,6 +498,20 @@ def _extract_query_refs(query: str) -> list:
     refs = []
     seen: set = set()
 
+    # Priority: canonical legal reference resolver
+    try:
+        from app.retrieval.reference_resolver import ReferenceResolver
+        _resolved = ReferenceResolver.resolve_references(query)
+        for _r in _resolved:
+            if _r.canonical_key and _r.canonical_key not in seen:
+                seen.add(_r.canonical_key)
+                refs.append(_r.canonical_key)
+            if _r.base_key and _r.base_key not in seen:
+                seen.add(_r.base_key)
+                refs.append(_r.base_key)
+    except Exception:
+        pass
+
     def _act_codes(ctx: str) -> list:
         found = [code for kw, code in _ACT_CODE_MAP if kw in ctx]
         # Remove duplicates while preserving order
@@ -850,6 +864,104 @@ class Retriever:
                         _meta["year"] = _yr
                         _year_patched += 1
         logger.info(f"Year backfill: patched {_year_patched} chunks from path/filename")
+
+        # ── Sequential section heading inheritance for statute chunks ─────────────
+        # In multi-page PDFs (e.g. IGST Act.pdf, CGST Acts), section headings appear
+        # in the first chunk of a provision, but continuation chunks contain only
+        # operative paragraphs/subsections. Inherit the active section heading and
+        # provision key across consecutive chunks of the same document so child chunks
+        # do not lose document-level legal identity.
+        from collections import defaultdict as _defaultdict
+        _doc_chunks = _defaultdict(list)
+        for _ci, _chunk in enumerate(self.chunks):
+            _meta = _chunk.get("metadata", {})
+            _rel = _chunk.get("rel_path") or _meta.get("rel_path", "")
+            if _rel:
+                _c_idx = _chunk.get("chunk_index")
+                if _c_idx is None:
+                    _c_idx = _meta.get("chunk_index")
+                if _c_idx is None:
+                    _c_idx = _ci
+                try:
+                    _doc_chunks[_rel].append((int(_c_idx), _ci))
+                except (ValueError, TypeError):
+                    _doc_chunks[_rel].append((_ci, _ci))
+
+        _heading_inherited = 0
+        _sec_heading_re = re.compile(r'\bsection\s*[-–—\.]\s*(\d+[A-Za-z]*)\s*,\s*(?:integrated|central|state|union)', re.IGNORECASE)
+        _rule_heading_re = re.compile(r'\brule\s*[-–—\.]\s*(\d+[A-Za-z]*)\s*,\s*(?:central|integrated|state|union)', re.IGNORECASE)
+
+        for _rel, _c_list in _doc_chunks.items():
+            _rel_lower = _rel.lower()
+            _is_statute_doc = "act" in _rel_lower or "rule" in _rel_lower
+            if not _is_statute_doc:
+                continue
+
+            _statute = "IGST" if ("igst" in _rel_lower or "integrated" in _rel_lower) else "CGST"
+            _c_list.sort(key=lambda x: x[0])  # ensure sequential chunk order
+
+            _active_sec_label = None
+            _active_prov_key = None
+            _active_subsec = None
+
+            for _order, _ci in _c_list:
+                _chunk = self.chunks[_ci]
+                _meta = _chunk.get("metadata", {})
+                _txt = _chunk.get("text") or _chunk.get("content") or ""
+
+                _m_sec = _sec_heading_re.search(_txt)
+                _m_rule = _rule_heading_re.search(_txt)
+
+                if _m_sec:
+                    if _m_sec.start() > 50 and _active_prov_key:
+                        _pkeys = _meta.get("provision_keys")
+                        if _pkeys is None:
+                            _meta["provision_keys"] = [_active_prov_key]
+                        elif _active_prov_key not in _pkeys:
+                            if isinstance(_pkeys, list):
+                                _pkeys.append(_active_prov_key)
+                            else:
+                                _meta["provision_keys"] = list(_pkeys) + [_active_prov_key]
+                    _sec_num = _m_sec.group(1).upper()
+                    _active_sec_label = f"section {_sec_num.lower()}"
+                    _active_prov_key = f"{_statute}_SEC_{_sec_num}"
+                    _active_subsec = None
+                elif _m_rule:
+                    if _m_rule.start() > 50 and _active_prov_key:
+                        _pkeys = _meta.get("provision_keys")
+                        if _pkeys is None:
+                            _meta["provision_keys"] = [_active_prov_key]
+                        elif _active_prov_key not in _pkeys:
+                            if isinstance(_pkeys, list):
+                                _pkeys.append(_active_prov_key)
+                            else:
+                                _meta["provision_keys"] = list(_pkeys) + [_active_prov_key]
+                    _rule_num = _m_rule.group(1).upper()
+                    _active_sec_label = f"rule {_rule_num.lower()}"
+                    _active_prov_key = f"{_statute}_RUL_{_rule_num}"
+                    _active_subsec = None
+
+                # Find any numbered statutory subsections in this chunk: e.g. (1), (5), (8)
+                _subsec_matches = list(re.finditer(r'(?:^|\n|\.\s+|;\s*)\s*\((\d+[A-Za-z]*)\)\s+([A-Za-z0-9"“\'\[])', _txt))
+                if _subsec_matches:
+                    _active_subsec = _subsec_matches[-1].group(1)
+
+                # Apply active heading, key, and subsection if chunk is part of this section
+                if _active_prov_key:
+                    _pkeys = _meta.get("provision_keys")
+                    if _pkeys is None:
+                        _meta["provision_keys"] = [_active_prov_key]
+                        _heading_inherited += 1
+                    elif _active_prov_key not in _pkeys:
+                        if isinstance(_pkeys, list):
+                            _pkeys.append(_active_prov_key)
+                        else:
+                            _meta["provision_keys"] = list(_pkeys) + [_active_prov_key]
+                        _heading_inherited += 1
+                    _meta["section_label"] = _active_sec_label
+                    if _active_subsec:
+                        _meta["active_subsection"] = _active_subsec
+        logger.info(f"Section heading inheritance: propagated to {_heading_inherited} continuation chunks")
 
         # Build circular number index for O(1) direct circular lookup and propagate
         # document-level circular identity to all sibling chunks in memory.
@@ -1495,34 +1607,50 @@ class Retriever:
         )
         _OFFICIAL_PATH_PREFIXES = ("circular", "notification")
 
-        def _idx_sort_key(idx: int):
-            """Lower = pinned first.
-            Primary: statute text > ICAI bare-law > circulars/notifs > AAR.
-            Secondary: longer text wins within the same priority tier — this ensures
-            content-rich chunks (section 9(3) with 'reverse charge' text) are pinned
-            before near-empty section headers ('section 9 9').
-            """
-            if idx >= len(self.chunks):
-                return (9, 0)
-            c = self.chunks[idx]
-            _rp = (c.get("rel_path") or
-                   c.get("metadata", {}).get("rel_path", "")).replace("\\", "/").lower()
-            if any(_rp.startswith(p) for p in _STATUTE_PATH_PREFIXES):
-                pri = 0   # actual statute text
-            elif "icai" in _rp and "bare law" in _rp:
-                pri = 1   # ICAI bare-law mega-PDF — contains actual rules text
-            else:
-                first = _rp.split("/")[0] if "/" in _rp else _rp[:20]
-                if any(first.startswith(p) for p in _OFFICIAL_PATH_PREFIXES):
-                    pri = 2   # official circular / notification
+        def _build_sort_key(target_sec: str, target_rul: str, sub_clauses: list):
+            def _key_fn(idx: int):
+                if idx >= len(self.chunks):
+                    return (9, 0)
+                c = self.chunks[idx]
+                meta = c.get("metadata", {})
+                _rp = (c.get("rel_path") or meta.get("rel_path", "")).replace("\\", "/").lower()
+                text = (c.get("text") or c.get("content") or "").lower()
+                sec_label = (meta.get("section_label") or "").lower()
+
+                is_statute = any(_rp.startswith(p) for p in _STATUTE_PATH_PREFIXES)
+                is_target = False
+                if is_statute:
+                    if target_sec and (sec_label == f"section {target_sec}" or f"section - {target_sec}" in text or f"section {target_sec}." in text or f"{target_sec}. (1)" in text):
+                        is_target = True
+                    elif target_rul and (sec_label == f"rule {target_rul}" or f"rule - {target_rul}" in text or f"rule {target_rul}." in text):
+                        is_target = True
+
+                has_all_subs = all(f"({s.lower()})" in text for s in sub_clauses) if sub_clauses else False
+                has_any_sub = any(f"({s.lower()})" in text for s in sub_clauses) if sub_clauses else False
+
+                if is_target and has_all_subs:
+                    pri = 0   # Exact statute section + all requested clauses
+                elif is_target and has_any_sub:
+                    pri = 1   # Exact statute section + some requested clauses
+                elif is_target:
+                    pri = 2   # Exact statute section
+                elif is_statute:
+                    pri = 3   # Other statute section (cross-reference)
+                elif "icai" in _rp and "bare law" in _rp:
+                    pri = 4   # ICAI bare-law
                 else:
-                    pri = 3   # AAR, HC, SC, ICAI commentary — low priority for statute pin
-            _tlen = len(c.get("content") or c.get("text") or "")
-            return (pri, -_tlen)   # negative so longer text sorts first within tier
+                    first = _rp.split("/")[0] if "/" in _rp else _rp[:20]
+                    if any(first.startswith(p) for p in _OFFICIAL_PATH_PREFIXES):
+                        pri = 5   # Official circular/notif
+                    else:
+                        pri = 6   # Case law / AAR / commentary
+                _tlen = len(c.get("content") or c.get("text") or "")
+                return (pri, -_tlen)
+            return _key_fn
 
         # Keep backward-compat alias used outside this function
         def _idx_priority(idx: int) -> int:
-            return _idx_sort_key(idx)[0]
+            return _build_sort_key("", "", [])(idx)[0]
 
         def _pin(idx: int, provision_key: str, is_alias: bool = False) -> bool:
             if idx >= len(self.chunks):
@@ -1538,6 +1666,7 @@ class Retriever:
             if cid and cid not in seen_ids:
                 c = chunk.copy()
                 c["_pinned_by_ref"]    = True
+                c["_pinned_canonical_key"] = provision_key
                 c["_statute_priority"] = 1.0
                 c["_anchor_provision"] = provision_key   # which provision key found this
                 c["_debug_score"]      = anchor_score    # P2.5: ensures survival past MMR
@@ -1547,21 +1676,33 @@ class Retriever:
             return False
 
         # P2.5b: per-key cap limits how many chunks a single provision key can pin.
-        # Without this, CGST_SEC_9 (709 entries, 104 statute) fills all 30 slots
-        # with Section 9 statute chunks (text="section 9 9"), crowding out FAISS
-        # results that supply notifications, keywords, and sub-section content.
-        # A per-key cap of 3 leaves semantic search results room in the final context.
-        _PER_KEY_CAP   = 3    # max chunks pinned per provision key
-        _GLOBAL_CAP    = 20   # max total pinned chunks across all keys
+        # Primary statute sections can span 4-6 chunks across subsections; give them
+        # enough cap so all operative subsections reach generation candidates.
+        _PER_KEY_CAP   = 3    # default max chunks pinned per provision key
+        _STATUTE_KEY_CAP = 6  # max chunks pinned for primary statute sections
+        _GLOBAL_CAP    = 25   # max total pinned chunks across all keys
 
         for ref in refs:
             _ref_count = 0  # track per-key count
+            base_ref = re.sub(r'\(.*?\)', '', ref)
+            sec_m = re.search(r'SEC_(\d+[A-Z]*)', ref)
+            rul_m = re.search(r'RUL_(\d+[A-Z]*)', ref)
+            target_sec = sec_m.group(1).lower() if sec_m else ""
+            target_rul = rul_m.group(1).lower() if rul_m else ""
+            sub_clauses = re.findall(r'\(([0-9a-zA-Z]+)\)', ref)
+
+            _idx_sort_key = _build_sort_key(target_sec, target_rul, sub_clauses)
 
             # Primary lookup: metadata provision keys (CGST_SEC_16, CGST_RUL_89, etc.)
-            # P2.5b: sort by statute-path priority so Act/ chunks are pinned before AAR/ICAI
-            _raw_indices = self._provision_index.get(ref, [])
+            _raw_indices = self._provision_index.get(ref) or self._provision_index.get(base_ref) or []
             _sorted_indices = sorted(_raw_indices, key=_idx_sort_key)
-            _key_cap = 4 if ref.startswith(("CIRCULAR_", "NOTIF_")) else _PER_KEY_CAP
+            if target_sec or target_rul:
+                _key_cap = _STATUTE_KEY_CAP
+            elif ref.startswith(("CIRCULAR_", "NOTIF_")):
+                _key_cap = 4
+            else:
+                _key_cap = _PER_KEY_CAP
+
             for idx in _sorted_indices:
                 if _ref_count >= _key_cap:
                     break
@@ -1572,13 +1713,13 @@ class Retriever:
 
             # IGST alias: when IGST_SEC_X is absent (ingestion labelled it CGST_SEC_X),
             # find the CGST-keyed entry but filter to igst/ path only.
-            if ref in _IGST_ALIAS and not self._provision_index.get(ref):
+            if ref in _IGST_ALIAS and not self._provision_index.get(ref) and not self._provision_index.get(base_ref):
                 alias_key = _IGST_ALIAS[ref]
                 _alias_indices = sorted(
                     self._provision_index.get(alias_key, []), key=_idx_sort_key
                 )
                 for idx in _alias_indices:
-                    if _ref_count >= _PER_KEY_CAP:
+                    if _ref_count >= _key_cap:
                         break
                     if _pin(idx, ref, is_alias=True):
                         _ref_count += 1
@@ -1586,9 +1727,14 @@ class Retriever:
                         return pinned
 
             # Circular number keys (CIRCULAR_183) — resolved from filename-based index
+            _key_cap = 6 if ref.startswith(("CIRCULAR_", "NOTIF_")) else _PER_KEY_CAP
             if ref.startswith("CIRCULAR_") and hasattr(self, "_circular_index"):
-                for idx in self._circular_index.get(ref, []):
-                    if _ref_count >= _PER_KEY_CAP:
+                _cir_indices = sorted(
+                    self._circular_index.get(ref, []),
+                    key=lambda i: -len(self.chunks[i].get("text") or self.chunks[i].get("content") or "")
+                )
+                for idx in _cir_indices:
+                    if _ref_count >= _key_cap:
                         break
                     if _pin(idx, ref):
                         _ref_count += 1
@@ -1597,8 +1743,12 @@ class Retriever:
 
             # Notification number keys (NOTIF_12_2017) — resolved from filename-based index
             if ref.startswith("NOTIF_") and hasattr(self, "_notification_index"):
-                for idx in self._notification_index.get(ref, []):
-                    if _ref_count >= _PER_KEY_CAP:
+                _notif_indices = sorted(
+                    self._notification_index.get(ref, []),
+                    key=lambda i: -len(self.chunks[i].get("text") or self.chunks[i].get("content") or "")
+                )
+                for idx in _notif_indices:
+                    if _ref_count >= _key_cap:
                         break
                     if _pin(idx, ref):
                         _ref_count += 1

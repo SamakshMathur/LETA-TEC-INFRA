@@ -68,3 +68,13 @@ def client(fastapi_app):
     # than a test exception — lets us assert on the status code directly.
     with TestClient(fastapi_app, raise_server_exceptions=False) as c:
         yield c
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "asyncio: mark test to run with anyio runner")
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        if "asyncio" in item.keywords and "anyio" not in item.keywords:
+            item.add_marker(pytest.mark.anyio)
