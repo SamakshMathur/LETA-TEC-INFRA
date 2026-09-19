@@ -209,3 +209,65 @@ def test_never_charge_cgst_sgst_and_igst_simultaneously():
         assert non_zero_count in (0, 1, 2)
         if tax.igst_amount_paise > 0:
             assert tax.cgst_amount_paise == 0 and tax.sgst_amount_paise == 0
+
+
+def test_validate_gstin_structure_valid_cases():
+    """Verify structural validation passes for standard 15-character Indian GSTINs."""
+    from app.services.tax import validate_gstin_structure
+
+    valid_gstins = [
+        ("08AAGCL9166P1ZL", "08"),  # Rajasthan (Company GSTIN)
+        ("27ABCDE1234F1Z5", "27"),  # Maharashtra
+        ("29ABCDE1234F1Z5", "29"),  # Karnataka
+        ("07AAAAA0000A1Z5", "07"),  # Delhi
+        (" 08AAGCL9166P1ZL ", "08"),  # Leading/trailing whitespace trimmed
+    ]
+    for gstin, expected_state in valid_gstins:
+        is_valid, state_code, err = validate_gstin_structure(gstin)
+        assert is_valid is True, f"Failed for valid GSTIN {gstin}: {err}"
+        assert state_code == expected_state
+        assert err is None
+
+
+def test_validate_gstin_structure_invalid_cases():
+    """Verify structural validation rejects malformed GSTINs without claiming checksum verification."""
+    from app.services.tax import validate_gstin_structure
+
+    # 1. Length violations
+    assert validate_gstin_structure("08AAGCL9166P1Z")[0] is False  # 14 chars
+    assert validate_gstin_structure("08AAGCL9166P1ZL9")[0] is False  # 16 chars
+
+    # 2. None / Empty
+    assert validate_gstin_structure(None)[0] is False
+    assert validate_gstin_structure("")[0] is False
+    assert validate_gstin_structure("   ")[0] is False
+
+    # 3. Invalid character structure
+    assert validate_gstin_structure("XXAAGCL9166P1ZL")[0] is False  # Alphabetic state code
+    assert validate_gstin_structure("081234L9166P1ZL")[0] is False  # Digits instead of PAN alpha
+    assert validate_gstin_structure("08AAGCL9166P1!L")[0] is False  # Special characters
+
+    # 4. Unrecognized Indian state code
+    is_valid, state_code, err = validate_gstin_structure("99AAGCL9166P1ZL")
+    assert is_valid is False
+    assert state_code == "99"
+    assert "not a recognized Indian GST state" in err
+
+
+def test_get_financial_year_boundaries():
+    """Verify Indian financial year (Apr 1 to Mar 31) boundary calculations."""
+    from datetime import datetime, timezone
+    from app.services.tax import get_financial_year
+
+    # April 1st (Start of FY)
+    assert get_financial_year(datetime(2026, 4, 1, 0, 0, tzinfo=timezone.utc)) == "2026-27"
+    # Mid FY (September)
+    assert get_financial_year(datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)) == "2026-27"
+    # End of calendar year (December)
+    assert get_financial_year(datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc)) == "2026-27"
+    # Start of calendar year (January, still prior FY)
+    assert get_financial_year(datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)) == "2025-26"
+    # March 31st (End of FY)
+    assert get_financial_year(datetime(2026, 3, 31, 23, 59, tzinfo=timezone.utc)) == "2025-26"
+    # Century turnover check
+    assert get_financial_year(datetime(2099, 5, 1, tzinfo=timezone.utc)) == "2099-00"

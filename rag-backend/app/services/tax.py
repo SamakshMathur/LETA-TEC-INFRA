@@ -35,9 +35,11 @@ Business Logic & Pricing Contract:
    - inter-state: igst_amount == total_gst and cgst_amount == 0 and sgst_amount == 0
    - never non-zero CGST + SGST + IGST simultaneously
 """
+import re
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 
 # ── Authoritative Business & Tax Constants ─────────────────────────────────────
@@ -54,6 +56,14 @@ GST_RATE = 0.18        # Configured standard 18% GST for digital services
 CGST_RATE = 0.09       # 9% Central GST
 SGST_RATE = 0.09       # 9% State GST
 IGST_RATE = 0.18       # 18% Integrated GST
+
+# Service Accounting Code (SAC) for digital online legal research content
+SAC_CODE = "998439"
+SAC_DESCRIPTION = "Other on-line contents nowhere else classified"
+REVERSE_CHARGE = "No"
+
+# 15-character standard GSTIN regex structure
+GSTIN_STRUCTURE_REGEX = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
 
 
 # ── Official Indian State / UT 2-Digit GST Codes ──────────────────────────────
@@ -117,6 +127,50 @@ _STATE_NAME_TO_CODE.update({
 })
 
 
+def validate_gstin_structure(gstin: Optional[str]) -> Tuple[bool, Optional[str], Optional[str]]:
+    """
+    Performs structural format validation on an Indian 15-character GSTIN.
+    Validates character positions and state code prefix against INDIAN_GST_STATES.
+    Does NOT perform government API verification or mathematical checksum algorithms.
+
+    Returns:
+      (is_valid, state_code, error_message)
+    """
+    if not gstin or not isinstance(gstin, str):
+        return False, None, "GSTIN is missing or empty."
+
+    cleaned = gstin.strip().upper()
+    if len(cleaned) != 15:
+        return False, None, f"GSTIN must be exactly 15 characters, got {len(cleaned)}."
+
+    if not GSTIN_STRUCTURE_REGEX.match(cleaned):
+        return False, None, "GSTIN does not match the standard 15-character alphanumeric format."
+
+    state_code = cleaned[:2]
+    if state_code not in INDIAN_GST_STATES:
+        return False, state_code, f"State code '{state_code}' in GSTIN is not a recognized Indian GST state code."
+
+    return True, state_code, None
+
+
+def get_financial_year(dt: Optional[datetime] = None) -> str:
+    """
+    Derives the Indian Financial Year string (April 1 to March 31) for a given datetime.
+    Example: September 2026 -> '2026-27'; February 2026 -> '2025-26'.
+    """
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    year = dt.year
+    month = dt.month
+    if month >= 4:
+        start_year = year
+        end_year = (year + 1) % 100
+    else:
+        start_year = year - 1
+        end_year = year % 100
+    return f"{start_year}-{str(end_year).zfill(2)}"
+
+
 @dataclass(frozen=True)
 class TaxBreakdown:
     grand_total_paise: int
@@ -134,6 +188,13 @@ class TaxBreakdown:
     customer_state_code: Optional[str]
     customer_state_name: Optional[str]
     place_of_supply: Optional[str]
+    place_of_supply_state_code: Optional[str] = None
+    place_of_supply_state_name: Optional[str] = None
+    supply_type: str = "Unspecified"
+    sac_code: str = SAC_CODE
+    sac_description: str = SAC_DESCRIPTION
+    reverse_charge: str = REVERSE_CHARGE
+    financial_year: str = ""
 
 
 def resolve_place_of_supply(
@@ -193,6 +254,8 @@ def calculate_gst(
     amount_paise: int,
     customer_state: Optional[str] = None,
     customer_state_code: Optional[str] = None,
+    place_of_supply_state: Optional[str] = None,
+    place_of_supply_state_code: Optional[str] = None,
 ) -> TaxBreakdown:
     """
     Deterministic GST calculation for a given charged amount in paise.
@@ -201,6 +264,8 @@ def calculate_gst(
       amount_paise: Total amount charged to the customer (inclusive of GST).
       customer_state: Optional state name (e.g. 'Rajasthan', 'Maharashtra').
       customer_state_code: Optional 2-digit GST state code (e.g. '08', '27').
+      place_of_supply_state: Optional place-of-supply state name.
+      place_of_supply_state_code: Optional 2-digit place-of-supply state code.
 
     Returns:
       TaxBreakdown dataclass with exact integer-paise tax components.
@@ -208,7 +273,9 @@ def calculate_gst(
     if amount_paise < 0:
         raise ValueError(f"amount_paise must be non-negative, got {amount_paise}")
 
-    pos_info = resolve_place_of_supply(state=customer_state, state_code=customer_state_code)
+    pos_state = place_of_supply_state or customer_state
+    pos_code = place_of_supply_state_code or customer_state_code
+    pos_info = resolve_place_of_supply(state=pos_state, state_code=pos_code)
 
     grand_total_paise = int(amount_paise)
     # Taxable amount reverse-calculated: round_half_up(Grand Total / 1.18)
@@ -220,21 +287,26 @@ def calculate_gst(
         cust_code = pos_info["state_code"]
         cust_name = pos_info["state_name"]
         pos_str = pos_info["place_of_supply"]
+        pos_state_code = cust_code
+        pos_state_name = cust_name
 
         if cust_code == SUPPLIER_STATE_CODE:
             # Intra-State Supply (Rajasthan -> Rajasthan)
             is_inter_state = False
+            supply_type = "Intra-State"
             cgst_rate = CGST_RATE
             sgst_rate = SGST_RATE
             igst_rate = 0.0
 
             # Deterministic 1-paise reconciliation: allocate remainder to CGST
+            # Rule: Round the first component normally and assign residual paise to second
             cgst_amount_paise = (total_gst_paise + 1) // 2
             sgst_amount_paise = total_gst_paise - cgst_amount_paise
             igst_amount_paise = 0
         else:
             # Inter-State Supply (Rajasthan -> Outside Rajasthan)
             is_inter_state = True
+            supply_type = "Inter-State"
             cgst_rate = 0.0
             sgst_rate = 0.0
             igst_rate = IGST_RATE
@@ -244,9 +316,12 @@ def calculate_gst(
             igst_amount_paise = total_gst_paise
     else:
         is_inter_state = None
+        supply_type = "Unspecified"
         cust_code = None
         cust_name = None
         pos_str = None
+        pos_state_code = None
+        pos_state_name = None
         cgst_rate = 0.0
         sgst_rate = 0.0
         igst_rate = 0.0
@@ -286,4 +361,11 @@ def calculate_gst(
         customer_state_code=cust_code,
         customer_state_name=cust_name,
         place_of_supply=pos_str,
+        place_of_supply_state_code=pos_state_code,
+        place_of_supply_state_name=pos_state_name,
+        supply_type=supply_type,
+        sac_code=SAC_CODE,
+        sac_description=SAC_DESCRIPTION,
+        reverse_charge=REVERSE_CHARGE,
+        financial_year=get_financial_year(),
     )
