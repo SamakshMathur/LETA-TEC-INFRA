@@ -161,6 +161,11 @@ const Payment: React.FC = () => {
   const [rzConfig, setRzConfig] = useState<{ key_id: string; configured: boolean } | null>(null);
   const [checkingAfterDismiss, setCheckingAfterDismiss] = useState(false);
   const [selectedStateCode, setSelectedStateCode] = useState<string>(''); // Required: no default
+  const [customerType, setCustomerType] = useState<'B2C' | 'B2B'>('B2C');
+  const [businessLegalName, setBusinessLegalName] = useState<string>('');
+  const [customerGstin, setCustomerGstin] = useState<string>('');
+  const [billingAddress, setBillingAddress] = useState<string>('');
+  const [billingCity, setBillingCity] = useState<string>('');
   const preCheckoutSessionEndMsRef = useRef<number | undefined>(undefined);
 
   const activeUntilMs = session?.tokens?.session_end_ms;
@@ -196,6 +201,23 @@ const Payment: React.FC = () => {
     setPayError(null);
     setFailedPaymentId(null);
 
+    // Validate B2B fields if B2B is selected
+    if (customerType === 'B2B') {
+      if (!businessLegalName.trim()) {
+        setPayError('Please enter your Legal Business Name for B2B tax invoice.');
+        return;
+      }
+      const cleanGstin = customerGstin.trim().toUpperCase();
+      if (!cleanGstin) {
+        setPayError('Please enter your 15-character GSTIN for B2B tax invoice.');
+        return;
+      }
+      if (cleanGstin.length !== 15) {
+        setPayError('GSTIN format must be exactly 15 alphanumeric characters (e.g. 08AAGCL9166P1ZL).');
+        return;
+      }
+    }
+
     // Place of Supply is required for correct tax invoice generation
     if (!selectedStateCode) {
       setPayError('Please select your Billing State (Place of Supply) to proceed with payment.');
@@ -224,6 +246,11 @@ const Payment: React.FC = () => {
           module: moduleId,
           customer_state: customerState,
           customer_state_code: customerStateCode,
+          customer_type: customerType,
+          business_legal_name: customerType === 'B2B' ? businessLegalName.trim() : undefined,
+          customer_gstin: customerType === 'B2B' ? customerGstin.trim().toUpperCase() : undefined,
+          billing_address: customerType === 'B2B' && billingAddress.trim() ? billingAddress.trim() : undefined,
+          billing_city: customerType === 'B2B' && billingCity.trim() ? billingCity.trim() : undefined,
         }),
       });
       if (!orderRes.ok) {
@@ -255,6 +282,11 @@ const Payment: React.FC = () => {
               module:  moduleId,
               customer_state: customerState,
               customer_state_code: customerStateCode,
+              customer_type: customerType,
+              business_legal_name: customerType === 'B2B' ? businessLegalName.trim() : undefined,
+              customer_gstin: customerType === 'B2B' ? customerGstin.trim().toUpperCase() : undefined,
+              billing_address: customerType === 'B2B' && billingAddress.trim() ? billingAddress.trim() : undefined,
+              billing_city: customerType === 'B2B' && billingCity.trim() ? billingCity.trim() : undefined,
             }),
           });
           const outcome = classifyPaymentVerifyResult(verifyRes.status);
@@ -592,8 +624,119 @@ const Payment: React.FC = () => {
                   <span className="text-xs text-white font-semibold">{plan.price}</span>
                 </div>
 
+                {/* Customer type selection (B2C vs B2B) */}
+                <div className="mt-3 mb-3 p-3 rounded-xl" style={{ background: '#05070E', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="flex items-center justify-between mb-2 text-[10px] font-mono">
+                    <span style={{ color: '#94A3B8' }}>Invoice Recipient Type</span>
+                    <span className="text-[9px] font-mono" style={{ color: B.accent }}>
+                      {customerType === 'B2B' ? 'Business Invoice' : 'Individual'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCustomerType('B2C')}
+                      className={`py-2 px-3 rounded-lg text-xs font-medium transition-all text-center border ${
+                        customerType === 'B2C'
+                          ? 'bg-[#080A10] text-white font-semibold'
+                          : 'bg-transparent text-slate-400 hover:text-slate-200'
+                      }`}
+                      style={{ borderColor: customerType === 'B2C' ? B.accent : 'rgba(255,255,255,0.08)' }}
+                    >
+                      Individual (B2C)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomerType('B2B')}
+                      className={`py-2 px-3 rounded-lg text-xs font-medium transition-all text-center border ${
+                        customerType === 'B2B'
+                          ? 'bg-[#080A10] text-white font-semibold'
+                          : 'bg-transparent text-slate-400 hover:text-slate-200'
+                      }`}
+                      style={{ borderColor: customerType === 'B2B' ? B.accent : 'rgba(255,255,255,0.08)' }}
+                    >
+                      Business (B2B)
+                    </button>
+                  </div>
+
+                  {/* B2B Specific Fields */}
+                  {customerType === 'B2B' && (
+                    <div className="mt-3 space-y-2.5 pt-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div>
+                        <label className="block text-[10px] font-mono mb-1" style={{ color: '#94A3B8' }}>
+                          Legal Business Name <span className="text-amber-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Acme Legal Tech Pvt Ltd"
+                          value={businessLegalName}
+                          onChange={e => setBusinessLegalName(e.target.value)}
+                          className="w-full bg-[#080A10] text-xs text-white rounded-lg px-2.5 py-2 border outline-none placeholder:text-slate-600"
+                          style={{ borderColor: businessLegalName.trim() ? B.border : 'rgba(255,255,255,0.1)' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-mono mb-1" style={{ color: '#94A3B8' }}>
+                          Customer GSTIN <span className="text-amber-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={15}
+                          placeholder="15-character GSTIN (e.g. 08AAGCL9166P1ZL)"
+                          value={customerGstin}
+                          onChange={e => {
+                            const val = e.target.value.toUpperCase();
+                            setCustomerGstin(val);
+                            if (val.length >= 2) {
+                              const prefix = val.substring(0, 2);
+                              if (INDIAN_STATES.some(s => s.code === prefix)) {
+                                setSelectedStateCode(prefix);
+                              }
+                            }
+                          }}
+                          className="w-full bg-[#080A10] text-xs text-white rounded-lg px-2.5 py-2 border outline-none font-mono placeholder:text-slate-600 placeholder:font-sans"
+                          style={{ borderColor: customerGstin.trim().length === 15 ? B.border : 'rgba(255,255,255,0.1)' }}
+                        />
+                        <p className="text-[9px] font-mono mt-1" style={{ color: '#64748B' }}>
+                          Indian 15-character GSTIN for B2B tax credit.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-mono mb-1" style={{ color: '#64748B' }}>
+                            Address (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Street / Office"
+                            value={billingAddress}
+                            onChange={e => setBillingAddress(e.target.value)}
+                            className="w-full bg-[#080A10] text-xs text-white rounded-lg px-2.5 py-1.5 border outline-none placeholder:text-slate-600"
+                            style={{ borderColor: 'rgba(255,255,255,0.08)' }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono mb-1" style={{ color: '#64748B' }}>
+                            City (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="City"
+                            value={billingCity}
+                            onChange={e => setBillingCity(e.target.value)}
+                            className="w-full bg-[#080A10] text-xs text-white rounded-lg px-2.5 py-1.5 border outline-none placeholder:text-slate-600"
+                            style={{ borderColor: 'rgba(255,255,255,0.08)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Place of supply / billing state selector */}
-                <div className="mt-3 mb-4 p-3 rounded-xl" style={{ background: '#05070E', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="mt-2 mb-4 p-3 rounded-xl" style={{ background: '#05070E', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div className="flex items-center justify-between mb-1.5 text-[10px] font-mono">
                     <span className="flex items-center gap-1.5" style={{ color: '#94A3B8' }}>
                       <MapPin size={11} style={{ color: B.accent }} /> Billing State (Place of Supply)

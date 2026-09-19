@@ -90,14 +90,27 @@ def invoice_module(monkeypatch):
 
 
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
-    """Pure-Python ASCII85 + zlib PDF stream text extractor without external dependencies."""
-    try:
-        raw_stream = pdf_bytes.split(b"stream\n")[1].split(b"endstream")[0].strip()
-        raw_stream = raw_stream[:raw_stream.find(b"~>") + 2]
-        decoded = base64.a85decode(raw_stream, adobe=True)
-        return zlib.decompress(decoded).decode("latin1", errors="ignore")
-    except Exception:
-        return pdf_bytes.decode("latin1", errors="ignore")
+    """Extracts all text from all streams in a PDF without external dependencies."""
+    extracted = []
+    parts = pdf_bytes.split(b"stream\n")
+    for part in parts[1:]:
+        data = part.split(b"endstream")[0].strip()
+        if b"~>" in data:
+            data = data[:data.find(b"~>") + 2]
+            try:
+                dec = base64.a85decode(data, adobe=True)
+                decomp = zlib.decompress(dec).decode("latin1", errors="ignore")
+                extracted.append(decomp)
+            except Exception:
+                pass
+        else:
+            try:
+                decomp = zlib.decompress(data).decode("latin1", errors="ignore")
+                extracted.append(decomp)
+            except Exception:
+                pass
+    combined = "\n".join(extracted) if extracted else pdf_bytes.decode("latin1", errors="ignore")
+    return combined.replace(r"\(", "(").replace(r"\)", ")")
 
 
 def test_invoice_numbers_are_sequential(invoice_module):
@@ -131,7 +144,7 @@ def test_create_invoice_record_is_idempotent_per_payment(invoice_module):
 
 
 def test_create_invoice_record_persists_intra_state_tax_breakdown(invoice_module):
-    """Verify Rajasthan supply persists CGST 9% + SGST 9% with exact paise reconciliation."""
+    """Verify Rajasthan supply persists CGST 9% + SGST 9% with exact paise reconciliation and SAC 998439."""
     record = invoice_module.create_invoice_record(
         payment_id="pay_intra_1",
         order_id="order_intra_1",
@@ -143,6 +156,7 @@ def test_create_invoice_record_persists_intra_state_tax_breakdown(invoice_module
         amount_paise=1000,
         customer_state="Rajasthan",
         customer_state_code="08",
+        customer_type="B2B",
         customer_gstin="08AAAAA0000A1Z5",
     )
 
@@ -157,11 +171,18 @@ def test_create_invoice_record_persists_intra_state_tax_breakdown(invoice_module
     assert record["igst_amount_paise"] == 0
     assert record["is_inter_state"] is False
     assert record["place_of_supply"] == "08-Rajasthan"
+    assert record["place_of_supply_state_code"] == "08"
+    assert record["place_of_supply_state_name"] == "Rajasthan"
+    assert record["supply_type"] == "Intra-State"
+    assert record["sac_code"] == "998439"
+    assert record["sac_description"] == "Other on-line contents nowhere else classified"
+    assert record["reverse_charge"] == "No"
+    assert record["payment_status"] == "PAID"
     assert record["customer_gstin"] == "08AAAAA0000A1Z5"
 
 
 def test_create_invoice_record_persists_inter_state_tax_breakdown(invoice_module):
-    """Verify non-Rajasthan supply persists IGST 18% with exact paise reconciliation."""
+    """Verify non-Rajasthan supply persists IGST 18% with exact paise reconciliation and SAC 998439."""
     record = invoice_module.create_invoice_record(
         payment_id="pay_inter_1",
         order_id="order_inter_1",
@@ -186,10 +207,41 @@ def test_create_invoice_record_persists_inter_state_tax_breakdown(invoice_module
     assert record["igst_amount_paise"] == 6086
     assert record["is_inter_state"] is True
     assert record["place_of_supply"] == "27-Maharashtra"
+    assert record["place_of_supply_state_code"] == "27"
+    assert record["place_of_supply_state_name"] == "Maharashtra"
+    assert record["supply_type"] == "Inter-State"
+    assert record["sac_code"] == "998439"
+    assert record["reverse_charge"] == "No"
+    assert record["payment_status"] == "PAID"
+
+
+def test_create_invoice_record_persists_optional_billing_address(invoice_module):
+    """Verify billing address and city persist correctly when supplied."""
+    record = invoice_module.create_invoice_record(
+        payment_id="pay_addr_1",
+        order_id="ord_addr_1",
+        username="carol",
+        customer_name="Carol Danvers",
+        customer_email="carol@example.com",
+        customer_phone="9876543212",
+        plan_name="1-Hour Access",
+        amount_paise=1000,
+        customer_state="Rajasthan",
+        customer_state_code="08",
+        billing_address="Suite 404, Tech Park",
+        billing_city="Jaipur",
+    )
+    assert record["billing_address"] == "Suite 404, Tech Park"
+    assert record["billing_city"] == "Jaipur"
+
+    pdf_bytes = invoice_module.render_invoice_pdf(record)
+    text = _extract_pdf_text(pdf_bytes)
+    assert "Suite 404, Tech Park" in text
+    assert "Jaipur" in text
 
 
 def test_render_invoice_pdf_intra_state_content(invoice_module):
-    """Verify intra-State PDF contains CGST 9%, SGST 9%, and Place of Supply."""
+    """Verify intra-State PDF contains logo, SAC 998439, CGST 9%, SGST 9%, and Place of Supply."""
     record = {
         "invoice_number": "LETA/2026-27/00001",
         "payment_id": "pay_intra_pdf",
@@ -213,20 +265,29 @@ def test_render_invoice_pdf_intra_state_content(invoice_module):
         "customer_state": "Rajasthan",
         "customer_state_code": "08",
         "place_of_supply": "08-Rajasthan",
+        "sac_code": "998439",
+        "reverse_charge": "No",
+        "payment_status": "PAID",
     }
     pdf_bytes = invoice_module.render_invoice_pdf(record)
     assert pdf_bytes[:5] == b"%PDF-"
     text = _extract_pdf_text(pdf_bytes)
 
     assert "TAX INVOICE" in text
-    assert "08-Rajasthan" in text
-    assert "CGST @ 9%" in text
-    assert "SGST @ 9%" in text
-    assert "Total GST @ 18%" in text
+    assert "ORIGINAL FOR RECIPIENT" in text
+    assert "Rajasthan (08)" in text
+    assert "Intra-State" in text
+    assert "998439" in text
+    assert "CGST" in text
+    assert "SGST" in text
     assert "Rs.8.47" in text
     assert "Rs.0.77" in text
     assert "Rs.0.76" in text
     assert "Rs.10.00" in text
+    assert "PAID" in text
+    assert "pay_intra_pdf" in text
+    assert "Reverse Charge:" in text
+    assert "No" in text
 
 
 def test_render_invoice_pdf_inter_state_content(invoice_module):
@@ -254,16 +315,27 @@ def test_render_invoice_pdf_inter_state_content(invoice_module):
         "customer_state": "Maharashtra",
         "customer_state_code": "27",
         "place_of_supply": "27-Maharashtra",
+        "sac_code": "998439",
+        "reverse_charge": "No",
+        "payment_status": "PAID",
     }
     pdf_bytes = invoice_module.render_invoice_pdf(record)
     assert pdf_bytes[:5] == b"%PDF-"
     text = _extract_pdf_text(pdf_bytes)
 
-    assert "27-Maharashtra" in text
-    assert "IGST @ 18%" in text
+    assert "TAX INVOICE" in text
+    assert "ORIGINAL FOR RECIPIENT" in text
+    assert "Maharashtra (27)" in text
+    assert "Inter-State" in text
+    assert "998439" in text
+    assert "IGST" in text
     assert "Rs.338.14" in text
     assert "Rs.60.86" in text
     assert "Rs.399.00" in text
+    assert "PAID" in text
+    assert "pay_inter_pdf" in text
+    assert "Reverse Charge:" in text
+    assert "No" in text
 
 
 def test_stored_mongo_amounts_and_rendered_pdf_are_identical(invoice_module):
@@ -298,7 +370,7 @@ def test_stored_mongo_amounts_and_rendered_pdf_are_identical(invoice_module):
 
 
 def test_render_invoice_pdf_legacy_historical_invoice_compatibility(invoice_module):
-    """Verify historical invoice without state breakdown fields renders cleanly."""
+    """Verify historical invoice without state breakdown fields renders cleanly without fabricating SAC."""
     record = {
         "invoice_number": "LETA/2025-26/00001",
         "payment_id": "pay_legacy_old",
@@ -313,8 +385,11 @@ def test_render_invoice_pdf_legacy_historical_invoice_compatibility(invoice_modu
     assert pdf_bytes[:5] == b"%PDF-"
     text = _extract_pdf_text(pdf_bytes)
     assert "TAX INVOICE" in text
-    assert "GST @ 18%" in text
+    assert "GST" in text
     assert "Rs.199.00" in text
+    # Amendment 1: Never fabricate SAC 998439 onto legacy invoices that did not store it
+    assert "Not recorded" in text
+    assert "998439" not in text
 
 
 def test_list_invoice_records_is_scoped_to_the_user_and_newest_first(invoice_module):
@@ -441,3 +516,381 @@ def test_create_invoice_never_raises_if_invoice_service_blows_up(monkeypatch):
 
     # Must not raise despite create_invoice_record raising internally.
     payments._create_invoice("alice", payments.PLANS["1hr"], "pay_123", "order_456")
+
+
+# ── Production-Quality Feature Tests ────────────────────────────────────────
+
+def test_render_invoice_pdf_embeds_logo_asset(invoice_module):
+    """Verify that render_invoice_pdf embeds the LETATEC logo asset into the PDF."""
+    record = {
+        "invoice_number": "LETA/2026-27/00099",
+        "payment_id": "pay_logo_test",
+        "order_id": "ord_logo_test",
+        "username": "alice",
+        "customer_name": "Alice Sharma",
+        "customer_email": "alice@example.com",
+        "customer_phone": "9876543210",
+        "plan_name": "1-Hour Access",
+        "amount_paise": 1000,
+        "issued_at": datetime(2026, 9, 19, tzinfo=timezone.utc),
+        "taxable_amount_paise": 847,
+        "total_gst_paise": 153,
+        "cgst_rate": 0.09,
+        "cgst_amount_paise": 77,
+        "sgst_rate": 0.09,
+        "sgst_amount_paise": 76,
+        "igst_rate": 0.0,
+        "igst_amount_paise": 0,
+        "is_inter_state": False,
+        "customer_state": "Rajasthan",
+        "customer_state_code": "08",
+        "place_of_supply": "08-Rajasthan",
+        "sac_code": "998439",
+    }
+    pdf_bytes = invoice_module.render_invoice_pdf(record)
+    assert b"/Subtype /Image" in pdf_bytes
+    assert b"/Type /XObject" in pdf_bytes
+
+
+def test_render_invoice_pdf_service_classification_and_sac(invoice_module):
+    """Verify service description and SAC 998439 are clearly rendered."""
+    record = {
+        "invoice_number": "LETA/2026-27/00100",
+        "payment_id": "pay_sac_test",
+        "order_id": "ord_sac_test",
+        "username": "bob",
+        "customer_name": "Bob Mehta",
+        "customer_email": "bob@example.com",
+        "customer_phone": "9876543211",
+        "plan_name": "3-Hour Access",
+        "amount_paise": 39900,
+        "issued_at": datetime(2026, 9, 19, tzinfo=timezone.utc),
+        "taxable_amount_paise": 33814,
+        "total_gst_paise": 6086,
+        "cgst_rate": 0.0,
+        "cgst_amount_paise": 0,
+        "sgst_rate": 0.0,
+        "sgst_amount_paise": 0,
+        "igst_rate": 0.18,
+        "igst_amount_paise": 6086,
+        "is_inter_state": True,
+        "customer_state": "Maharashtra",
+        "customer_state_code": "27",
+        "place_of_supply": "27-Maharashtra",
+        "sac_code": "998439",
+    }
+    pdf_bytes = invoice_module.render_invoice_pdf(record)
+    text = _extract_pdf_text(pdf_bytes)
+    assert "Statutory Legal-Research Workspace Access" in text
+    assert "998439" in text
+
+
+def test_render_invoice_pdf_payment_block_and_reconciliation(invoice_module):
+    """Verify payment status, payment ID, amount paid, and balance due."""
+    record = {
+        "invoice_number": "LETA/2026-27/00101",
+        "payment_id": "pay_xyz_98765",
+        "order_id": "ord_xyz_98765",
+        "username": "charlie",
+        "customer_name": "Charlie",
+        "customer_email": "charlie@example.com",
+        "customer_phone": "9876543213",
+        "plan_name": "1-Hour Access",
+        "amount_paise": 1000,
+        "issued_at": datetime(2026, 9, 19, tzinfo=timezone.utc),
+        "taxable_amount_paise": 847,
+        "total_gst_paise": 153,
+        "cgst_rate": 0.09,
+        "cgst_amount_paise": 77,
+        "sgst_rate": 0.09,
+        "sgst_amount_paise": 76,
+        "igst_rate": 0.0,
+        "igst_amount_paise": 0,
+        "is_inter_state": False,
+        "customer_state": "Rajasthan",
+        "customer_state_code": "08",
+        "place_of_supply": "08-Rajasthan",
+        "sac_code": "998439",
+        "payment_status": "PAID",
+    }
+    pdf_bytes = invoice_module.render_invoice_pdf(record)
+    text = _extract_pdf_text(pdf_bytes)
+    assert "PAID" in text
+    assert "pay_xyz_98765" in text
+    assert "Amount Paid:" in text
+    assert "Rs.10.00" in text
+    assert "Balance Due:" in text
+    assert "Rs.0.00" in text
+
+
+def test_render_invoice_pdf_repeated_download_is_stable(invoice_module):
+    """Verify multiple render invocations produce consistent output."""
+    record = invoice_module.create_invoice_record(
+        payment_id="pay_stable_1",
+        order_id="ord_stable_1",
+        username="dave",
+        customer_name="Dave",
+        customer_email="dave@example.com",
+        customer_phone="9876543214",
+        plan_name="1-Hour Access",
+        amount_paise=1000,
+        customer_state="Rajasthan",
+        customer_state_code="08",
+    )
+    first_pdf = invoice_module.render_invoice_pdf(record)
+    second_pdf = invoice_module.render_invoice_pdf(record)
+    assert len(first_pdf) == len(second_pdf)
+    assert _extract_pdf_text(first_pdf) == _extract_pdf_text(second_pdf)
+
+
+def test_arbitrary_amounts_reconciliation_in_pdf(invoice_module):
+    """Verify arbitrary amounts produce exact paise reconciliation in PDF and record."""
+    amounts = [5500, 7700, 11500, 19900, 39900, 49900, 73500, 99900]
+    for amt in amounts:
+        # Intra-state
+        rec_intra = invoice_module.create_invoice_record(
+            payment_id=f"pay_arb_intra_{amt}",
+            order_id=f"ord_arb_intra_{amt}",
+            username="eve",
+            customer_name="Eve",
+            customer_email="eve@example.com",
+            customer_phone="9876543215",
+            plan_name="Custom Access",
+            amount_paise=amt,
+            customer_state="Rajasthan",
+            customer_state_code="08",
+        )
+        assert rec_intra["taxable_amount_paise"] + rec_intra["cgst_amount_paise"] + rec_intra["sgst_amount_paise"] == amt
+        pdf_intra = invoice_module.render_invoice_pdf(rec_intra)
+        text_intra = _extract_pdf_text(pdf_intra)
+        assert f"Rs.{amt/100:,.2f}" in text_intra
+
+        # Inter-state
+        rec_inter = invoice_module.create_invoice_record(
+            payment_id=f"pay_arb_inter_{amt}",
+            order_id=f"ord_arb_inter_{amt}",
+            username="frank",
+            customer_name="Frank",
+            customer_email="frank@example.com",
+            customer_phone="9876543216",
+            plan_name="Custom Access",
+            amount_paise=amt,
+            customer_state="Karnataka",
+            customer_state_code="29",
+        )
+        assert rec_inter["taxable_amount_paise"] + rec_inter["igst_amount_paise"] == amt
+        pdf_inter = invoice_module.render_invoice_pdf(rec_inter)
+        text_inter = _extract_pdf_text(pdf_inter)
+        assert f"Rs.{amt/100:,.2f}" in text_inter
+
+
+def test_b2b_invoice_creation_persists_full_snapshots_and_valid_gstin(invoice_module):
+    """Verify B2B invoice creation persists complete nested snapshots and structural GSTIN validation."""
+    record = invoice_module.create_invoice_record(
+        payment_id="pay_b2b_001",
+        order_id="ord_b2b_001",
+        username="acme_corp",
+        customer_name="John Doe",
+        customer_email="finance@acmecorp.in",
+        customer_phone="9876500000",
+        plan_name="3-Hour Access",
+        amount_paise=39900,
+        customer_type="B2B",
+        business_legal_name="Acme Legal Technologies Pvt Ltd",
+        customer_gstin="08AAGCL9166P1ZL",
+        billing_address="Level 5, Tech Tower",
+        billing_city="Jaipur",
+        customer_state="Rajasthan",
+        customer_state_code="08",
+    )
+    assert record["customer_type"] == "B2B"
+    assert record["financial_year"] == "2026-27"
+    assert record["business_legal_name"] == "Acme Legal Technologies Pvt Ltd"
+    assert record["customer_gstin"] == "08AAGCL9166P1ZL"
+    assert record["gstin_validation_status"] == "structural_valid"
+
+    # Verify structured snapshot documents
+    recipient = record["recipient"]
+    assert recipient["type"] == "B2B"
+    assert recipient["legal_name"] == "Acme Legal Technologies Pvt Ltd"
+    assert recipient["customer_name"] == "John Doe"
+    assert recipient["gstin"] == "08AAGCL9166P1ZL"
+    assert recipient["gstin_validation_status"] == "structural_valid"
+    assert recipient["billing_address"] == "Level 5, Tech Tower"
+    assert recipient["city"] == "Jaipur"
+    assert recipient["state"] == "Rajasthan"
+    assert recipient["state_code"] == "08"
+
+    supplier = record["supplier"]
+    assert supplier["legal_name"] == "LETATEC AI TECHNOLOGIES PRIVATE LIMITED"
+    assert supplier["gstin"] == "08AAGCL9166P1ZL"
+    assert supplier["cin"] == "U62010RJ2026PTC114803"
+    assert supplier["state_code"] == "08"
+
+    supply = record["supply"]
+    assert supply["supply_type"] == "Intra-State"
+    assert supply["reverse_charge"] == "No"
+    assert supply["sac"] == "998439"
+
+    amounts = record["amounts"]
+    assert amounts["grand_total_paise"] == 39900
+    assert amounts["taxable_value_paise"] + amounts["total_gst_paise"] == 39900
+    assert amounts["cgst_paise"] + amounts["sgst_paise"] == amounts["total_gst_paise"]
+
+    # Verify B2B PDF Rendering
+    pdf_bytes = invoice_module.render_invoice_pdf(record)
+    text = _extract_pdf_text(pdf_bytes)
+    assert "BILLED TO (B2B)" in text
+    assert "Acme Legal Technologies Pvt Ltd" in text
+    assert "08AAGCL9166P1ZL" in text
+    assert "Level 5, Tech Tower, Jaipur" in text
+
+
+def test_b2c_invoice_creation_persists_snapshots_and_rejects_gstin(invoice_module):
+    """Verify B2C invoice persists clean snapshot without GSTIN, and rejects inconsistent GSTIN."""
+    record = invoice_module.create_invoice_record(
+        payment_id="pay_b2c_001",
+        order_id="ord_b2c_001",
+        username="priya",
+        customer_name="Priya Sharma",
+        customer_email="priya@example.com",
+        customer_phone="9876511111",
+        plan_name="1-Hour Access",
+        amount_paise=1000,
+        customer_type="B2C",
+        customer_state="Rajasthan",
+        customer_state_code="08",
+    )
+    assert record["customer_type"] == "B2C"
+    assert record["customer_gstin"] is None
+    assert record["recipient"]["type"] == "B2C"
+    assert record["recipient"]["gstin"] is None
+
+    # PDF rendering check
+    pdf_bytes = invoice_module.render_invoice_pdf(record)
+    text = _extract_pdf_text(pdf_bytes)
+    assert "BILLED TO" in text
+    assert "BILLED TO (B2B)" not in text
+    assert "Priya Sharma" in text
+
+    # Amendment 2: Supplying GSTIN for B2C must raise ValueError rather than silent conversion
+    with pytest.raises(ValueError, match="Customer type is B2C but a GSTIN was supplied"):
+        invoice_module.create_invoice_record(
+            payment_id="pay_b2c_invalid",
+            order_id="ord_b2c_invalid",
+            username="priya",
+            customer_name="Priya Sharma",
+            customer_email="priya@example.com",
+            customer_phone="9876511111",
+            plan_name="1-Hour Access",
+            amount_paise=1000,
+            customer_type="B2C",
+            customer_gstin="08AAGCL9166P1ZL",
+        )
+
+
+def test_b2b_invoice_requires_valid_gstin_and_rejects_invalid_gstin(invoice_module):
+    """Verify B2B invoice creation strictly enforces structural GSTIN validation."""
+    # 1. Missing GSTIN
+    with pytest.raises(ValueError, match="B2B invoice requires a valid GSTIN"):
+        invoice_module.create_invoice_record(
+            payment_id="pay_b2b_nogstin",
+            order_id="ord_b2b_nogstin",
+            username="acme",
+            customer_name="Acme",
+            customer_email="acme@test.in",
+            customer_phone="9876522222",
+            plan_name="1-Hour Access",
+            amount_paise=1000,
+            customer_type="B2B",
+            customer_gstin=None,
+        )
+
+    # 2. Structurally invalid GSTIN (14 chars)
+    with pytest.raises(ValueError, match="Invalid B2B GSTIN format"):
+        invoice_module.create_invoice_record(
+            payment_id="pay_b2b_badgstin",
+            order_id="ord_b2b_badgstin",
+            username="acme",
+            customer_name="Acme",
+            customer_email="acme@test.in",
+            customer_phone="9876522222",
+            plan_name="1-Hour Access",
+            amount_paise=1000,
+            customer_type="B2B",
+            customer_gstin="08AAGCL9166P1Z",  # 14 chars
+        )
+
+
+def test_invoice_snapshot_immutability_when_user_or_profile_is_mutated(invoice_module, monkeypatch):
+    """
+    Verify that mutating the source user account/profile in MongoDB after invoice
+    generation does NOT modify already-issued invoice snapshots or their rendered PDF.
+    """
+    from app.database import get_user_collection
+
+    users_col = get_user_collection()
+    if users_col is not None:
+        users_col.insert_one({
+            "username": "immutable_user",
+            "full_name": "Original Customer Name",
+            "email": "original@example.com",
+            "phone": "9999900000",
+            "state": "Rajasthan",
+            "state_code": "08",
+            "gstin": "08AAGCL9166P1ZL",
+            "business_legal_name": "Original Enterprise Pvt Ltd",
+            "customer_type": "B2B",
+        })
+
+    # Create B2B invoice
+    record = invoice_module.create_invoice_record(
+        payment_id="pay_immutable_test_001",
+        order_id="ord_immutable_test_001",
+        username="immutable_user",
+        customer_name="Original Customer Name",
+        customer_email="original@example.com",
+        customer_phone="9999900000",
+        plan_name="3-Hour Access",
+        amount_paise=39900,
+        customer_type="B2B",
+        business_legal_name="Original Enterprise Pvt Ltd",
+        customer_gstin="08AAGCL9166P1ZL",
+        customer_state="Rajasthan",
+        customer_state_code="08",
+    )
+
+    # Now mutate the user profile completely in MongoDB
+    if users_col is not None:
+        users_col.update_one(
+            {"username": "immutable_user"},
+            {"$set": {
+                "full_name": "Mutated Malicious Name",
+                "email": "mutated@evil.com",
+                "phone": "1111100000",
+                "state": "Goa",
+                "state_code": "30",
+                "gstin": "30ABCDE1234F1Z5",
+                "business_legal_name": "Mutated Offshore Ltd",
+            }}
+        )
+
+    # Fetch stored invoice document from DB
+    stored_record = invoice_module.get_invoice_record("pay_immutable_test_001")
+    assert stored_record is not None
+    assert stored_record["customer_name"] == "Original Customer Name"
+    assert stored_record["customer_email"] == "original@example.com"
+    assert stored_record["business_legal_name"] == "Original Enterprise Pvt Ltd"
+    assert stored_record["customer_gstin"] == "08AAGCL9166P1ZL"
+    assert stored_record["customer_state"] == "Rajasthan"
+    assert stored_record["customer_state_code"] == "08"
+    assert stored_record["recipient"]["legal_name"] == "Original Enterprise Pvt Ltd"
+    assert stored_record["recipient"]["state"] == "Rajasthan"
+
+    # Render PDF from stored record and verify it reflects original immutable data
+    pdf_bytes = invoice_module.render_invoice_pdf(stored_record)
+    text = _extract_pdf_text(pdf_bytes)
+    assert "Original Enterprise Pvt Ltd" in text
+    assert "08AAGCL9166P1ZL" in text
+    assert "Mutated" not in text
+    assert "Goa" not in text

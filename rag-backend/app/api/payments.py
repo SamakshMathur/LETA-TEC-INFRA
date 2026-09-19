@@ -183,6 +183,10 @@ def _create_invoice(
     customer_state: Optional[str] = None,
     customer_state_code: Optional[str] = None,
     customer_gstin: Optional[str] = None,
+    billing_address: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    customer_type: Optional[str] = None,
+    business_legal_name: Optional[str] = None,
 ) -> None:
     """
     Creates the permanent invoice record backing the "Download Invoice"
@@ -191,21 +195,33 @@ def _create_invoice(
     """
     try:
         users_col = get_user_collection()
-        user = users_col.find_one({"username": username}, {"_id": 0, "email": 1, "phone": 1, "full_name": 1, "state": 1, "state_code": 1, "gstin": 1}) if users_col is not None else None
+        user = users_col.find_one({"username": username}, {"_id": 0, "email": 1, "phone": 1, "full_name": 1, "state": 1, "state_code": 1, "gstin": 1, "address": 1, "city": 1, "customer_type": 1, "business_legal_name": 1}) if users_col is not None else None
 
-        # If state/gstin not directly provided, resolve from stored order or user record
-        if not customer_state and not customer_state_code:
-            orders_col = get_payment_orders_collection()
-            order_doc = orders_col.find_one({"order_id": order_id}) if (orders_col is not None and order_id) else None
-            if order_doc:
+        orders_col = get_payment_orders_collection()
+        order_doc = orders_col.find_one({"order_id": order_id}) if (orders_col is not None and order_id) else None
+
+        # If state/gstin/address not directly provided, resolve from stored order or user record
+        if order_doc:
+            if not customer_state and not customer_state_code:
                 customer_state = order_doc.get("customer_state")
                 customer_state_code = order_doc.get("customer_state_code")
-                customer_gstin = customer_gstin or order_doc.get("customer_gstin")
+            customer_gstin = customer_gstin or order_doc.get("customer_gstin")
+            billing_address = billing_address or order_doc.get("billing_address")
+            billing_city = billing_city or order_doc.get("billing_city")
+            customer_type = customer_type or order_doc.get("customer_type")
+            business_legal_name = business_legal_name or order_doc.get("business_legal_name")
 
-        if not customer_state and not customer_state_code and user:
-            customer_state = user.get("state")
-            customer_state_code = user.get("state_code")
+        if user:
+            if not customer_state and not customer_state_code:
+                customer_state = user.get("state")
+                customer_state_code = user.get("state_code")
             customer_gstin = customer_gstin or user.get("gstin")
+            billing_address = billing_address or user.get("address")
+            billing_city = billing_city or user.get("city")
+            customer_type = customer_type or user.get("customer_type")
+            business_legal_name = business_legal_name or user.get("business_legal_name")
+
+        resolved_cust_type = customer_type or ("B2B" if customer_gstin else "B2C")
 
         from app.services.invoice import create_invoice_record
         record = create_invoice_record(
@@ -219,7 +235,13 @@ def _create_invoice(
             amount_paise=plan_cfg.get("amount", 0),
             customer_state=customer_state,
             customer_state_code=customer_state_code,
+            place_of_supply_state=customer_state,
+            place_of_supply_state_code=customer_state_code,
             customer_gstin=customer_gstin,
+            billing_address=billing_address,
+            billing_city=billing_city,
+            customer_type=resolved_cust_type,
+            business_legal_name=business_legal_name,
         )
         if record:
             logger.info(f"Invoice created | number={record['invoice_number']} payment={payment_id}")
@@ -235,6 +257,10 @@ def _credit_session(
     customer_state: Optional[str] = None,
     customer_state_code: Optional[str] = None,
     customer_gstin: Optional[str] = None,
+    billing_address: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    customer_type: Optional[str] = None,
+    business_legal_name: Optional[str] = None,
 ) -> dict:
     """
     Apply session extension to the user record.
@@ -269,6 +295,10 @@ def _credit_session(
             customer_state=customer_state,
             customer_state_code=customer_state_code,
             customer_gstin=customer_gstin,
+            billing_address=billing_address,
+            billing_city=billing_city,
+            customer_type=customer_type,
+            business_legal_name=business_legal_name,
         )
         # 2. Trigger notifications
         _send_payment_receipt(username, plan_cfg, payment_id, session_end_dt)
@@ -315,6 +345,10 @@ class CreateOrderRequest(BaseModel):
     customer_state: Optional[str] = None
     customer_state_code: Optional[str] = None
     customer_gstin: Optional[str] = None
+    customer_type: Optional[str] = None
+    business_legal_name: Optional[str] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
 
 class VerifyPaymentRequest(BaseModel):
     razorpay_order_id: str
@@ -325,6 +359,10 @@ class VerifyPaymentRequest(BaseModel):
     customer_state: Optional[str] = None
     customer_state_code: Optional[str] = None
     customer_gstin: Optional[str] = None
+    customer_type: Optional[str] = None
+    business_legal_name: Optional[str] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
 
 
 # ── Routes ────────────────────────────────────────────────────────────────
@@ -403,6 +441,10 @@ def create_order(request: Request, req: CreateOrderRequest, current_user: dict =
                 "customer_state":      req.customer_state,
                 "customer_state_code": req.customer_state_code,
                 "customer_gstin":      req.customer_gstin,
+                "customer_type":       req.customer_type,
+                "business_legal_name": req.business_legal_name,
+                "billing_address":     req.billing_address,
+                "billing_city":        req.billing_city,
                 "created_at":          utc_now(),
             })
         except DuplicateKeyError:
@@ -479,6 +521,10 @@ def verify_payment(
                 customer_state=req.customer_state,
                 customer_state_code=req.customer_state_code,
                 customer_gstin=req.customer_gstin,
+                billing_address=req.billing_address,
+                billing_city=req.billing_city,
+                customer_type=req.customer_type,
+                business_legal_name=req.business_legal_name,
             )
 
             logger.info(f"verify_payment: payment {req.razorpay_payment_id} already claimed by same user {username} — returning 200 with session state")
@@ -505,6 +551,10 @@ def verify_payment(
         customer_state=req.customer_state,
         customer_state_code=req.customer_state_code,
         customer_gstin=req.customer_gstin,
+        billing_address=req.billing_address,
+        billing_city=req.billing_city,
+        customer_type=req.customer_type,
+        business_legal_name=req.business_legal_name,
     )
     return {**info, "module": req.module, "plan_id": req.plan_id}
 
@@ -552,6 +602,10 @@ async def razorpay_webhook(request: Request):
         customer_state = order_doc.get("customer_state")
         customer_state_code = order_doc.get("customer_state_code")
         customer_gstin = order_doc.get("customer_gstin")
+        customer_type = order_doc.get("customer_type")
+        business_legal_name = order_doc.get("business_legal_name")
+        billing_address = order_doc.get("billing_address")
+        billing_city = order_doc.get("billing_city")
 
         if not _claim_payment_id(payment_id, username, plan_id, order_id):
             logger.info(f"razorpay_webhook: duplicate event for payment_id={payment_id} — ACK and skip")
@@ -562,6 +616,10 @@ async def razorpay_webhook(request: Request):
             customer_state=customer_state,
             customer_state_code=customer_state_code,
             customer_gstin=customer_gstin,
+            billing_address=billing_address,
+            billing_city=billing_city,
+            customer_type=customer_type,
+            business_legal_name=business_legal_name,
         )
         logger.info(f"razorpay_webhook: session credited via webhook | payment={payment_id} user={username}")
 
